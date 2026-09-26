@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head"><div><h1>Reports</h1><div class="sub">All reports support date range and master filters, on-screen view, Excel, CSV, PDF and print.</div></div>
+  <div class="actions"><a class="btn btn-primary" href="/mis">Transportation MIS drill-down</a></div></div>
+<div class="grid g2">
+  {% for g, items in groups if items %}
+  <div class="card">
+    <div class="card-head"><h2>{{ g }}</h2></div>
+    <table class="data compact"><tbody>
+      {% for r in items %}<tr><td style="width:44%"><a href="/reports/{{ r.code }}"><b>{{ r.title }}</b></a></td><td class="muted small">{{ r.description }}</td></tr>{% endfor %}
+    </tbody></table>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

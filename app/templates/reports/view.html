@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "_macros.html" import filter_bar, badge with context %}
+{% macro cellv(r, c) -%}
+  {%- set v = r.get(c.key) -%}
+  {%- if c.kind == 'invoice' and r.get('invoice_id') -%}<a href="/invoices/{{ r.invoice_id }}">{{ v }}</a>
+  {%- elif c.kind == 'status' and v -%}{{ badge(v) }}
+  {%- elif c.key == 'variance' and v is not none and v != '' -%}{% if v > 0 %}<span class="pos">+{{ v|display('money') }}</span>{% elif v < 0 %}<span class="neg">{{ v|display('money') }}</span>{% else %}{{ v|display('money') }}{% endif %}
+  {%- elif c.key == 'fix' -%}{% if can('rate.create') %}<a class="btn btn-sm" href="{{ v }}">Add rate</a>{% endif %}
+  {%- elif c.key == 'bill_no' and r.get('bill_id') -%}<a href="/recon/{{ r.bill_id }}">{{ v }}</a>
+  {%- else -%}{{ v|display(c.kind) }}{%- endif -%}
+{%- endmacro %}
+{% block content %}
+<div class="crumbs"><a href="/reports">Reports</a> › {{ rd.group }}</div>
+<div class="page-head">
+  <div><h1>{{ rd.title }}</h1><div class="sub">{{ rd.description }} · {{ f.describe() }}{% if res.date_basis %} ({{ res.date_basis }}){% endif %} · {{ res.rows|length }} rows</div></div>
+  <div class="actions no-print">
+    {% if can('data.export') %}
+      <a class="btn" href="/reports/{{ rd.code }}/export?fmt=xlsx&{{ qs }}">Excel</a>
+      <a class="btn" href="/reports/{{ rd.code }}/export?fmt=csv&{{ qs }}">CSV</a>
+      <a class="btn" href="/reports/{{ rd.code }}/export?fmt=pdf&{{ qs }}" target="_blank">PDF</a>
+    {% endif %}
+    <button class="btn" type="button" onclick="window.print()">Print</button>
+  </div>
+</div>
+{% if not can('data.export') %}<div class="alert alert-info no-print">Your role can view reports but not export data.</div>{% endif %}
+{{ filter_bar(f, opts, show, action='/reports/' ~ rd.code, status_choices=choices) }}
+{% if res.note %}<div class="note" style="margin-bottom:12px">{{ res.note }}</div>{% endif %}
+<div class="card flush">
+  <div class="print-only" style="display:none"><b>{{ org }}</b> · {{ rd.title }} · {{ f.describe() }} · printed {{ generated.strftime('%d-%m-%Y %H:%M') }}</div>
+  <div class="table-wrap" style="max-height:calc(100vh - 290px)">
+    <table class="data compact">
+      <thead><tr>{% for c in res.columns %}<th class="{% if c.kind in ['int','money','rate','pct','num'] %}num{% endif %}">{{ c.label }}</th>{% endfor %}</tr></thead>
+      <tbody>
+      {% for r in rows %}
+        <tr>{% for c in res.columns %}<td class="{% if c.kind in ['int','money','rate','pct','num'] %}num{% elif c.key in ['lr_numbers','vehicles','reason','remarks','old','new','details'] %}wrap small{% endif %}">{{ cellv(r, c) }}</td>{% endfor %}</tr>
+      {% else %}
+        <tr><td colspan="{{ res.columns|length }}" class="empty">No data for the selected filter.</td></tr>
+      {% endfor %}
+      </tbody>
+      {% if res.totals and rows %}
+      <tfoot><tr>{% for c in res.columns %}<td class="{% if c.kind in ['int','money','rate','pct','num'] %}num{% endif %}">{% set v = res.totals.get(c.key) %}{% if v is not none %}{{ v if loop.first else v|display(c.kind) }}{% endif %}</td>{% endfor %}</tr></tfoot>
+      {% endif %}
+    </table>
+  </div>
+  {% if truncated %}<div class="pager">Showing first {{ rows|length }} of {{ res.rows|length }} rows on screen — export for the full list.</div>{% endif %}
+</div>
+<style>@media print { .print-only { display:block !important; margin-bottom:6px; } .table-wrap { max-height:none !important; } }</style>
+{% endblock %}

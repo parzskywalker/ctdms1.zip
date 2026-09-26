@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge with context %}
+{% block content %}
+{% set st = inv.status %}
+{% set order = ['PENDING','VERIFIED','SLIP_GENERATED','SLIP_PRINTED','DISPATCHED'] %}
+{% set idx = order.index(st) if st in order else -1 %}
+<div class="crumbs"><a href="/dispatch/pending">Pending Dispatch</a> › {{ inv.invoice_no }}</div>
+<div class="page-head">
+  <div>
+    <h1>Dispatch Entry · {{ inv.invoice_no }} {{ badge(st) }}</h1>
+    <div class="sub">{{ inv.company.name }} · {{ inv.cfa.name }} · {{ inv.customer.name }} → {{ inv.location.name }}{% if inv.dispatch_no %} · <b class="mono">{{ inv.dispatch_no }}</b>{% endif %}</div>
+  </div>
+  <div class="actions"><a class="btn" href="/invoices/{{ inv.id }}">Invoice details &amp; audit</a></div>
+</div>
+
+<div class="stepper">
+  {% for s, lbl in [('PENDING','Pending'),('VERIFIED','Verified'),('SLIP_GENERATED','Slip generated'),('SLIP_PRINTED','Slip printed'),('DISPATCHED','Dispatched')] %}
+    {% set i = loop.index0 %}
+    <div class="st {% if st in ['RATE_MISSING','EXCEPTION'] and i == 0 %}bad{% elif st == 'CANCELLED' %}{% elif i < idx or (st == 'DISPATCHED') %}done{% elif i == idx %}now{% endif %}">
+      <b>{{ loop.index }}. {{ lbl }}</b>
+      {% if s == 'VERIFIED' and inv.verified_at %}{{ inv.verified_by.full_name }}{% endif %}
+      {% if s == 'SLIP_GENERATED' and inv.slip_generated_at %}{{ inv.slip_generated_at|dt }}{% endif %}
+      {% if s == 'SLIP_PRINTED' and inv.print_count %}{{ inv.print_count }} print{{ 's' if inv.print_count > 1 }}{% endif %}
+      {% if s == 'DISPATCHED' and inv.completed_at %}{{ inv.completed_at|dt }}{% endif %}
+      {% if s == 'PENDING' and st in ['RATE_MISSING','EXCEPTION'] %}{{ st|status_label }}{% endif %}
+    </div>
+  {% endfor %}
+</div>
+
+{% if st == 'CANCELLED' %}<div class="alert alert-error"><b>Cancelled</b> {{ inv.cancelled_at|dt }} by {{ inv.cancelled_by.full_name if inv.cancelled_by else '' }} — {{ inv.cancel_reason }}</div>{% endif %}
+{% if st in ['RATE_MISSING','EXCEPTION'] %}
+<div class="alert alert-{{ 'error' if st == 'RATE_MISSING' else 'warn' }}"><b>{{ st|status_label }}:</b> {{ inv.exception_reason }}
+  {% if pending_ov %}<br>Pending request #{{ pending_ov.id }}: {{ fields[pending_ov.field] }} {{ pending_ov.old_value or '—' }} → {{ pending_ov.new_value }} ({{ pending_ov.reason }}). Awaiting approval.{% endif %}
+  {% if inv.exception_code in ['RATE_MISSING','RATE_CONFLICT'] and can('rate.create') %}<br><a href="/rates/new?company_id={{ inv.company_id }}&cfa_id={{ inv.cfa_id }}&location_id={{ inv.location_id }}&effective_from={{ inv.invoice_date.isoformat() }}">Add the missing rate →</a>{% endif %}
+</div>
+{% endif %}
+
+<div class="grid g-side">
+  <div>
+    <div class="card">
+      <div class="card-head"><h3>Freight calculation</h3><span class="muted small">{{ inv.rate_level|level_label }}</span></div>
+      <div class="calc">
+        <div class="part"><small>Boxes</small><span class="bigfig">{{ inv.boxes if inv.boxes is not none else '—' }}</span></div>
+        <div class="op">×</div>
+        <div class="part"><small>Rate / box</small><span class="bigfig">{{ inv.rate_per_box|rate }}</span></div>
+        <div class="op">=</div>
+        <div class="part"><small>Transportation expense</small><span class="bigfig">{{ inv.freight_amount|money }}</span></div>
+        <div class="right muted small" style="text-align:right">Sales value<br><b>{{ inv.sales_value|money }}</b></div>
+      </div>
+      {% if acts.can_override %}
+      <details style="margin-top:10px" {% if inv.exception_code == 'BOXES_MISSING' %}open{% endif %}>
+        <summary>{% if inv.boxes is none %}Enter number of boxes{% else %}Change boxes / rate {% if not can('override.direct') %}(needs approval){% endif %}{% endif %}</summary>
+        <form method="post" action="/invoices/{{ inv.id }}/override" class="form-grid" style="margin-top:10px">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="back" value="/dispatch/{{ inv.id }}">
+          <div><label>Field</label><select name="field">{% for k, v in fields.items() %}{% if k == 'BOXES' or can('override.request') or can('override.direct') %}<option value="{{ k }}">{{ v }}</option>{% endif %}{% endfor %}</select></div>
+          <div><label>New value</label><input type="text" name="new_value" required inputmode="decimal"></div>
+          <div class="w2"><label>Reason <span class="req">*</span></label><input type="text" name="reason" required minlength="5" placeholder="e.g. Physical count at dock"></div>
+          <div class="full"><button class="btn" type="submit">Submit</button></div>
+        </form>
+      </details>
+      {% endif %}
+    </div>
+
+    <form method="post" action="/dispatch/{{ inv.id }}/save" class="card" id="dispatch-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <div class="card-head"><h3>Dispatch details</h3>{% if not acts.can_edit and st not in ['DISPATCHED','CANCELLED'] %}<span class="badge b-SLIP_GENERATED">Locked after slip generation</span>{% endif %}</div>
+      {% set ro = not acts.can_edit %}
+      <div class="form-grid">
+        <div class="w2"><label>Transporter <span class="req">*</span></label>
+          <select name="transporter_id" {% if ro %}disabled{% endif %} autofocus>
+            <option value="">— select transporter —</option>
+            {% for t in transporters %}<option value="{{ t.id }}" {% if inv.transporter_id == t.id %}selected{% endif %}>{{ t.name }}{% if t.service_area %} · {{ t.service_area }}{% endif %}</option>{% endfor %}
+            {% if inv.transporter and not inv.transporter.is_active %}<option selected value="{{ inv.transporter_id }}">{{ inv.transporter.name }} (inactive)</option>{% endif %}
+          </select></div>
+        <div><label>Vehicle No <span class="req">*</span></label><input type="text" name="vehicle_no" value="{{ inv.vehicle_no or '' }}" placeholder="CG04AB1234" data-upper {% if ro %}readonly{% endif %}></div>
+        <div><label>LR / Docket No <span class="req">*</span></label><input type="text" name="lr_no" value="{{ inv.lr_no or '' }}" data-upper {% if ro %}readonly{% endif %}></div>
+        <div><label>Dispatch date <span class="req">*</span></label><input type="date" name="dispatch_date" value="{{ (inv.dispatch_date or default_date).isoformat() }}" {% if ro %}readonly{% endif %}></div>
+        <div><label>Dispatch time <span class="req">*</span></label><input type="time" name="dispatch_time" value="{{ (inv.dispatch_time or default_time).strftime('%H:%M') }}" {% if ro %}readonly{% endif %}></div>
+        <div class="w2"><label>Remarks</label><input type="text" name="remarks" value="{{ inv.remarks or '' }}" {% if ro %}readonly{% endif %}></div>
+      </div>
+      {% if acts.can_edit %}
+      <div class="form-actions">
+        <button class="btn" type="submit">Save draft</button>
+        {% if acts.can_verify %}<button class="btn btn-accent" type="submit" formaction="/dispatch/{{ inv.id }}/verify">✓ Verify boxes &amp; freight</button>{% endif %}
+        <button class="btn btn-primary" type="submit" formaction="/dispatch/{{ inv.id }}/generate">Generate Dispatch Slip</button>
+      </div>
+      {% if acts.slip_blockers %}
+        <ul class="blockers">{% for b in acts.slip_blockers %}<li>{{ b }}</li>{% endfor %}</ul>
+      {% endif %}
+      {% endif %}
+    </form>
+  </div>
+
+  <div>
+    <div class="card">
+      <div class="card-head"><h3>Dispatch slip</h3>{% if inv.dispatch_no %}<span class="mono strong">{{ inv.dispatch_no }}</span>{% endif %}</div>
+      {% if acts.can_print or acts.can_reprint %}
+        <form method="post" action="/dispatch/{{ inv.id }}/print" target="_blank" data-refresh-after class="stack">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <div class="row">
+            <label class="check"><input type="radio" name="size" value="A5" {% if slip_size == 'A5' %}checked{% endif %}>A5</label>
+            <label class="check"><input type="radio" name="size" value="A4" {% if slip_size == 'A4' %}checked{% endif %}>A4</label>
+          </div>
+          {% if inv.print_count > 0 %}
+            <div><label>Reprint reason <span class="req">*</span></label><input type="text" name="reason" id="reprint-reason" placeholder="e.g. Printer jam / transporter copy lost"><div class="field-hint">Printed {{ inv.print_count }}× already. Every reprint is logged.</div></div>
+          {% endif %}
+          <div class="action-bar">
+            <button class="btn {{ 'btn-primary btn-lg' if inv.print_count == 0 else '' }}" type="submit" name="mode" value="print" {% if inv.print_count > 0 %}data-require-reason="#reprint-reason"{% endif %}>🖨 {{ 'Print Slip' if inv.print_count == 0 else 'Reprint' }}</button>
+            <button class="btn" type="submit" name="mode" value="pdf" {% if inv.print_count > 0 %}data-require-reason="#reprint-reason"{% endif %}>PDF</button>
+          </div>
+        </form>
+      {% elif st in ['PENDING','VERIFIED','RATE_MISSING','EXCEPTION'] %}
+        <p class="muted">Generate the slip first. Print is enabled once the dispatch number is issued.</p>
+      {% else %}
+        <p class="muted">No active slip.</p>
+      {% endif %}
+      {% if prints %}
+        <hr><div class="small muted">Print log</div>
+        <ul class="timeline">{% for p in prints %}<li><b>#{{ p.print_no }}</b> {{ 'reprint' if p.is_reprint else 'first print' }} · {{ p.output }} · {{ p.printed_by.full_name if p.printed_by else '' }}<br><span class="muted">{{ p.printed_at|dt }}{% if p.reason %} · {{ p.reason }}{% endif %}</span></li>{% endfor %}</ul>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>Complete dispatch</h3></div>
+      {% if st == 'DISPATCHED' %}
+        <div class="alert alert-success" style="margin:0">Dispatched {{ inv.completed_at|dt }} by {{ inv.completed_by.full_name }}.</div>
+      {% elif acts.can_complete %}
+        <form method="post" action="/dispatch/{{ inv.id }}/complete">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <button class="btn {{ 'btn-ok btn-lg' if not acts.complete_blockers else '' }}" type="submit" style="width:100%">✔ Complete Dispatch</button>
+        </form>
+        {% if acts.complete_blockers %}<ul class="blockers">{% for b in acts.complete_blockers %}<li>{{ b }}</li>{% endfor %}</ul>{% endif %}
+      {% else %}
+        <p class="muted">You are not authorised to complete dispatches.</p>
+      {% endif %}
+    </div>
+
+    {% if acts.can_void or acts.can_cancel or acts.can_reinstate %}
+    <div class="card">
+      <details><summary>More actions (void / cancel)</summary>
+        {% if acts.can_void %}
+        <form method="post" action="/dispatch/{{ inv.id }}/void" class="stack" style="margin-top:10px">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <div><label>Void slip - reason</label><input type="text" name="reason" id="void-reason" placeholder="e.g. Vehicle changed"><div class="field-hint">Unlocks details; a new dispatch number is issued on regeneration.</div></div>
+          <button class="btn btn-danger" type="submit" data-require-reason="#void-reason">Void slip</button>
+        </form>
+        {% endif %}
+        {% if acts.can_cancel %}
+        <form method="post" action="/dispatch/{{ inv.id }}/cancel" class="stack" style="margin-top:12px">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <div><label>Cancel dispatch - reason <span class="req">*</span></label><input type="text" name="reason" id="cancel-reason" placeholder="e.g. Invoice cancelled in ERP"><div class="field-hint">Mandatory. Recorded in the audit trail.</div></div>
+          <button class="btn btn-danger" type="submit" data-require-reason="#cancel-reason">Cancel dispatch</button>
+        </form>
+        {% endif %}
+        {% if acts.can_reinstate %}
+        <form method="post" action="/dispatch/{{ inv.id }}/reinstate" class="stack" style="margin-top:12px">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <div><label>Reinstate - reason</label><input type="text" name="reason" id="rein-reason"></div>
+          <button class="btn" type="submit" data-require-reason="#rein-reason">Reinstate invoice</button>
+        </form>
+        {% endif %}
+      </details>
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <div class="card-head"><h3>Invoice</h3></div>
+      <dl class="dl tight">
+        <dt>Invoice</dt><dd>{{ inv.invoice_no }} · {{ inv.invoice_date|date }}</dd>
+        <dt>Company</dt><dd>{{ inv.company.name }}</dd>
+        <dt>CFA</dt><dd>{{ inv.cfa.name }}</dd>
+        <dt>Customer</dt><dd>{{ inv.customer.name }}<br><span class="muted small">{{ inv.customer.code }} · {{ inv.customer.contact_phone or '' }}</span></dd>
+        <dt>Deliver to</dt><dd class="small">{{ inv.customer.delivery_address or inv.customer.billing_address or '—' }}</dd>
+        <dt>Location</dt><dd>{{ inv.location.name }}{% if inv.location.route %} · {{ inv.location.route }}{% endif %}</dd>
+        <dt>Source</dt><dd>{{ inv.source_erp.code if inv.source_erp else '—' }}</dd>
+      </dl>
+    </div>
+  </div>
+</div>
+{% endblock %}

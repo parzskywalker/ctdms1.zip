@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge, variance with context %}
+{% block content %}
+<div class="crumbs">
+  <a href="/mis?company_id={{ inv.company_id }}">{{ inv.company.name }}</a> ›
+  <a href="/reports/customer-freight?company_id={{ inv.company_id }}&customer_id={{ inv.customer_id }}">{{ inv.customer.name }}</a> ›
+  {{ inv.cfa.name }} › {{ inv.location.name }} › Invoice {{ inv.invoice_no }}
+  {% if inv.dispatch_no %} › Dispatch {{ inv.dispatch_no }}{% endif %} › Freight {{ inv.freight_amount|money }}
+</div>
+<div class="page-head">
+  <div>
+    <h1>Invoice {{ inv.invoice_no }} {{ badge(inv.status) }}</h1>
+    <div class="sub">{{ inv.central_id }} · {{ inv.invoice_date|date }} · FY {{ inv.fiscal_year }} · source {{ inv.source_erp.name if inv.source_erp else '—' }}{% if inv.source_invoice_id %} (doc {{ inv.source_invoice_id }}){% endif %}</div>
+  </div>
+  <div class="actions">
+    {% if can('dispatch.view') %}<a class="btn btn-primary" href="/dispatch/{{ inv.id }}">Open dispatch</a>{% endif %}
+    <a class="btn" href="/invoices">Register</a>
+  </div>
+</div>
+
+{% if inv.exception_reason and inv.status in ['RATE_MISSING','EXCEPTION'] %}
+<div class="alert alert-{{ 'error' if inv.status == 'RATE_MISSING' else 'warn' }}"><b>{{ inv.status|status_label }}:</b> {{ inv.exception_reason }}
+  {% if inv.exception_code in ['RATE_MISSING','RATE_CONFLICT'] and can('rate.create') %} — <a href="/rates/new?company_id={{ inv.company_id }}&cfa_id={{ inv.cfa_id }}&location_id={{ inv.location_id }}&effective_from={{ inv.invoice_date.isoformat() }}">add freight rate</a>{% endif %}
+</div>
+{% endif %}
+
+<div class="grid g-side">
+  <div>
+    <div class="grid g2">
+      <div class="card">
+        <div class="card-head"><h3>Invoice</h3></div>
+        <dl class="dl tight">
+          <dt>Company</dt><dd>{{ inv.company.name }} <span class="muted">({{ inv.company.code }})</span></dd>
+          <dt>CFA</dt><dd>{{ inv.cfa.name }}</dd>
+          <dt>Customer</dt><dd><a href="/masters/customers/{{ inv.customer_id }}">{{ inv.customer.name }}</a><br><span class="muted small">Central {{ inv.customer.code }} · ERP code {{ inv.customer_code or '—' }}</span></dd>
+          <dt>Delivery location</dt><dd>{{ inv.location.name }}{% if inv.location.route %} <span class="muted">· route {{ inv.location.route }}</span>{% endif %}</dd>
+          <dt>Sales value</dt><dd>{{ inv.sales_value|money }}</dd>
+          <dt>Imported</dt><dd>{{ inv.imported_at|dt }}{% if inv.imported_by %} by {{ inv.imported_by.full_name }}{% endif %}{% if inv.import_batch %}<br><a class="small" href="/imports/{{ inv.import_batch_id }}">batch {{ inv.import_batch.batch_no }}</a> ({{ inv.import_batch.source }}){% endif %}</dd>
+          <dt>ERP sync</dt><dd>{{ badge(inv.erp_sync_status, inv.erp_sync_status.replace('_',' ').title()) }}</dd>
+          {% if inv.remarks %}<dt>Remarks</dt><dd>{{ inv.remarks }}</dd>{% endif %}
+        </dl>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Transportation expense</h3></div>
+        <div class="calc">
+          <div class="part"><small>Boxes</small><span class="bigfig">{{ inv.boxes if inv.boxes is not none else '—' }}</span></div>
+          <div class="op">×</div>
+          <div class="part"><small>Rate / box</small><span class="bigfig">{{ inv.rate_per_box|rate }}</span></div>
+          <div class="op">=</div>
+          <div class="part"><small>Expense</small><span class="bigfig">{{ inv.freight_amount|money }}</span></div>
+        </div>
+        <dl class="dl tight" style="margin-top:12px">
+          <dt>Rate source</dt><dd>{% if inv.freight_rate %}<a href="/rates/{{ inv.freight_rate_id }}">Rate #{{ inv.freight_rate_id }}</a> · {{ inv.rate_level|level_label }}<br><span class="muted small">effective {{ inv.freight_rate.effective_from|date }} → {{ inv.freight_rate.effective_to|date or 'open' }}</span>{% elif inv.rate_level == 'MANUAL' %}Manual override (see below){% else %}—{% endif %}</dd>
+          <dt>Basis</dt><dd>{{ inv.freight_basis.replace('_',' ').title() }} · boxes from {{ inv.boxes_source }}</dd>
+          <dt>Calculated</dt><dd>{{ inv.freight_calculated_at|dt }}</dd>
+          <dt>Master today</dt><dd class="small">{% if current.found %}{{ current.message }}{% else %}<span class="pos">{{ current.message }}</span>{% endif %}
+            {% if current.found and inv.rate_per_box is not none and current.rate_per_box != inv.rate_per_box %}<br><span class="tag">Frozen rate retained</span> invoice keeps ₹{{ inv.rate_per_box }} (rate applicable when calculated){% endif %}</dd>
+        </dl>
+        {% if acts.can_override %}
+        <details style="margin-top:10px"><summary>Manual change (boxes / rate / amount)</summary>
+          <form method="post" action="/invoices/{{ inv.id }}/override" class="form-grid" style="margin-top:10px">
+            <input type="hidden" name="csrf_token" value="{{ csrf }}">
+            <div><label>Field</label><select name="field">{% for k, v in fields.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></div>
+            <div><label>New value</label><input type="text" name="new_value" required></div>
+            <div class="full"><label>Reason <span class="req">*</span></label><input type="text" name="reason" required minlength="5" placeholder="e.g. Physical count at dock is 38 boxes"></div>
+            <div class="full"><button class="btn" type="submit">{{ 'Apply change (audited)' if can('override.direct') else 'Submit for approval' }}</button></div>
+          </form>
+        </details>
+        {% endif %}
+        {% if can('invoice.recalculate') and inv.status in ['PENDING','VERIFIED','RATE_MISSING','EXCEPTION'] %}
+        <details style="margin-top:8px"><summary>Re-run rate lookup</summary>
+          <form method="post" action="/invoices/{{ inv.id }}/recalculate" class="row" style="margin-top:8px">
+            <input type="hidden" name="csrf_token" value="{{ csrf }}">
+            <input type="text" name="reason" placeholder="Reason" required minlength="3" style="flex:1">
+            <button class="btn" type="submit">Recalculate</button>
+          </form>
+        </details>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h3>Dispatch</h3>{% if inv.dispatch_no %}<span class="mono">{{ inv.dispatch_no }}</span>{% endif %}</div>
+      <div class="grid g3">
+        <dl class="dl tight">
+          <dt>Transporter</dt><dd>{{ inv.transporter.name if inv.transporter else '—' }}</dd>
+          <dt>Vehicle</dt><dd class="mono">{{ inv.vehicle_no or '—' }}</dd>
+          <dt>LR / docket</dt><dd class="mono">{{ inv.lr_no or '—' }}</dd>
+          <dt>Dispatch</dt><dd>{{ inv.dispatch_date|date or '—' }} {{ inv.dispatch_time|time }}</dd>
+        </dl>
+        <dl class="dl tight">
+          <dt>Verified</dt><dd>{% if inv.verified_at %}{{ inv.verified_by.full_name }}<br><span class="muted small">{{ inv.verified_at|dt }}</span>{% else %}—{% endif %}</dd>
+          <dt>Slip generated</dt><dd>{% if inv.slip_generated_at %}{{ inv.slip_generated_by.full_name }}<br><span class="muted small">{{ inv.slip_generated_at|dt }}</span>{% else %}—{% endif %}</dd>
+        </dl>
+        <dl class="dl tight">
+          <dt>Printed</dt><dd>{% if inv.first_printed_at %}{{ inv.print_count }}× · first {{ inv.first_printed_at|dt }}{% else %}—{% endif %}</dd>
+          <dt>Completed</dt><dd>{% if inv.completed_at %}{{ inv.completed_by.full_name }}<br><span class="muted small">{{ inv.completed_at|dt }}</span>{% else %}—{% endif %}</dd>
+          {% if inv.cancelled_at %}<dt>Cancelled</dt><dd>{{ inv.cancelled_by.full_name if inv.cancelled_by else '' }} · {{ inv.cancelled_at|dt }}<br><span class="small">{{ inv.cancel_reason }}</span></dd>{% endif %}
+        </dl>
+      </div>
+    </div>
+
+    <div class="card flush">
+      <div class="card-head"><h3>Manual overrides</h3></div>
+      <div class="table-wrap"><table class="data compact">
+        <thead><tr><th>Requested</th><th>Field</th><th>Old</th><th>New</th><th>Reason</th><th>By</th><th>Status</th><th>Decided</th></tr></thead>
+        <tbody>
+        {% for o in overrides %}
+          <tr><td class="nowrap">{{ o.requested_at|dt }}</td><td>{{ fields[o.field] }}{% if o.is_initial_entry %} <span class="tag">initial</span>{% endif %}</td><td class="num">{{ o.old_value or '—' }}</td><td class="num"><b>{{ o.new_value }}</b></td><td class="wrap">{{ o.reason }}</td><td>{{ o.requested_by.full_name if o.requested_by else '' }}</td><td>{{ badge(o.status) }}</td><td class="small">{% if o.decided_by %}{{ o.decided_by.full_name }} · {{ o.decided_at|dt }}{% if o.decision_remarks %}<br>{{ o.decision_remarks }}{% endif %}{% endif %}</td></tr>
+        {% else %}<tr><td colspan="8" class="empty">No manual changes</td></tr>{% endfor %}
+        </tbody></table></div>
+    </div>
+
+    <div class="grid g2">
+      <div class="card flush">
+        <div class="card-head"><h3>Dispatch slips</h3></div>
+        <div class="table-wrap"><table class="data compact">
+          <thead><tr><th>Dispatch No</th><th>Generated</th><th class="num">Prints</th><th>State</th></tr></thead>
+          <tbody>
+          {% for s in slips %}<tr><td class="mono">{{ s.dispatch_no }}</td><td class="small">{{ s.generated_at|dt }} · {{ s.generated_by.full_name if s.generated_by else '' }}</td><td class="num">{{ s.print_count }}</td><td>{% if s.is_void %}{{ badge('CANCELLED', 'Void') }} <span class="small">{{ s.void_reason }}</span>{% else %}{{ badge('ACTIVE', 'Active') }}{% endif %}</td></tr>
+          {% else %}<tr><td colspan="4" class="empty">No slip generated yet</td></tr>{% endfor %}
+          </tbody></table></div>
+      </div>
+      <div class="card flush">
+        <div class="card-head"><h3>Print history</h3></div>
+        <div class="table-wrap"><table class="data compact">
+          <thead><tr><th>#</th><th>When</th><th>By</th><th>Output</th><th>Reason</th></tr></thead>
+          <tbody>
+          {% for p in prints %}<tr><td>{{ p.print_no }}{% if p.is_reprint %} <span class="tag">reprint</span>{% endif %}</td><td class="small nowrap">{{ p.printed_at|dt }}</td><td>{{ p.printed_by.full_name if p.printed_by else '' }}</td><td class="small">{{ p.output }}</td><td class="small">{{ p.reason or '' }}</td></tr>
+          {% else %}<tr><td colspan="5" class="empty">Not printed</td></tr>{% endfor %}
+          </tbody></table></div>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <div class="card-head"><h3>Reconciliation</h3></div>
+      {% if bill_lines %}
+        {% for ln, b in bill_lines %}
+        <dl class="dl tight">
+          <dt>Bill</dt><dd><a href="/recon/{{ b.id }}">{{ b.bill_no }}</a> {{ badge(b.status) }}</dd>
+          <dt>Calculated</dt><dd>{{ ln.calculated_amount|money }}</dd>
+          <dt>Billed</dt><dd>{{ ln.billed_amount|money }}</dd>
+          <dt>Variance</dt><dd>{{ variance(ln.variance) }} {{ badge(ln.match_status) }}</dd>
+        </dl>
+        {% if not loop.last %}<hr>{% endif %}
+        {% endfor %}
+      {% else %}<p class="muted">Not yet on a transporter bill.</p>{% endif %}
+    </div>
+    <div class="card">
+      <div class="card-head"><h3>Audit trail</h3><a class="small" href="/reports/audit?q={{ inv.id }}&date_from=2000-01-01">Full log</a></div>
+      <ul class="timeline scroll-y">
+        {% for a in history %}
+        <li><b>{{ a.action.replace('_',' ').title() }}</b> · {{ a.username }}<br>
+          <span class="muted">{{ a.ts|dt }}</span>
+          {% if a.field %}<br>{{ a.field }}: {{ a.old_value or '—' }} → {{ a.new_value or '—' }}{% endif %}
+          {% if a.reason %}<br><i>{{ a.reason }}</i>{% endif %}</li>
+        {% else %}<li class="muted">No actions yet</li>{% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}

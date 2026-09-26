@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge, variance with context %}
+{% block content %}
+<div class="page-head"><div><h1>Approvals</h1><div class="sub">Maker-checker queue. You cannot approve your own requests.</div></div></div>
+
+{% if can('override.approve') %}
+<div class="card flush">
+  <div class="card-head"><h2>Manual override requests <span class="pill-count">{{ overrides|length }}</span></h2></div>
+  <div class="table-wrap"><table class="data">
+    <thead><tr><th>Requested</th><th>Invoice</th><th>Customer</th><th>Field</th><th class="num">Old</th><th class="num">New</th><th>Reason</th><th>By</th><th style="min-width:320px">Decision</th></tr></thead>
+    <tbody>
+    {% for o, inv in overrides %}
+      <tr><td class="nowrap small">{{ o.requested_at|dt }}</td><td><a href="/invoices/{{ inv.id }}">{{ inv.invoice_no }}</a><div class="small muted">{{ inv.company.code }} · {{ inv.cfa.code }}</div></td><td>{{ inv.customer.name }}</td>
+        <td>{{ fields[o.field] }}</td><td class="num">{{ o.old_value or '—' }}</td><td class="num"><b>{{ o.new_value }}</b></td><td class="wrap">{{ o.reason }}</td><td>{{ o.requested_by.full_name if o.requested_by else '' }}</td>
+        <td>
+          <form method="post" action="/overrides/{{ o.id }}/decide" class="row">
+            <input type="hidden" name="csrf_token" value="{{ csrf }}">
+            <input type="text" name="remarks" placeholder="Remarks (required to reject)" style="flex:1;min-width:120px">
+            <button class="btn btn-sm btn-ok" name="decision" value="approve" type="submit">Approve</button>
+            <button class="btn btn-sm btn-danger" name="decision" value="reject" type="submit">Reject</button>
+          </form>
+        </td></tr>
+    {% else %}<tr><td colspan="9" class="empty">No pending override requests.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endif %}
+
+{% if can('rate.approve') %}
+<div class="card flush">
+  <div class="card-head"><h2>Freight rate changes <span class="pill-count">{{ rates|length }}</span></h2></div>
+  <div class="table-wrap"><table class="data">
+    <thead><tr><th>#</th><th>Company</th><th>CFA</th><th>Customer</th><th>Location</th><th class="num">Current</th><th class="num">Proposed</th><th>Effective from</th><th>Reason</th><th>By</th><th style="min-width:300px">Decision</th></tr></thead>
+    <tbody>
+    {% for r in rates %}
+      <tr><td><a href="/rates/{{ r.id }}">#{{ r.id }}</a></td><td>{{ r.company.code }}</td><td>{{ r.cfa.code if r.cfa else 'Any' }}</td><td>{{ r.customer.name if r.customer else '' }}</td><td>{{ r.location.name if r.location else 'DEFAULT' }}</td>
+        <td class="num">{{ prev[r.id].rate_per_box|rate if prev[r.id] else '—' }}</td><td class="num"><b>{{ r.rate_per_box|rate }}</b></td><td>{{ r.effective_from|date }}{% if r.effective_to %} → {{ r.effective_to|date }}{% endif %}</td>
+        <td class="wrap small">{{ r.change_reason or r.remarks or '' }}</td><td>{{ r.created_by.full_name if r.created_by else '' }}</td>
+        <td>
+          <form method="post" action="/rates/{{ r.id }}/decide" class="row">
+            <input type="hidden" name="csrf_token" value="{{ csrf }}">
+            <input type="text" name="remarks" placeholder="Remarks" style="flex:1;min-width:110px">
+            <button class="btn btn-sm btn-ok" name="decision" value="approve" type="submit">Approve</button>
+            <button class="btn btn-sm btn-danger" name="decision" value="reject" type="submit">Reject</button>
+          </form>
+        </td></tr>
+    {% else %}<tr><td colspan="11" class="empty">No rate changes awaiting approval.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endif %}
+
+{% if can('recon.approve') %}
+<div class="card flush">
+  <div class="card-head"><h2>Transporter bills awaiting approval <span class="pill-count">{{ bills|length }}</span></h2></div>
+  <div class="table-wrap"><table class="data">
+    <thead><tr><th>Bill</th><th>Date</th><th>Transporter</th><th class="num">System freight</th><th class="num">Bill amount</th><th class="num">Variance</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for b in bills %}
+      <tr><td><a href="/recon/{{ b.id }}">{{ b.bill_no }}</a></td><td>{{ b.bill_date|date }}</td><td>{{ b.transporter.name }}</td><td class="num">{{ b.calculated_amount|money }}</td><td class="num">{{ b.bill_amount|money }}</td><td class="num">{{ variance(b.variance) }}</td><td>{{ badge(b.status) }}</td><td><a class="btn btn-sm" href="/recon/{{ b.id }}">Review</a></td></tr>
+    {% else %}<tr><td colspan="8" class="empty">No bills awaiting approval.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endif %}
+{% endblock %}

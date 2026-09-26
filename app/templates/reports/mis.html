@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% from "_macros.html" import filter_bar with context %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Transportation MIS</h1><div class="sub">Drill down: Company / Principal → Customer → CFA → Location → Invoice → Dispatch → Transportation expense · {{ f.describe() }} (invoice date)</div></div>
+  <div class="actions"><a class="btn" href="/reports/monthly-mis?{{ qs }}">Monthly MIS</a><a class="btn" href="/reports/company-freight?{{ qs }}">Company-wise</a></div>
+</div>
+{{ filter_bar(f, opts, ['date','company','customer','cfa','location','transporter','erp','status'], action='/mis') }}
+<div class="card flush">
+  <div class="table-wrap">
+    <table class="data tree" id="mis">
+      <thead><tr><th>Hierarchy</th><th class="num">Invoices</th><th class="num">Boxes</th><th class="num">Sales</th><th class="num">Freight</th><th class="num">₹ / box</th><th class="num">% sales</th><th class="num">Actual (billed)</th><th class="num">Variance</th><th style="min-width:250px">Dispatch</th></tr></thead>
+      <tbody id="mis-body"><tr><td colspan="10" class="empty">Loading…</td></tr></tbody>
+      <tfoot><tr><td>TOTAL</td><td class="num">{{ totals.invoices }}</td><td class="num">{{ totals.boxes|int }}</td><td class="num">{{ totals.sales|money }}</td><td class="num">{{ totals.freight|money }}</td><td class="num">{{ totals.freight_per_box|rate }}</td><td class="num">{{ totals.freight_pct|pct }}</td><td class="num">{{ totals.actual|money }}</td><td class="num">{{ (totals.variance or '')|money if totals.variance else '—' }}</td><td></td></tr></tfoot>
+    </table>
+  </div>
+</div>
+<p class="small muted">Click ▸ to expand a level. Invoice rows open the invoice with its dispatch and freight details.</p>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const LEVELS = ['company', 'customer', 'cfa', 'location', 'invoice'];
+  const NAMES = {company: 'Company', customer: 'Customer', cfa: 'CFA', location: 'Location', invoice: 'Invoice'};
+  const QS = {{ qs|jsdata|safe }};
+  const body = document.getElementById('mis-body');
+  const inr = (v) => v === null || v === undefined || v === '' ? '—' : '₹' + Number(v).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  const num = (v) => v === null || v === undefined ? '—' : Number(v).toLocaleString('en-IN');
+  const pct = (v) => v === null || v === undefined ? '—' : Number(v).toFixed(2) + '%';
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+
+  function rowHtml(level, r, depth, key) {
+    const last = level === 'invoice';
+    const tog = last ? '<span class="tog"></span>' : '<span class="tog" data-key="' + key + '">▸</span>';
+    const label = last ? '<a href="/invoices/' + r.id + '">' + esc(r.label) + '</a> <span class="muted small">' + esc(r.invoice_date) + '</span> <span class="badge b-' + r.status + '">' + esc(r.status_label) + '</span>'
+                       : esc(r.label) + '<span class="lvl-tag">' + NAMES[level] + '</span>';
+    const disp = last ? (r.dispatch_no ? '<span class="mono small">' + esc(r.dispatch_no) + '</span><br><span class="small muted">' + esc(r.transporter || '') + (r.lr_no ? ' · LR ' + esc(r.lr_no) : '') + (r.vehicle_no ? ' · ' + esc(r.vehicle_no) : '') + '</span>' : '<span class="muted small">not dispatched</span>') : '';
+    const inv = last ? '' : num(r.invoices);
+    const fpb = last ? (r.rate ? inr(r.rate) : '—') : inr(r.freight_per_box);
+    const variance = (r.variance !== undefined && r.variance !== null) ? inr(r.variance) : (last && r.actual ? inr(Number(r.actual) - Number(r.freight || 0)) : '—');
+    return '<tr class="lv' + depth + '" data-key="' + key + '" data-depth="' + depth + '"><td class="lbl">' + tog + label + '</td><td class="num">' + inv + '</td><td class="num">' + num(r.boxes) + '</td><td class="num">' + inr(r.sales) + '</td><td class="num"><b>' + inr(r.freight) + '</b></td><td class="num">' + fpb + '</td><td class="num">' + (last ? '' : pct(r.freight_pct)) + '</td><td class="num">' + inr(r.actual && Number(r.actual) ? r.actual : null) + '</td><td class="num">' + variance + '</td><td>' + disp + '</td></tr>';
+  }
+
+  async function load(level, parents) {
+    const p = new URLSearchParams(QS);
+    p.set('level', level);
+    Object.entries(parents).forEach(([k, v]) => p.set('p_' + k, v));
+    const r = await fetch('/mis/data?' + p.toString(), {credentials: 'same-origin'});
+    return (await r.json()).rows;
+  }
+
+  function keyOf(parents) { return Object.entries(parents).map(([k, v]) => k + ':' + v).join('|'); }
+
+  async function expand(tr) {
+    const key = tr.dataset.key;
+    const depth = +tr.dataset.depth;
+    const tog = tr.querySelector('.tog');
+    const open = tog.textContent === '▾';
+    // collapse: remove descendants
+    let n = tr.nextElementSibling;
+    while (n && +n.dataset.depth > depth) { const nx = n.nextElementSibling; n.remove(); n = nx; }
+    if (open) { tog.textContent = '▸'; return; }
+    tog.textContent = '▾';
+    const parents = Object.fromEntries(key.split('|').map((s) => s.split(':')).map(([k, v]) => [k, v]));
+    const level = LEVELS[depth + 1];
+    const rows = await load(level, parents);
+    let html = rows.map((r) => rowHtml(level, r, depth + 1, key + '|' + level + ':' + r.id)).join('');
+    if (!rows.length) html = '<tr data-depth="' + (depth + 1) + '"><td colspan="10" class="muted small" style="padding-left:' + (30 + depth * 20) + 'px">No records</td></tr>';
+    if (rows.length >= 1000 && level === 'invoice') html += '<tr data-depth="' + (depth + 1) + '"><td colspan="10" class="muted small">First 1,000 invoices shown — narrow the filter.</td></tr>';
+    tr.insertAdjacentHTML('afterend', html);
+  }
+
+  body.addEventListener('click', (e) => { const t = e.target.closest('.tog[data-key]'); if (t) expand(t.closest('tr')); });
+  load('company', {}).then((rows) => {
+    body.innerHTML = rows.length ? rows.map((r) => rowHtml('company', r, 0, 'company:' + r.id)).join('') : '<tr><td colspan="10" class="empty">No data for the filter</td></tr>';
+  });
+})();
+</script>
+{% endblock %}

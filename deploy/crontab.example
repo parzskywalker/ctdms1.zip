@@ -1,0 +1,5 @@
+# Plain-server schedules (crontab -e as the ctdms user). Docker users get backups from the `backup` service.
+# Daily database backup at 01:15
+15 1 * * *  cd /opt/ctdms && .venv/bin/python -m app.cli backup --keep 30 >> data/logs/backup.log 2>&1
+# Pull invoices from ERPs flagged "Include in scheduled sync" every 15 minutes (08:00-22:00)
+*/15 8-22 * * *  cd /opt/ctdms && .venv/bin/python -m app.cli sync --all >> data/logs/sync.log 2>&1

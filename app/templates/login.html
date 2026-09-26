@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Sign in{% endblock %}
+{% block public %}
+<div class="login-wrap">
+  <div class="login">
+    <div class="row" style="margin-bottom:14px">
+      <div style="width:38px;height:38px;border-radius:9px;background:linear-gradient(135deg,#2f7dd1,#0f9f8f);display:grid;place-items:center;color:#fff;font-weight:800">CT</div>
+      <div><h1 style="margin:0">Central Transport &amp; Dispatch</h1><div class="muted small">Freight expense · Dispatch control · MIS</div></div>
+    </div>
+    {% for f in flashes %}<div class="alert alert-{{ f.k }}">{{ f.m }}</div>{% endfor %}
+    {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+    <form method="post" action="/login" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <input type="hidden" name="next" value="{{ next }}">
+      <div><label for="username">Username</label><input id="username" name="username" type="text" autocomplete="username" value="{{ username or '' }}" required autofocus></div>
+      <div><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required></div>
+      <button class="btn btn-primary btn-lg" type="submit" style="width:100%">Sign in</button>
+    </form>
+    {% if demo_users %}
+    <div class="demo-creds">
+      <b>Demo logins</b> <span class="muted">(click to fill)</span>
+      <table>
+        {% for u, p, r in demo_users %}
+        <tr><td><code data-fill-user="{{ u }}" data-fill-pass="{{ p }}">{{ u }}</code></td><td class="muted">{{ r }}</td><td class="muted"><code>{{ p }}</code></td></tr>
+        {% endfor %}
+      </table>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

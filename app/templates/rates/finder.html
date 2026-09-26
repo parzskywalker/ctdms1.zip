@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from "_macros.html" import select with context %}
+{% block content %}
+<div class="crumbs"><a href="/rates">Freight Rates</a> › Rate finder</div>
+<div class="page-head"><div><h1>Rate finder</h1><div class="sub">See exactly which rate the engine will apply for a combination and date — and why.</div></div></div>
+<form class="filters" method="get">
+  <div class="f"><label>Company *</label>{{ select('company_id', opts.companies, qp.get('company_id'), blank='— select —', code=True) }}</div>
+  <div class="f"><label>CFA</label>{{ select('cfa_id', opts.cfas, qp.get('cfa_id'), blank='—') }}</div>
+  <div class="f wide"><label>Customer</label>{{ select('customer_id', opts.customers, qp.get('customer_id'), blank='—') }}</div>
+  <div class="f"><label>Location</label>{{ select('location_id', opts.locations, qp.get('location_id'), blank='—') }}</div>
+  <div class="f narrow"><label>Invoice date</label><input type="date" name="on_date" value="{{ qp.get('on_date') or today.isoformat() }}"></div>
+  <div class="f narrow"><label>Boxes</label><input type="number" name="boxes" min="1" value="{{ qp.get('boxes') or '' }}"></div>
+  <div class="f" style="flex:0 0 auto;min-width:0"><button class="btn btn-primary" type="submit">Find rate</button></div>
+</form>
+{% if result %}
+<div class="card">
+  {% if result.lk.found %}
+    <div class="alert alert-success"><b>Rate found:</b> {{ result.lk.message }} (rate <a href="/rates/{{ result.lk.rate.id }}">#{{ result.lk.rate.id }}</a>, effective {{ result.lk.rate.effective_from|date }} → {{ result.lk.rate.effective_to|date or 'open' }})</div>
+    {% if result.boxes %}
+    <div class="calc"><div class="part"><small>Boxes</small><span class="bigfig">{{ result.boxes }}</span></div><div class="op">×</div><div class="part"><small>Rate</small><span class="bigfig">{{ result.lk.rate.rate_per_box|rate }}</span></div><div class="op">=</div><div class="part"><small>Transportation expense</small><span class="bigfig">{{ result.freight|money }}</span></div></div>
+    {% endif %}
+  {% else %}
+    <div class="alert alert-error"><b>{{ result.lk.code.replace('_',' ') }}:</b> {{ result.lk.message }}</div>
+  {% endif %}
+  <h3 style="margin-top:12px">Lookup trace</h3>
+  <ol class="small">{% for t in result.lk.trace %}<li class="mono">{{ t }}</li>{% endfor %}</ol>
+</div>
+{% endif %}
+{% endblock %}

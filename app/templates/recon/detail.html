@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge, variance with context %}
+{% block content %}
+<div class="crumbs"><a href="/recon">Reconciliation</a> › {{ b.bill_no }}</div>
+<div class="page-head">
+  <div><h1>Bill {{ b.bill_no }} · {{ b.transporter.name }} {{ badge(b.status) }}</h1>
+    <div class="sub">Bill date {{ b.bill_date|date }} · period {{ b.period_from|date }} – {{ b.period_to|date }} · {{ b.company.name if b.company else 'all companies' }} · {{ b.cfa.name if b.cfa else 'all CFAs' }} · entered by {{ b.created_by.full_name if b.created_by else '' }}</div></div>
+</div>
+<div class="kpis" style="grid-template-columns:repeat(5,minmax(0,1fr))">
+  <div class="kpi"><div class="lbl">System freight</div><div class="val">{{ b.calculated_amount|money }}</div><div class="hint">{{ b.lines|selectattr('invoice_id')|list|length }} matched invoices</div></div>
+  <div class="kpi"><div class="lbl">Actual bill amount</div><div class="val">{{ b.bill_amount|money }}</div><div class="hint">lines total {{ lines_total|money }}</div></div>
+  <div class="kpi {% if b.variance > 0 %}alert{% elif b.variance < 0 %}good{% endif %}"><div class="lbl">Variance</div><div class="val">{{ b.variance|money }}</div><div class="hint">{{ b.variance_pct|pct }} of system freight</div></div>
+  <div class="kpi"><div class="lbl">Tolerance</div><div class="val">{{ tol_amt|money }}</div><div class="hint">per line · {{ tol_pct }}% per bill</div></div>
+  <div class="kpi"><div class="lbl">Status</div><div class="val">{{ b.status }}</div><div class="hint">{% if b.approved_by %}approved by {{ b.approved_by.full_name }}{% endif %}{% if b.payment_ref %} · paid {{ b.payment_ref }}{% endif %}</div></div>
+</div>
+
+{% if editable and can('recon.edit') %}
+<div class="grid g3">
+  <form method="post" action="/recon/{{ b.id }}/link" class="card">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <h3>Link dispatches</h3><p class="small muted">Adds every DISPATCHED invoice of {{ b.transporter.name }} in the billing period not yet billed.</p>
+    <button class="btn" type="submit" {% if not b.period_from %}disabled{% endif %}>Link period dispatches</button>
+  </form>
+  <form method="post" action="/recon/{{ b.id }}/import" enctype="multipart/form-data" class="card">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <h3>Import transporter statement</h3><p class="small muted">Excel/CSV with LR No / Invoice No, Boxes, Amount. <a href="/imports/sample/transporter_bill_sample.csv">sample</a></p>
+    <div class="row"><input type="file" name="file" accept=".csv,.xlsx,.xls" required><button class="btn" type="submit">Import &amp; match</button></div>
+  </form>
+  <form method="post" action="/recon/{{ b.id }}/allocate" class="card">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <h3>Bill is a lump sum?</h3><p class="small muted">Spread {{ b.bill_amount|money }} across lines in proportion to system freight.</p>
+    <button class="btn" type="submit">Allocate bill amount</button>
+  </form>
+</div>
+{% endif %}
+
+<form method="post" action="/recon/{{ b.id }}/amounts" class="card flush">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <div class="card-head"><h3>Bill lines ({{ b.lines|length }})</h3>
+    {% if editable and can('recon.edit') %}<div class="row"><label class="small" style="margin:0">Bill amount</label><input type="text" name="bill_amount" value="{{ b.bill_amount }}" style="width:130px"><button class="btn btn-primary btn-sm" type="submit">Save amounts &amp; re-match</button></div>{% endif %}</div>
+  <div class="table-wrap"><table class="data compact">
+    <thead><tr><th>LR No</th><th>Invoice</th><th>Dispatch No</th><th class="num">Sys boxes</th><th class="num">Billed boxes</th><th class="num">System freight</th><th class="num" style="width:140px">Billed amount</th><th class="num">Variance</th><th>Match</th><th>Remarks</th><th></th></tr></thead>
+    <tbody>
+    {% for ln in b.lines %}
+      <tr><td class="mono">{{ ln.lr_no or '' }}</td><td>{% if ln.invoice_id %}<a href="/invoices/{{ ln.invoice_id }}">{{ ln.invoice_no }}</a>{% else %}{{ ln.invoice_no or '' }}{% endif %}</td><td class="mono small">{{ ln.dispatch_no or '' }}</td>
+        <td class="num">{{ ln.invoice.boxes if ln.invoice else '—' }}</td><td class="num {% if ln.invoice and ln.billed_boxes and ln.billed_boxes != ln.invoice.boxes %}pos{% endif %}">{{ ln.billed_boxes or '' }}</td>
+        <td class="num">{{ ln.calculated_amount|money }}</td>
+        <td class="num">{% if editable and can('recon.edit') %}<input type="text" name="amt_{{ ln.id }}" value="{{ ln.billed_amount if ln.billed_amount is not none else '' }}" style="text-align:right;min-height:28px;padding:3px 6px">{% else %}{{ ln.billed_amount|money }}{% endif %}</td>
+        <td class="num">{{ variance(ln.variance) }}</td><td>{{ badge(ln.match_status, ln.match_status.replace('_',' ').title()) }}</td><td class="small">{{ ln.remarks or '' }}</td>
+        <td>{% if editable and can('recon.edit') %}<button class="btn btn-sm btn-ghost" type="submit" formaction="/recon/{{ b.id }}/lines/{{ ln.id }}/delete">✕</button>{% endif %}</td></tr>
+    {% else %}<tr><td colspan="11" class="empty">No lines yet — link dispatches or import the transporter statement.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</form>
+
+<div class="grid g3">
+  {% if b.status in ['MATCHED','VARIANCE'] and can('recon.approve') %}
+  <form method="post" action="/recon/{{ b.id }}/approve" class="card stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <h3>Approve bill</h3>
+    <input type="text" name="remarks" placeholder="{{ 'Explain the variance (required)' if b.status == 'VARIANCE' else 'Remarks (optional)' }}">
+    <button class="btn btn-ok" type="submit">Approve for payment</button>
+    <div class="field-hint">Maker-checker: the person who entered the bill cannot approve it.</div>
+  </form>
+  {% endif %}
+  {% if b.status == 'APPROVED' and can('recon.pay') %}
+  <form method="post" action="/recon/{{ b.id }}/pay" class="card stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <h3>Mark paid</h3>
+    <input type="text" name="payment_ref" placeholder="UTR / cheque no" required>
+    <button class="btn btn-primary" type="submit">Mark paid</button>
+  </form>
+  {% endif %}
+  {% if b.status not in ['PAID','REJECTED'] and can('recon.approve') %}
+  <form method="post" action="/recon/{{ b.id }}/reject" class="card stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <h3>Reject bill</h3>
+    <input type="text" name="reason" id="rej-reason" placeholder="Reason">
+    <button class="btn btn-danger" type="submit" data-require-reason="#rej-reason">Reject</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

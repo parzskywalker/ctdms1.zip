@@ -1,0 +1,13 @@
+# Automatic HTTPS (Let's Encrypt). Set CTDMS_DOMAIN in .env and point DNS to this server.
+{$CTDMS_DOMAIN:localhost} {
+    encode gzip
+    reverse_proxy app:8000
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options nosniff
+        Referrer-Policy same-origin
+    }
+    request_body {
+        max_size 25MB
+    }
+}

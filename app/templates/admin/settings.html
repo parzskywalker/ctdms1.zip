@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head"><div><h1>System settings</h1><div class="sub">Configurable business controls. Every change is audited.</div></div></div>
+<form method="post" action="/admin/settings">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  {% for cat, items in rows|groupby('category') %}
+  <div class="card">
+    <div class="card-head"><h3>{{ cat }}</h3></div>
+    <table class="data compact"><tbody>
+    {% for s in items %}
+      <tr><td style="width:45%"><b>{{ s.description or s.key }}</b><div class="small muted mono">{{ s.key }}</div></td>
+        <td>
+          {% if s.value_type == 'bool' %}<input type="hidden" name="b_{{ s.key }}" value="1"><label class="check"><input type="checkbox" name="s_{{ s.key }}" value="1" {% if s.value in ['true','1','yes'] %}checked{% endif %}>Enabled</label>
+          {% elif s.value_type == 'choice' %}<select name="s_{{ s.key }}" style="max-width:260px">{% for c in s.choices.split(',') %}<option value="{{ c }}" {% if s.value == c %}selected{% endif %}>{{ c }}</option>{% endfor %}</select>
+          {% else %}<input type="text" name="s_{{ s.key }}" value="{{ s.value or '' }}">{% endif %}
+        </td>
+        <td class="small muted">{{ s.updated_at|dt }}</td></tr>
+    {% endfor %}
+    </tbody></table>
+  </div>
+  {% endfor %}
+  <div class="sticky-bar"><input type="text" name="reason" placeholder="Reason for change (audited)" style="max-width:360px"><button class="btn btn-primary" type="submit">Save settings</button></div>
+</form>
+{% endblock %}

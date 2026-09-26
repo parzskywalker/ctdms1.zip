@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge, select with context %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Freight Rate Master</h1><div class="sub">Effective-dated rate per box. Approved rates are never overwritten — a change is a new version with its own Effective From date.</div></div>
+  <div class="actions">
+    <a class="btn" href="/rates/finder">Rate finder</a>
+    {% if can('rate.create') %}<a class="btn btn-primary" href="/rates/new">New rate</a>{% endif %}
+  </div>
+</div>
+<div class="tabs">
+  {% for k, lbl in [('current','Current (effective today)'),('future','Future-dated'),('pending','Pending approval'),('history','Expired versions'),('closed','Rejected / inactive'),('all','All')] %}
+    <a href="?view={{ k }}" class="{% if view == k %}on{% endif %}">{{ lbl }}{% if k == 'pending' and counts.pending %}<span class="count">{{ counts.pending }}</span>{% endif %}</a>
+  {% endfor %}
+</div>
+<form class="filters" method="get">
+  <input type="hidden" name="view" value="{{ view }}">
+  <div class="f"><label>Company</label>{{ select('company_id', opts.companies, qp.get('company_id')) }}</div>
+  <div class="f"><label>CFA</label>{{ select('cfa_id', opts.cfas, qp.get('cfa_id')) }}</div>
+  <div class="f"><label>Location</label>{{ select('location_id', opts.locations, qp.get('location_id')) }}</div>
+  <div class="f wide"><label>Customer</label>{{ select('customer_id', opts.customers, qp.get('customer_id')) }}</div>
+  <div class="f" style="flex:0 0 auto;min-width:0"><button class="btn" type="submit">Filter</button></div>
+</form>
+<div class="card flush">
+  <div class="table-wrap"><table class="data">
+    <thead><tr><th>#</th><th>Company</th><th>CFA</th><th>Customer</th><th>Location</th><th>Priority level</th><th class="num">Rate / box</th><th>Effective from</th><th>Effective to</th><th>Status</th><th>Created</th><th>Approved</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td><a href="/rates/{{ r.id }}">#{{ r.id }}</a></td><td>{{ r.company.code }}</td><td>{{ r.cfa.code if r.cfa else 'Any' }}</td><td>{{ r.customer.name if r.customer else '' }}</td>
+        <td>{{ r.location.name if r.location else '— default —' }}</td><td class="small">{{ levels[r.level] }}</td><td class="num"><b>{{ r.rate_per_box|rate }}</b></td>
+        <td class="nowrap">{{ r.effective_from|date }}</td><td class="nowrap">{{ r.effective_to|date or 'open' }}</td><td>{{ badge(r.status) }}</td>
+        <td class="small">{{ r.created_by.full_name if r.created_by else '' }}</td><td class="small">{{ r.approved_by.full_name if r.approved_by else '' }}</td></tr>
+    {% else %}<tr><td colspan="12" class="empty">No rates in this view.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% if can('rate.create') %}
+<div class="card">
+  <div class="card-head"><h3>Bulk upload rates (Excel / CSV)</h3><a class="small" href="/imports/sample/freight_rates_template.csv">Download template</a></div>
+  <form method="post" action="/rates/import" enctype="multipart/form-data" class="row">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <input type="file" name="file" accept=".csv,.xlsx,.xls" required>
+    <button class="btn" type="submit">Upload</button>
+    <span class="muted small">Columns: company, cfa, customer (optional), location, rate_per_box, effective_from, effective_to, is_default. Uploaded rates go to approval.</span>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

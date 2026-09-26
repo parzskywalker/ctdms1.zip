@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge with context %}
+{% block content %}
+<div class="crumbs"><a href="/rates">Freight Rates</a> › #{{ r.id }}</div>
+<div class="page-head">
+  <div><h1>Rate #{{ r.id }} · {{ r.rate_per_box|rate }} / box {{ badge(r.status) }}</h1><div class="sub">{{ desc }} · {{ r.level|level_label }}</div></div>
+  <div class="actions"><a class="btn" href="/rates/finder?company_id={{ r.company_id }}&cfa_id={{ r.cfa_id or '' }}&location_id={{ r.location_id or '' }}&customer_id={{ r.customer_id or '' }}">Test in rate finder</a></div>
+</div>
+<div class="grid g-side">
+  <div>
+    <div class="card">
+      <dl class="dl">
+        <dt>Company</dt><dd>{{ r.company.name }}</dd>
+        <dt>CFA</dt><dd>{{ r.cfa.name if r.cfa else 'Any CFA' }}</dd>
+        <dt>Customer</dt><dd>{{ r.customer.name if r.customer else 'All customers' }}</dd>
+        <dt>Location</dt><dd>{{ r.location.name if r.location else ('Default rate' if r.is_default else '—') }}</dd>
+        <dt>Rate per box</dt><dd><b>{{ r.rate_per_box|rate }}</b></dd>
+        <dt>Effective</dt><dd>{{ r.effective_from|date }} → {{ r.effective_to|date or 'open-ended' }}</dd>
+        <dt>Created</dt><dd>{{ r.created_at|dt }} by {{ r.created_by.full_name if r.created_by else 'system' }}</dd>
+        <dt>Approved</dt><dd>{% if r.approved_at %}{{ r.approved_at|dt }} by {{ r.approved_by.full_name if r.approved_by else 'system' }}{% else %}—{% endif %}</dd>
+        <dt>Reason</dt><dd>{{ r.change_reason or r.remarks or '—' }}</dd>
+        {% if r.rejected_reason %}<dt>Rejected</dt><dd>{{ r.rejected_reason }}</dd>{% endif %}
+        {% if r.deactivated_reason %}<dt>Closed because</dt><dd>{{ r.deactivated_reason }}</dd>{% endif %}
+        <dt>Invoices priced</dt><dd>{{ used }} invoice(s) carry this rate (frozen on the invoice)</dd>
+      </dl>
+    </div>
+    <div class="card flush">
+      <div class="card-head"><h3>Version history (same combination)</h3></div>
+      <div class="table-wrap"><table class="data compact">
+        <thead><tr><th>#</th><th class="num">Rate</th><th>From</th><th>To</th><th>Status</th><th>Reason</th><th>Approved by</th></tr></thead>
+        <tbody>{% for h in history %}
+          <tr class="{% if h.id == r.id %}sel{% endif %}"><td><a href="/rates/{{ h.id }}">#{{ h.id }}</a></td><td class="num"><b>{{ h.rate_per_box|rate }}</b></td><td>{{ h.effective_from|date }}</td><td>{{ h.effective_to|date or 'open' }}</td><td>{{ badge(h.status) }}</td><td class="small">{{ h.change_reason or h.remarks or '' }}</td><td class="small">{{ h.approved_by.full_name if h.approved_by else '' }}</td></tr>
+        {% endfor %}</tbody>
+      </table></div>
+    </div>
+  </div>
+  <div>
+    {% if r.status == 'PENDING_APPROVAL' and can('rate.approve') %}
+    <div class="card">
+      <h3>Approve / reject</h3>
+      <form method="post" action="/rates/{{ r.id }}/decide" class="stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <input type="text" name="remarks" placeholder="Remarks (required to reject)">
+        <div class="row"><button class="btn btn-ok" name="decision" value="approve">Approve</button><button class="btn btn-danger" name="decision" value="reject">Reject</button></div>
+      </form>
+    </div>
+    {% endif %}
+    {% if r.status == 'APPROVED' and can('rate.create') and not r.effective_to %}
+    <div class="card">
+      <h3>Revise rate (new version)</h3>
+      <form method="post" action="/rates/{{ r.id }}/revise" class="stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <div><label>New rate per box (₹)</label><input type="text" name="rate_per_box" required inputmode="decimal"></div>
+        <div><label>Effective from</label><input type="date" name="effective_from" required value="{{ today.isoformat() }}"><div class="field-hint">Invoices dated before this keep ₹{{ r.rate_per_box }}. Already-calculated invoices are never re-priced.</div></div>
+        <div><label>Reason <span class="req">*</span></label><input type="text" name="change_reason" required minlength="3" placeholder="e.g. Diesel price revision"></div>
+        <button class="btn btn-primary" type="submit">Submit revision</button>
+      </form>
+    </div>
+    {% endif %}
+    {% if r.status == 'APPROVED' and can('rate.approve') %}
+    <div class="card">
+      <h3>Close / end-date</h3>
+      <form method="post" action="/rates/{{ r.id }}/close" class="stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <div><label>Effective to</label><input type="date" name="effective_to" required value="{{ (r.effective_to or today).isoformat() }}"></div>
+        <div><label>Reason</label><input type="text" name="reason" required minlength="3"></div>
+        <button class="btn btn-danger" type="submit">Close rate</button>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,81 @@
+# CTDMS stack: PostgreSQL + app + daily backups (+ optional Caddy for automatic HTTPS)
+#   cp .env.example .env   # edit secrets
+#   docker compose up -d --build
+#   docker compose --profile https up -d      # with HTTPS on your domain
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ctdms}
+      POSTGRES_USER: ${POSTGRES_USER:-ctdms}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ctdms}"]
+      interval: 10s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      CTDMS_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ctdms}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ctdms}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${CTDMS_PORT:-8000}:8000"
+    volumes:
+      - appdata:/app/data
+
+  backup:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER:-ctdms}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB:-ctdms}
+      KEEP_DAYS: ${BACKUP_KEEP_DAYS:-30}
+      BACKUP_DIR: /backups
+    volumes:
+      - ./backups:/backups
+      - ./deploy/backup.sh:/backup.sh:ro
+    entrypoint: ["/bin/sh", "-c", "while true; do sh /backup.sh; sleep 86400; done"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  scheduler:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      CTDMS_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ctdms}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ctdms}
+    entrypoint: ["/bin/sh", "-c", "while true; do python -m app.cli sync --all; sleep ${SYNC_INTERVAL_SECONDS:-900}; done"]
+    depends_on:
+      - app
+    profiles: ["sync"]
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      CTDMS_DOMAIN: ${CTDMS_DOMAIN:-localhost}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on:
+      - app
+    profiles: ["https"]
+
+volumes:
+  pgdata:
+  appdata:
+  caddy_data:

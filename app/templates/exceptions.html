@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge, select with context %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Freight Exceptions</h1><div class="sub">Invoices that cannot be dispatched until resolved. The system never falls back to a guessed rate.</div></div>
+  <div class="actions"><a class="btn" href="/reports/rate-missing">Rate Missing report</a><a class="btn" href="/reports/dispatch-exceptions">Exception report</a></div>
+</div>
+<form class="filters" method="get">
+  <div class="f"><label>Company</label>{{ select('company_id', opts.companies, f.company_id) }}</div>
+  <div class="f"><label>CFA</label>{{ select('cfa_id', opts.cfas, f.cfa_id) }}</div>
+  <div class="f"><label>Location</label>{{ select('location_id', opts.locations, f.location_id) }}</div>
+  <div class="f" style="flex:0 0 auto;min-width:0"><button class="btn" type="submit">Filter</button></div>
+</form>
+
+<div class="card flush">
+  <div class="card-head"><h2>Missing rate combinations</h2><span class="muted small">Add the rate once → approval → all matching invoices re-price automatically</span></div>
+  <div class="table-wrap"><table class="data">
+    <thead><tr><th>Company</th><th>CFA</th><th>Location</th><th class="num">Invoices</th><th class="num">Boxes</th><th class="num">Sales</th><th>Earliest invoice</th><th></th></tr></thead>
+    <tbody>
+    {% for r in combos.rows %}
+      <tr><td>{{ r.company }}</td><td>{{ r.cfa }}</td><td><b>{{ r.location }}</b></td><td class="num">{{ r.invoices }}</td><td class="num">{{ r.boxes|int }}</td><td class="num">{{ r.sales|money }}</td><td>{{ r.first_date|date }}</td>
+        <td>{% if can('rate.create') %}<a class="btn btn-sm btn-primary" href="{{ r.fix }}">Add rate</a>{% endif %}</td></tr>
+    {% else %}<tr><td colspan="8" class="empty">No missing rates.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+<div class="card flush">
+  <div class="card-head"><h2>Blocked invoices ({{ exc.rows|length }})</h2></div>
+  <div class="table-wrap"><table class="data">
+    <thead><tr><th>Invoice</th><th>Date</th><th class="num">Age</th><th>Company</th><th>CFA</th><th>Customer</th><th>Location</th><th class="num">Boxes</th><th>Status</th><th>Reason</th><th></th></tr></thead>
+    <tbody>
+    {% for r in exc.rows %}
+      <tr><td><a href="/invoices/{{ r.invoice_id }}"><b>{{ r.invoice_no }}</b></a></td><td class="nowrap">{{ r.invoice_date|date }}</td><td class="num">{{ r.age }}d</td><td>{{ r.company }}</td><td>{{ r.cfa }}</td><td class="wrap">{{ r.customer }}</td><td>{{ r.location }}</td><td class="num">{{ r.boxes if r.boxes is not none else '—' }}</td>
+        <td>{{ badge(r.status) }}</td><td class="wrap small">{{ r.reason }}</td>
+        <td class="nowrap"><a class="btn btn-sm" href="/dispatch/{{ r.invoice_id }}">Resolve</a></td></tr>
+    {% else %}<tr><td colspan="11" class="empty">No blocked invoices.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endblock %}

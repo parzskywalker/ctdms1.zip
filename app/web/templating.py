@@ -1,0 +1,197 @@
+"""Jinja2 environment, render helper, flash messages, navigation."""
+from __future__ import annotations
+
+import json
+from datetime import timedelta
+from decimal import Decimal
+from pathlib import Path
+
+from fastapi import Request
+from fastapi.responses import RedirectResponse
+from fastapi.templating import Jinja2Templates
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app import __version__
+from app.config import get_settings
+from app.models import CFA, Customer, ERPSystem, InvoiceStatus, Location, RateLevel, Transporter, User
+from app.security.auth import csrf_token
+from app.services.exporters import display
+from app.services.scope import visible_cfas, visible_companies
+from app.services.utils import fmt_date, fmt_dt, fmt_int, fmt_money, fmt_time, fy_start, local_today
+
+TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
+templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
+env = templates.env
+
+
+def _pct(v):
+    if v is None or v == "":
+        return "—"
+    return f"{Decimal(str(v)):.2f}%"
+
+
+def _rate(v):
+    if v is None or v == "":
+        return "—"
+    return f"₹{Decimal(str(v)):,.2f}"
+
+
+def _kpi_money(v):
+    """Compact Indian notation for KPI tiles: ₹2.73 Cr / ₹27.40 L; smaller values in full."""
+    if v is None or v == "":
+        return "—"
+    d = Decimal(str(v))
+    a = abs(d)
+    sign = "-" if d < 0 else ""
+    if a >= Decimal("10000000"):
+        return f"{sign}₹{a / Decimal('10000000'):.2f} Cr"
+    if a >= Decimal("1000000"):
+        return f"{sign}₹{a / Decimal('100000'):.2f} L"
+    return fmt_money(d)
+
+
+def _tojson(v):
+    def default(o):
+        if isinstance(o, Decimal):
+            return float(o)
+        if hasattr(o, "isoformat"):
+            return o.isoformat()
+        return str(o)
+    # Safe inside <script>: escape characters that could close the tag or start HTML
+    return (json.dumps(v, default=default).replace("<", "\\u003c").replace(">", "\\u003e")
+            .replace("&", "\\u0026").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))
+
+
+env.filters.update(money=fmt_money, kpi_money=_kpi_money, int=fmt_int, date=fmt_date, dt=fmt_dt, time=fmt_time, pct=_pct, rate=_rate,
+                   status_label=lambda s: InvoiceStatus.LABELS.get(s, (s or "").replace("_", " ").title()),
+                   level_label=lambda s: RateLevel.LABELS.get(s, s or "—"), display=display, jsdata=_tojson)
+env.globals.update(app_version=__version__, InvoiceStatus=InvoiceStatus)
+
+NAV = [
+    ("Dashboard", [("Dashboard", "/", "dashboard.view", "grid")]),
+    ("Operations", [
+        ("Invoice Import", "/imports", "invoice.import", "upload"),
+        ("Invoice Register", "/invoices", "invoice.view", "list"),
+        ("Pending Dispatch", "/dispatch/pending", "dispatch.view", "truck"),
+        ("Dispatch Register", "/dispatch/register", "dispatch.view", "clipboard"),
+        ("Freight Exceptions", "/exceptions", "invoice.view", "alert"),
+        ("Approvals", "/approvals", "override.approve|rate.approve|recon.approve", "check"),
+        ("Reconciliation", "/recon", "recon.view", "scale"),
+    ]),
+    ("Masters", [
+        ("Companies", "/masters/companies", "master.view", "building"),
+        ("Customers", "/masters/customers", "master.view", "users"),
+        ("CFAs", "/masters/cfas", "master.view", "warehouse"),
+        ("Locations", "/masters/locations", "master.view", "pin"),
+        ("Freight Rates", "/rates", "rate.view", "rupee"),
+        ("Transporters", "/masters/transporters", "master.view", "truck"),
+        ("ERP Mappings", "/masters/erp-mappings", "master.view", "link"),
+    ]),
+    ("Reports", [
+        ("Transportation MIS", "/mis", "report.view", "layers"),
+        ("Company-wise", "/reports/company-freight", "report.view", "bar"),
+        ("Customer-wise", "/reports/customer-freight", "report.view", "bar"),
+        ("CFA-wise", "/reports/cfa-freight", "report.view", "bar"),
+        ("Location-wise", "/reports/location-freight", "report.view", "bar"),
+        ("Transporter-wise", "/reports/transporter", "report.view", "bar"),
+        ("Dispatch Register", "/reports/dispatch-register", "report.view", "bar"),
+        ("Variance", "/reports/freight-variance", "report.view", "bar"),
+        ("Audit", "/reports/audit", "audit.view", "bar"),
+        ("All Reports", "/reports", "report.view", "list"),
+    ]),
+    ("Administration", [
+        ("Users", "/admin/users", "admin.users", "user"),
+        ("Roles", "/admin/roles", "admin.roles", "shield"),
+        ("System Settings", "/admin/settings", "admin.settings", "cog"),
+        ("Audit Log", "/reports/audit", "audit.view", "history"),
+        ("Integration Settings", "/admin/integrations", "admin.integrations", "plug"),
+    ]),
+]
+
+
+def nav_for(user: User | None) -> list:
+    if not user:
+        return []
+    out = []
+    for group, items in NAV:
+        vis = [(label, url, icon) for label, url, perm, icon in items if any(user.can(p) for p in perm.split("|"))]
+        if vis:
+            out.append((group, vis))
+    return out
+
+
+def flash(request: Request, message: str, kind: str = "info") -> None:
+    msgs = request.session.get("flash", [])
+    msgs.append({"m": message, "k": kind})
+    request.session["flash"] = msgs[-6:]
+
+
+def redirect(url: str) -> RedirectResponse:
+    return RedirectResponse(url, status_code=303)
+
+
+def render(request: Request, name: str, ctx: dict | None = None, status_code: int = 200):
+    user = getattr(request.state, "user", None)
+    s = get_settings()
+    has_session = "session" in request.scope
+    today = local_today()
+    last_month_end = today.replace(day=1) - timedelta(days=1)
+    base = {
+        "request": request,
+        "user": user,
+        "nav": nav_for(user),
+        "csrf": csrf_token(request) if has_session else "",
+        "flashes": request.session.pop("flash", []) if has_session else [],
+        "app_title": s.app_title,
+        "path": request.url.path,
+        "can": (lambda p: bool(user and user.can(p))),
+        "today": today,
+        "last_month": (last_month_end.replace(day=1), last_month_end),
+        "fy_from": fy_start(today),
+    }
+    base.update(ctx or {})
+    return templates.TemplateResponse(request, name, base, status_code=status_code)
+
+
+def filter_options(db: Session, user: User) -> dict:
+    return {
+        "companies": visible_companies(db, user, active_only=False),
+        "cfas": visible_cfas(db, user, active_only=False),
+        "customers": list(db.scalars(select(Customer).order_by(Customer.name))),
+        "locations": list(db.scalars(select(Location).order_by(Location.name))),
+        "transporters": list(db.scalars(select(Transporter).order_by(Transporter.name))),
+        "erps": list(db.scalars(select(ERPSystem).order_by(ERPSystem.code))),
+        "statuses": InvoiceStatus.ALL,
+    }
+
+
+def active_lists(db: Session) -> dict:
+    return {
+        "transporters": list(db.scalars(select(Transporter).where(Transporter.is_active.is_(True)).order_by(Transporter.name))),
+        "cfas_all": list(db.scalars(select(CFA).order_by(CFA.name))),
+    }
+
+
+async def get_form(request: Request):
+    """Dependency: parsed form data, so endpoints can stay synchronous (run in the thread pool)."""
+    return await request.form()
+
+
+def safe_path(target: str | None, default: str = "/") -> str:
+    """Only allow same-site relative redirects (prevents open redirects via ?next= / back=)."""
+    if target and target.startswith("/") and not target.startswith("//") and "\\" not in target:
+        return target
+    return default
+
+
+def back_url(request: Request, default: str = "/") -> str:
+    """Same-site Referer (path + query) or the default."""
+    from urllib.parse import urlparse
+    ref = request.headers.get("referer")
+    if not ref:
+        return default
+    u = urlparse(ref)
+    if u.netloc and u.netloc != request.url.netloc:
+        return default
+    return safe_path((u.path or "/") + (f"?{u.query}" if u.query else ""), default)

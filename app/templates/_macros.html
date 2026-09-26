@@ -1,0 +1,78 @@
+{% macro badge(status, label=None) -%}
+<span class="badge b-{{ status }}">{{ label or (status|status_label) }}</span>
+{%- endmacro %}
+
+{% macro yesno(v) -%}
+{% if v %}<span class="badge b-yes">Yes</span>{% else %}<span class="badge b-no">No</span>{% endif %}
+{%- endmacro %}
+
+{% macro active(v) -%}
+{% if v %}<span class="badge b-ACTIVE">Active</span>{% else %}<span class="badge b-INACTIVE">Inactive</span>{% endif %}
+{%- endmacro %}
+
+{% macro csrf_field(csrf) -%}<input type="hidden" name="csrf_token" value="{{ csrf }}">{%- endmacro %}
+
+{% macro select(name, items, selected=None, blank="All", label_attr="name", value_attr="id", code=False, required=False, id=None) -%}
+<select name="{{ name }}" {% if id %}id="{{ id }}"{% endif %} {% if required %}required{% endif %}>
+  {% if blank is not none %}<option value="">{{ blank }}</option>{% endif %}
+  {% for it in items %}
+    {% set v = it[value_attr] %}
+    <option value="{{ v }}" {% if selected is not none and selected|string == v|string %}selected{% endif %}>{% if code %}{{ it.code }} · {% endif %}{{ it[label_attr] }}{% if it.is_active is defined and not it.is_active %} (inactive){% endif %}</option>
+  {% endfor %}
+</select>
+{%- endmacro %}
+
+{% macro filter_bar(f, opts, show, action="", extra_statuses=None, status_choices=None) -%}
+{# show: list of filter keys: date company customer cfa location transporter erp status invoice_no module q #}
+<form class="filters" method="get" action="{{ action }}">
+  {% if 'date' in show %}
+  <div class="f narrow"><label>From</label><input type="date" name="date_from" value="{{ f.date_from.isoformat() if f.date_from else '' }}"></div>
+  <div class="f narrow"><label>To</label><input type="date" name="date_to" value="{{ f.date_to.isoformat() if f.date_to else '' }}"></div>
+  {% endif %}
+  {% if 'company' in show %}<div class="f"><label>Company</label>{{ select('company_id', opts.companies, f.company_id) }}</div>{% endif %}
+  {% if 'customer' in show %}<div class="f wide"><label>Customer</label>{{ select('customer_id', opts.customers, f.customer_id) }}</div>{% endif %}
+  {% if 'cfa' in show %}<div class="f"><label>CFA</label>{{ select('cfa_id', opts.cfas, f.cfa_id) }}</div>{% endif %}
+  {% if 'location' in show %}<div class="f"><label>Location</label>{{ select('location_id', opts.locations, f.location_id) }}</div>{% endif %}
+  {% if 'transporter' in show %}<div class="f"><label>Transporter</label>{{ select('transporter_id', opts.transporters, f.transporter_id) }}</div>{% endif %}
+  {% if 'erp' in show %}<div class="f narrow"><label>ERP</label>{{ select('erp_id', opts.erps, f.erp_id, label_attr='code') }}</div>{% endif %}
+  {% if 'status' in show or status_choices %}
+  <div class="f"><label>Status</label>
+    <select name="status"><option value="">{{ 'All (excl. cancelled)' if not status_choices else 'All' }}</option>
+      {% for s in (status_choices or opts.statuses) %}<option value="{{ s }}" {% if f.status == s %}selected{% endif %}>{{ s|status_label }}</option>{% endfor %}
+    </select></div>
+  {% endif %}
+  {% if 'invoice_no' in show %}<div class="f narrow"><label>Invoice No</label><input type="text" name="invoice_no" value="{{ f.invoice_no or '' }}"></div>{% endif %}
+  {% if 'module' in show %}
+  <div class="f"><label>Module</label>
+    <select name="module"><option value="">All</option>
+      {% for m in ['DISPATCH','INVOICE','OVERRIDE','FREIGHT_RATE','IMPORT','RECONCILIATION','MASTER','ERP_MAPPING','INTEGRATION','SECURITY','ADMIN'] %}
+        <option value="{{ m }}" {% if f.module == m %}selected{% endif %}>{{ m }}</option>{% endfor %}
+    </select></div>
+  {% endif %}
+  {% if 'q' in show %}<div class="f wide"><label>Search</label><input type="search" name="q" value="{{ f.q or '' }}" placeholder="Reference, user, action…"></div>{% endif %}
+  <div class="f" style="flex:0 0 auto;min-width:0"><button class="btn btn-primary" type="submit">Apply</button> <a class="btn btn-ghost" href="{{ action }}?_reset=1">Reset</a></div>
+  {% if 'date' in show %}
+  <div class="presets" style="flex-basis:100%">
+    {% set t = today %}
+    <a href="#" data-preset="{{ t.isoformat() }}|{{ t.isoformat() }}">Today</a>
+    <a href="#" data-preset="{{ t.replace(day=1).isoformat() }}|{{ t.isoformat() }}">This month</a>
+    <a href="#" data-preset="{{ last_month[0].isoformat() }}|{{ last_month[1].isoformat() }}">Last month</a>
+    <a href="#" data-preset="{{ fy_from.isoformat() }}|{{ t.isoformat() }}">FY to date</a>
+  </div>
+  {% endif %}
+</form>
+{%- endmacro %}
+
+{% macro pager(page, pages, total, qs) -%}
+<div class="pager">
+  <span>{{ total|int }} record{{ '' if total == 1 else 's' }} · page {{ page }} of {{ pages }}</span>
+  <span>
+    {% if page > 1 %}<a class="btn btn-sm" href="?{{ qs }}&page={{ page - 1 }}">‹ Prev</a>{% endif %}
+    {% if page < pages %}<a class="btn btn-sm" href="?{{ qs }}&page={{ page + 1 }}">Next ›</a>{% endif %}
+  </span>
+</div>
+{%- endmacro %}
+
+{% macro variance(v) -%}
+{% if v is none %}—{% elif v > 0 %}<span class="pos">+{{ v|money }}</span>{% elif v < 0 %}<span class="neg">{{ v|money }}</span>{% else %}{{ v|money }}{% endif %}
+{%- endmacro %}

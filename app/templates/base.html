@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ title or "CTDMS" }}{% endblock %} · {{ app_title }}</title>
+  <link rel="stylesheet" href="/static/css/app.css?v={{ app_version }}">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f4e79'/%3E%3Cpath d='M7 20h12V11H7zm12-6h4l3 3v3h-7z' fill='%23fff'/%3E%3Ccircle cx='11' cy='22' r='2' fill='%2310b9a8'/%3E%3Ccircle cx='23' cy='22' r='2' fill='%2310b9a8'/%3E%3C/svg%3E">
+  {% block head %}{% endblock %}
+</head>
+<body>
+{% if user %}
+<div class="app">
+  <aside class="side">
+    <div class="brand">
+      <div class="logo">CT</div>
+      <div><b>CTDMS</b><span>Transport &amp; Dispatch</span></div>
+    </div>
+    {% for group, items in nav %}
+      <div class="group">
+        <div>{{ group }}</div>
+        {% for label, url, icon in items %}
+          <a href="{{ url }}" class="{% if (url == '/' and path == '/') or (url != '/' and (path == url or path.startswith(url + '/'))) %}active{% endif %}">{{ label }}</a>
+        {% endfor %}
+      </div>
+    {% endfor %}
+  </aside>
+  <div class="main">
+    <header class="topbar">
+      <button class="menu-btn" type="button" aria-label="Menu">☰</button>
+      {% if can('invoice.view') %}
+      <form class="quick" action="/invoices" method="get" role="search">
+        <input id="quick-q" type="search" name="q" placeholder="Find invoice / LR / dispatch no  ( / )" autocomplete="off">
+      </form>
+      {% endif %}
+      <div class="spacer"></div>
+      <div class="who">
+        <b>{{ user.full_name }}</b>
+        <small>{{ user.role.name }}{% if not user.all_cfas %} · {{ user.cfas|map(attribute='code')|join(', ') or 'no CFA assigned' }}{% endif %}</small>
+      </div>
+      <a class="btn btn-sm" href="/account/password">Password</a>
+      <form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn btn-sm" type="submit">Sign out</button></form>
+    </header>
+    <main class="content">
+      {% for f in flashes %}
+        <div class="alert alert-{{ f.k }}">{{ f.m }}</div>
+      {% endfor %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
+{% else %}
+  {% block public %}{% endblock %}
+{% endif %}
+<script src="/static/js/app.js?v={{ app_version }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

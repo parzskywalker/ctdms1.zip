@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge with context %}
+{% block content %}
+<div class="crumbs"><a href="/admin/integrations">Integration settings</a> › {{ erp.code }}</div>
+<div class="page-head">
+  <div><h1>{{ erp.code }} · {{ erp.name }}</h1><div class="sub">{{ ad.name }} — {{ ad.description }}</div></div>
+  <div class="actions">
+    <form method="post" action="/admin/integrations/{{ erp.id }}/test" class="inline-form"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn" type="submit">Test connection</button></form>
+    <form method="post" action="/admin/integrations/{{ erp.id }}/sync" class="inline-form"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn btn-primary" type="submit">Run sync now</button></form>
+  </div>
+</div>
+{% if new_key %}<div class="alert alert-warn"><b>New push API key</b> (shown once): <code>{{ new_key }}</code></div>{% endif %}
+<div class="grid g2">
+  <form method="post" action="/admin/integrations/{{ erp.id }}/save" class="card">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <h3>Adapter configuration</h3>
+    <div class="form-grid">
+      <div><label>Name</label><input type="text" name="name" value="{{ erp.name }}"></div>
+      <div><label>Adapter</label><select name="adapter">{% for k, c in registry.items() %}<option value="{{ k }}" {% if erp.adapter == k %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select><div class="field-hint">Changing adapter: save first, then fill its settings</div></div>
+      <div><label>Integration mode</label><select name="integration_mode">{% for m in ['API','ODATA','IDOC','DB','FILE'] %}<option {% if erp.integration_mode == m %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></div>
+      <div><label>Fallback import format</label><input type="text" name="import_format" value="{{ erp.import_format or '' }}"></div>
+      {% for f in ad.config_fields %}
+        <div class="{% if f.key in ['query','dsn','base_url'] %}full{% endif %}"><label>{{ f.label }}{% if f.required %} <span class="req">*</span>{% endif %}</label>
+          {% if f.key == 'query' %}<textarea name="cfg_{{ f.key }}" rows="4" class="mono">{{ erp.config.get(f.key, '') }}</textarea>
+          {% else %}<input type="{{ 'password' if f.secret else 'text' }}" name="cfg_{{ f.key }}" value="{{ '********' if f.secret and erp.config.get(f.key) else erp.config.get(f.key, '') }}" placeholder="{{ f.default or '' }}" autocomplete="off">{% endif %}
+          {% if f.help %}<div class="field-hint">{{ f.help }}</div>{% endif %}</div>
+      {% else %}<div class="full muted small">This adapter needs no configuration.</div>{% endfor %}
+      <div class="full"><label>Notes / pending dependencies</label><textarea name="notes">{{ erp.notes or '' }}</textarea></div>
+      <div><label class="check"><input type="checkbox" name="is_active" value="1" {% if erp.is_active %}checked{% endif %}>Active</label></div>
+      <div><label class="check"><input type="checkbox" name="auto_sync" value="1" {% if erp.auto_sync %}checked{% endif %}>Include in scheduled sync</label></div>
+    </div>
+    {% set miss = ad.missing_config() %}
+    {% if miss %}<div class="alert alert-warn" style="margin-top:12px">Missing for live connection: {{ miss|join(', ') }}</div>{% endif %}
+    <div class="form-actions"><button class="btn btn-primary" type="submit">Save configuration</button></div>
+  </form>
+
+  <div>
+    <form method="post" action="/masters/erp-field-mappings/{{ erp.id }}" class="card">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <h3>Invoice-field mapping (API / adapter records)</h3>
+      <p class="small muted">Source field name in {{ erp.code }}'s payload for each central field. Dot paths allowed (e.g. <code>header.docNo</code>). Blank = adapter default{% if ad.default_field_map %} (shown as placeholder){% endif %}.</p>
+      <table class="data compact"><tbody>
+      {% for key, (label, req, syn) in target_fields.items() %}
+        <tr><td style="width:45%">{{ label }}{% if req %} *{% endif %}<div class="small muted mono">{{ key }}</div></td>
+          <td><input type="text" name="src_{{ key }}" value="{{ fmap.get(key, '') }}" placeholder="{{ ad.default_field_map.get(key, '') }}" style="min-height:28px;padding:3px 7px"></td></tr>
+      {% endfor %}</tbody></table>
+      <div class="form-actions"><button class="btn" type="submit">Save field mapping</button></div>
+    </form>
+    <div class="card">
+      <h3>Push API (ERP → CTDMS)</h3>
+      <p class="small">The ERP or a middleware job can push invoices instead of being polled:</p>
+      <pre class="mono small" style="white-space:pre-wrap;background:#f3f5f8;padding:8px;border-radius:6px">POST /api/v1/integrations/{{ erp.code }}/invoices
+X-API-Key: &lt;key&gt;
+{"invoices": [{"invoice_no": "…", "invoice_date": "2026-09-25", "company_code": "…", "cfa_code": "…",
+  "customer_code": "…", "sales_value": 12500, "boxes": 12}]}</pre>
+      <p class="small">Dispatch details for write-back: <code>GET /api/v1/integrations/{{ erp.code }}/dispatch-updates</code> then <code>POST …/dispatch-updates/ack</code>.</p>
+      <form method="post" action="/admin/integrations/{{ erp.id }}/api-key" class="row"><input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <button class="btn" type="submit">{{ 'Rotate' if erp.api_key_hint else 'Generate' }} API key</button>{% if erp.api_key_hint %}<span class="small muted">current key ends …{{ erp.api_key_hint }}</span>{% endif %}</form>
+    </div>
+    <div class="card"><h3>Linked companies</h3>{% for c in companies %}<span class="tag">{{ c.code }}</span> {{ c.name }}<br>{% else %}<span class="muted small">No company uses this ERP as its source.</span>{% endfor %}</div>
+  </div>
+</div>
+<div class="card flush">
+  <div class="card-head"><h3>Sync history</h3></div>
+  <div class="table-wrap"><table class="data compact"><thead><tr><th>#</th><th>Started</th><th>Finished</th><th>Trigger</th><th>By</th><th class="num">Fetched</th><th class="num">Imported</th><th class="num">Rejected</th><th>Status</th><th>Message</th></tr></thead>
+    <tbody>{% for r in runs %}<tr><td>{{ r.id }}</td><td class="small">{{ r.started_at|dt }}</td><td class="small">{{ r.finished_at|dt }}</td><td>{{ r.trigger }}</td><td class="small">{{ r.triggered_by.full_name if r.triggered_by else 'system' }}</td><td class="num">{{ r.fetched }}</td><td class="num">{{ r.imported }}</td><td class="num">{{ r.rejected }}</td><td>{{ badge(r.status) }}</td><td class="small wrap">{% if r.batch_id %}<a href="/imports/{{ r.batch_id }}">batch</a> · {% endif %}{{ (r.message or '').splitlines()[0] if r.message else '' }}</td></tr>{% else %}<tr><td colspan="10" class="empty">No sync runs yet</td></tr>{% endfor %}</tbody></table></div>
+</div>
+{% endblock %}

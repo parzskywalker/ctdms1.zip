@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% from "_macros.html" import pager with context %}
+{% block content %}
+<div class="page-head">
+  <div><h1>{{ md.title }}</h1><div class="sub">{{ total }} record{{ '' if total == 1 else 's' }}. Records are deactivated, never deleted, so history stays intact.</div></div>
+  <div class="actions">
+    {% if can('data.export') %}<a class="btn" href="?{{ qs }}&export=csv">CSV</a>{% endif %}
+    {% if can('master.edit') %}<a class="btn btn-primary" href="/masters/{{ md.key }}/new">New {{ md.singular }}</a>{% endif %}
+  </div>
+</div>
+<form class="filters" method="get">
+  <div class="f wide"><label>Search</label><input type="search" name="q" value="{{ q }}" placeholder="{{ md.search|join(' / ') }}"></div>
+  <div class="f narrow"><label>Status</label><select name="active"><option value="1" {% if active == '1' %}selected{% endif %}>Active</option><option value="0" {% if active == '0' %}selected{% endif %}>Inactive</option><option value="all" {% if active == 'all' %}selected{% endif %}>All</option></select></div>
+  <div class="f" style="flex:0 0 auto;min-width:0"><button class="btn" type="submit">Search</button></div>
+</form>
+<div class="card flush">
+  <div class="table-wrap"><table class="data">
+    <thead><tr>{% for c in cols %}<th {% if c.kind in ['int','decimal'] %}class="num"{% endif %}>{{ c.label }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr class="{% if not r.is_active %}row-muted{% endif %}">
+      {% for c in cols %}
+        {% if loop.first %}<td class="nowrap"><a href="/masters/{{ md.key }}/{{ r.id }}"><b>{{ cell(r, c) }}</b></a></td>
+        {% elif c.kind == 'bool' %}<td>{% if cell(r, c) == 'Yes' %}<span class="badge b-ACTIVE">Yes</span>{% else %}<span class="badge b-INACTIVE">No</span>{% endif %}</td>
+        {% else %}<td class="{% if c.kind in ['int','decimal'] %}num{% endif %}">{{ cell(r, c) }}</td>{% endif %}
+      {% endfor %}
+      </tr>
+    {% else %}<tr><td colspan="{{ cols|length }}" class="empty">No records.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  {{ pager(page, pages, total, qs) }}
+</div>
+{% endblock %}

@@ -1,0 +1,4 @@
+﻿InvoiceId,InvoiceNo,InvoiceDate,Division,Depot,CustomerCode,CustomerName,City,NetAmount,NoOfCases
+CBO-80011,CBO/RPR/80011,26/09/2026,CLS,D-RPR,SUNAG01,Sunrise Agencies,Korba,22037.00,19
+CBO-80012,CBO/RPR/80012,26/09/2026,CLS,D-RPR,METPH01,Metro Pharma,Raipur,11704.00,10
+CBO-80013,CBO/DRG/80013,26/09/2026,CLS,D-DRG,JEEVN01,Jeevan Medical Hall,Rajnandgaon,16321.00,14

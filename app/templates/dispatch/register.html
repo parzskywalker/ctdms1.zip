@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% from "_macros.html" import filter_bar, badge, pager with context %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Dispatch Register</h1><div class="sub">Generated dispatch slips by dispatch date · {{ f.describe() }}</div></div>
+  <div class="actions">
+    <a class="btn" href="/reports/dispatch-register?{{ qs }}">Report view</a>
+    {% if can('data.export') %}<a class="btn" href="/reports/dispatch-register/export?fmt=xlsx&{{ qs }}">Excel</a>{% endif %}
+  </div>
+</div>
+{{ filter_bar(f, opts, ['date','company','cfa','customer','location','transporter','invoice_no'], action='/dispatch/register') }}
+<div class="card flush">
+  <div class="table-wrap"><table class="data">
+    <thead><tr><th>Dispatch No</th><th>Date / time</th><th>Invoice</th><th>Company</th><th>CFA</th><th>Customer</th><th>Location</th><th class="num">Boxes</th><th class="num">Freight</th><th>Transporter</th><th>Vehicle</th><th>LR</th><th class="num">Prints</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for i in rows %}
+      <tr><td class="mono nowrap"><a href="/dispatch/{{ i.id }}">{{ i.dispatch_no }}</a></td><td class="nowrap">{{ i.dispatch_date|date }} {{ i.dispatch_time|time }}</td>
+        <td><a href="/invoices/{{ i.id }}">{{ i.invoice_no }}</a></td><td>{{ i.company.code }}</td><td>{{ i.cfa.code }}</td><td class="wrap">{{ i.customer.name }}</td><td>{{ i.location.name }}</td>
+        <td class="num">{{ i.boxes }}</td><td class="num">{{ i.freight_amount|money }}</td><td>{{ i.transporter.name if i.transporter else '' }}</td><td class="mono">{{ i.vehicle_no }}</td><td class="mono">{{ i.lr_no }}</td><td class="num">{{ i.print_count }}</td><td>{{ badge(i.status) }}</td></tr>
+    {% else %}<tr><td colspan="14" class="empty">No dispatches in this period.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  {{ pager(page, pages, total, qs) }}
+</div>
+{% endblock %}

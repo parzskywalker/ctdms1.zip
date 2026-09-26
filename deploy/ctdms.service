@@ -1,0 +1,16 @@
+# systemd unit for a plain Linux server (no Docker). Copy to /etc/systemd/system/ctdms.service
+[Unit]
+Description=CTDMS - Central Transport & Dispatch
+After=network.target postgresql.service
+
+[Service]
+User=ctdms
+WorkingDirectory=/opt/ctdms
+EnvironmentFile=/opt/ctdms/.env
+ExecStartPre=/opt/ctdms/.venv/bin/python -m app.cli init-db
+ExecStart=/opt/ctdms/.venv/bin/gunicorn app.main:app -k uvicorn.workers.UvicornWorker -c deploy/gunicorn.conf.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

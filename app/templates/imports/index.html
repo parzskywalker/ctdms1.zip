@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge with context %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Invoice Import</h1><div class="sub">Controlled import of ERP invoice exports (Excel / CSV). Live API/DB pulls run from Administration › Integration Settings and land in the same pipeline.</div></div>
+</div>
+<div class="grid g-side">
+  <form method="post" action="/imports/upload" enctype="multipart/form-data" class="card">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <div class="card-head"><h2>1 · Upload file</h2></div>
+    <div class="form-grid">
+      <div class="w2"><label>File (.csv, .xlsx, .xls) <span class="req">*</span></label><input type="file" name="file" accept=".csv,.xlsx,.xls,.txt" required></div>
+      <div><label>Source ERP</label><select name="erp_system_id"><option value="">— select —</option>{% for e in erps %}<option value="{{ e.id }}">{{ e.code }} · {{ e.name }}</option>{% endfor %}</select><div class="field-hint">Used for ERP code mapping</div></div>
+      <div><label>Import template</label><select name="template_id"><option value="">Auto-detect columns</option>{% for t in templates %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</select></div>
+      <div><label>Default company</label><select name="company_id"><option value="">From file</option>{% for c in companies %}<option value="{{ c.id }}">{{ c.code }} · {{ c.name }}</option>{% endfor %}</select><div class="field-hint">When the file has no company column</div></div>
+      <div><label>Default CFA</label><select name="cfa_id"><option value="">From file</option>{% for c in cfas %}<option value="{{ c.id }}">{{ c.code }} · {{ c.name }}</option>{% endfor %}</select></div>
+    </div>
+    <div class="form-actions"><button class="btn btn-primary btn-lg" type="submit">Upload &amp; preview</button></div>
+    <p class="small muted" style="margin-top:10px">Next steps: 2 · check column mapping &amp; preview → 3 · validate (duplicates, missing customers / locations / rates) → 4 · import valid rows → 5 · correct &amp; retry rejected rows.</p>
+  </form>
+  <div class="card">
+    <h3>Sample ERP export files</h3>
+    <p class="small muted">Realistic demo exports in each ERP's own column layout, plus the standard template.</p>
+    <ul class="small" style="padding-left:18px">{% for s in samples %}<li><a href="/imports/sample/{{ s }}">{{ s }}</a></li>{% else %}<li class="muted">No samples found.</li>{% endfor %}</ul>
+  </div>
+</div>
+<div class="card flush">
+  <div class="card-head"><h2>Import log</h2></div>
+  <div class="table-wrap"><table class="data">
+    <thead><tr><th>Batch</th><th>When</th><th>Source</th><th>ERP</th><th>File</th><th>By</th><th class="num">Rows</th><th class="num">Imported</th><th class="num">Exceptions</th><th class="num">Rejected</th><th class="num">Duplicates</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for b in batches %}
+      <tr><td><a href="/imports/{{ b.id }}"><b>{{ b.batch_no }}</b></a></td><td class="nowrap small">{{ b.created_at|dt }}</td><td><span class="tag">{{ b.source }}</span></td><td>{{ b.erp_system.code if b.erp_system else '—' }}</td>
+        <td class="small">{{ b.file_name or '' }}</td><td class="small">{{ b.created_by.full_name if b.created_by else 'system' }}</td>
+        <td class="num">{{ b.total_rows }}</td><td class="num">{{ b.imported_count }}</td><td class="num">{{ b.exception_count }}</td><td class="num {% if b.rejected_count %}pos{% endif %}">{{ b.rejected_count }}</td><td class="num">{{ b.duplicate_count }}</td><td>{{ badge(b.status) }}</td></tr>
+    {% else %}<tr><td colspan="12" class="empty">No imports yet.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endblock %}

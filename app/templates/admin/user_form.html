@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="crumbs"><a href="/admin/users">Users</a> › {{ u.username if u else 'New' }}</div>
+<div class="page-head"><div><h1>{{ ('User · ' ~ u.full_name) if u else 'New user' }}</h1></div></div>
+<div class="grid g-side">
+<form method="post" action="/admin/users/save" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  {% if u %}<input type="hidden" name="id" value="{{ u.id }}">{% endif %}
+  <div class="form-grid">
+    <div><label>Username <span class="req">*</span></label><input type="text" name="username" value="{{ u.username if u else '' }}" required autocomplete="off"></div>
+    <div><label>Full name <span class="req">*</span></label><input type="text" name="full_name" value="{{ u.full_name if u else '' }}" required></div>
+    <div><label>Email</label><input type="email" name="email" value="{{ u.email or '' if u else '' }}"></div>
+    <div><label>Mobile</label><input type="text" name="mobile" value="{{ u.mobile or '' if u else '' }}"></div>
+    <div><label>Role <span class="req">*</span></label><select name="role_id" required>{% for r in roles %}<option value="{{ r.id }}" {% if u and u.role_id == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}</select></div>
+    {% if not u %}<div><label>Initial password <span class="req">*</span></label><input type="text" name="password" required><div class="field-hint">User must change it at first login</div></div>{% endif %}
+    <div><label>&nbsp;</label><label class="check"><input type="checkbox" name="is_active" value="1" {% if not u or u.is_active %}checked{% endif %}>Active</label></div>
+    <div class="full"><label class="check"><input type="checkbox" name="all_companies" value="1" {% if u and u.all_companies %}checked{% endif %}>All companies</label>
+      <div class="checks" style="margin-top:6px">{% for c in companies %}<label class="check"><input type="checkbox" name="companies" value="{{ c.id }}" {% if u and c in u.companies %}checked{% endif %}>{{ c.code }} <span class="muted">· {{ c.name }}</span></label>{% endfor %}</div></div>
+    <div class="full"><label class="check"><input type="checkbox" name="all_cfas" value="1" {% if u and u.all_cfas %}checked{% endif %}>All CFAs</label>
+      <div class="checks" style="margin-top:6px">{% for c in cfas %}<label class="check"><input type="checkbox" name="cfas" value="{{ c.id }}" {% if u and c in u.cfas %}checked{% endif %}>{{ c.code }} <span class="muted">· {{ c.name }}</span></label>{% endfor %}</div></div>
+  </div>
+  <div class="form-actions"><button class="btn btn-primary" type="submit">Save user</button><a class="btn" href="/admin/users">Back</a></div>
+</form>
+{% if u %}
+<div>
+  <form method="post" action="/admin/users/{{ u.id }}/password" class="card stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <h3>Reset password</h3>
+    <input type="text" name="password" placeholder="New temporary password" required>
+    <button class="btn" type="submit">Reset &amp; unlock</button>
+    <div class="field-hint">Signs the user out everywhere; they must change it at next login.</div>
+  </form>
+  <div class="card"><dl class="dl tight"><dt>Last login</dt><dd>{{ u.last_login_at|dt or '—' }}</dd><dt>Failed logins</dt><dd>{{ u.failed_logins }}</dd><dt>Locked until</dt><dd>{{ u.locked_until|dt or '—' }}</dd><dt>Created</dt><dd>{{ u.created_at|dt }}</dd></dl></div>
+</div>
+{% endif %}
+</div>
+{% endblock %}

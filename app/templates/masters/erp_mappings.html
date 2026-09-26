@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div><h1>ERP / Source System Mappings</h1><div class="sub">How codes used inside each ERP map to one central master record. This is what lets the same customer billed from MARG, SAP, CBO and Intrect roll up as one party.</div></div>
+  <div class="actions">{% if can('admin.integrations') %}<a class="btn" href="/admin/integrations">ERP systems &amp; invoice-field mapping</a>{% endif %}</div>
+</div>
+<div class="tabs">
+  {% for e in ['CUSTOMER','LOCATION','COMPANY','CFA','TRANSPORTER'] %}<a class="{% if ent == e %}on{% endif %}" href="?entity={{ e }}{% if erp_id %}&erp_id={{ erp_id }}{% endif %}">{{ e.title() }}<span class="count">{{ counts[e] }}</span></a>{% endfor %}
+</div>
+<div class="grid g-side">
+  <div class="card flush">
+    <div class="card-head"><h3>{{ ent.title() }} code mappings</h3>
+      <form method="get" class="row" style="margin:0"><input type="hidden" name="entity" value="{{ ent }}">
+        <select name="erp_id" onchange="this.form.submit()" style="width:160px"><option value="">All ERPs</option>{% for e in erps %}<option value="{{ e.id }}" {% if erp_id == e.id %}selected{% endif %}>{{ e.code }}</option>{% endfor %}</select></form></div>
+    <div class="table-wrap"><table class="data">
+      <thead><tr><th>ERP</th><th>Code in ERP</th><th>Name in ERP</th><th>→ Central record</th><th>Company scope</th><th>Active</th><th></th></tr></thead>
+      <tbody>
+      {% for m in maps %}
+        {% set t = tmap.get(m.target_id) %}
+        <tr class="{% if not m.is_active %}row-muted{% endif %}"><td><span class="tag">{{ m.erp_system.code }}</span></td><td class="mono">{{ m.source_code }}</td><td>{{ m.source_name or '' }}</td>
+          <td>{% if t %}<b>{{ t.code }}</b> · {{ t.name }}{% else %}<span class="pos">missing #{{ m.target_id }}</span>{% endif %}</td><td>{{ m.company.code if m.company else 'All' }}</td><td>{{ 'Yes' if m.is_active else 'No' }}</td>
+          <td>{% if can('master.edit') %}<form method="post" action="/masters/erp-mappings/{{ m.id }}/toggle" class="inline-form"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn btn-sm btn-ghost" type="submit">{{ 'Disable' if m.is_active else 'Enable' }}</button></form>{% endif %}</td></tr>
+      {% else %}<tr><td colspan="7" class="empty">No {{ ent.lower() }} mappings. Codes that match the central code directly need no mapping.</td></tr>{% endfor %}
+      </tbody>
+    </table></div>
+  </div>
+  <div>
+    {% if can('master.edit') %}
+    <form method="post" action="/masters/erp-mappings" class="card stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <input type="hidden" name="entity_type" value="{{ ent }}">
+      <h3>Add {{ ent.lower() }} mapping</h3>
+      <div><label>ERP</label><select name="erp_system_id" required>{% for e in erps %}<option value="{{ e.id }}" {% if erp_id == e.id %}selected{% endif %}>{{ e.code }} · {{ e.name }}</option>{% endfor %}</select></div>
+      <div><label>Code used in the ERP</label><input type="text" name="source_code" required></div>
+      <div><label>Name in the ERP (optional)</label><input type="text" name="source_name"></div>
+      <div><label>Central record</label><select name="target_id" required>{% for t in targets %}<option value="{{ t.id }}">{{ t.code }} · {{ t.name }}</option>{% endfor %}</select></div>
+      <div><label>Only for company (optional)</label><select name="company_id"><option value="">All companies</option>{% for c in companies %}<option value="{{ c.id }}">{{ c.code }}</option>{% endfor %}</select><div class="field-hint">Use when two principals' ERPs reuse the same code for different parties.</div></div>
+      <button class="btn btn-primary" type="submit">Save mapping</button>
+    </form>
+    {% endif %}
+    <div class="card">
+      <h3>Import templates</h3>
+      <p class="small muted">Saved column mappings for Excel/CSV exports from each ERP.</p>
+      {% for t in templates %}
+        <details><summary>{{ t.name }} <span class="tag">{{ t.erp_system.code if t.erp_system else '—' }}</span></summary>
+          <table class="data compact"><tbody>{% for k, v in t.column_map.items() %}<tr><td>{{ target_fields[k][0] if k in target_fields else k }}</td><td class="mono">{{ v }}</td></tr>{% endfor %}</tbody></table>
+          <div class="small muted">Date format: {{ t.date_format }}</div>
+        </details>
+      {% else %}<p class="muted small">None yet — save one from the import screen.</p>{% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

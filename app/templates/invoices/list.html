@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% from "_macros.html" import filter_bar, badge, pager with context %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Invoice Register</h1><div class="sub">Central normalized invoice database across all ERPs{% if q %} · search “{{ q }}”{% endif %}</div></div>
+  <div class="actions">
+    {% if can('invoice.import') %}<a class="btn" href="/imports">Import invoices</a>{% endif %}
+    {% if can('data.export') %}
+      <a class="btn" href="/reports/invoice-freight/export?fmt=xlsx&{{ f.query() }}">Excel</a>
+      <a class="btn" href="/reports/invoice-freight/export?fmt=csv&{{ f.query() }}">CSV</a>
+    {% endif %}
+  </div>
+</div>
+{{ filter_bar(f, opts, ['date','company','customer','cfa','location','transporter','erp','status','invoice_no'], action='/invoices', status_choices=opts.statuses) }}
+<div class="card flush">
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr>
+        <th>Invoice</th><th>Date</th><th>ERP</th><th>Company</th><th>CFA</th><th>Customer</th><th>Location</th>
+        <th class="num">Sales</th><th class="num">Boxes</th><th class="num">Rate/Box</th><th class="num">Freight</th>
+        <th>Status</th><th>Dispatch No</th><th>Transporter</th>
+      </tr></thead>
+      <tbody>
+      {% for i in rows %}
+        <tr class="{% if i.status == 'CANCELLED' %}row-muted{% endif %}">
+          <td class="nowrap"><a href="/invoices/{{ i.id }}"><b>{{ i.invoice_no }}</b></a></td>
+          <td class="nowrap">{{ i.invoice_date|date }}</td>
+          <td><span class="tag">{{ i.source_erp.code if i.source_erp else '—' }}</span></td>
+          <td>{{ i.company.code }}</td>
+          <td>{{ i.cfa.code }}</td>
+          <td class="wrap">{{ i.customer.name }}</td>
+          <td>{{ i.location.name }}</td>
+          <td class="num">{{ i.sales_value|money }}</td>
+          <td class="num">{{ i.boxes if i.boxes is not none else '—' }}</td>
+          <td class="num">{{ i.rate_per_box|rate }}</td>
+          <td class="num"><b>{{ i.freight_amount|money }}</b></td>
+          <td>{{ badge(i.status) }}</td>
+          <td class="nowrap mono">{{ i.dispatch_no or '' }}</td>
+          <td>{{ i.transporter.name if i.transporter else '' }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="14" class="empty">No invoices match the filter.</td></tr>
+      {% endfor %}
+      </tbody>
+      {% if rows %}
+      <tfoot><tr><td colspan="7">Total ({{ total }} invoices, all pages)</td><td class="num">{{ sums[2]|money }}</td><td class="num">{{ sums[0]|int }}</td><td></td><td class="num">{{ sums[1]|money }}</td><td colspan="3"></td></tr></tfoot>
+      {% endif %}
+    </table>
+  </div>
+  {{ pager(page, pages, total, qs) }}
+</div>
+{% endblock %}

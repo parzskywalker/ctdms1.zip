@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge with context %}
+{% block content %}
+<div class="crumbs"><a href="/imports">Invoice Import</a> › {{ b.batch_no }}</div>
+<div class="page-head">
+  <div><h1>Import {{ b.batch_no }} {{ badge(b.status) }}</h1>
+    <div class="sub">{{ b.file_name or b.source }} · {{ b.total_rows }} rows · {{ b.created_at|dt }} by {{ b.created_by.full_name if b.created_by else 'system' }}{% if b.erp_system %} · ERP {{ b.erp_system.code }}{% endif %}{% if b.template %} · template “{{ b.template.name }}”{% endif %}</div></div>
+  <div class="actions">
+    {% if not b.committed_at and b.status != 'CANCELLED' %}
+      <form method="post" action="/imports/{{ b.id }}/cancel" class="inline-form"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn btn-danger" type="submit">Cancel batch</button></form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="kpis">
+  <a class="kpi" href="?show=all"><div class="lbl">Rows</div><div class="val">{{ summary.total }}</div></a>
+  <a class="kpi good" href="?show=IMPORTED"><div class="lbl">Imported</div><div class="val">{{ summary.IMPORTED }}</div></a>
+  <a class="kpi" href="?show=VALID"><div class="lbl">Ready (valid)</div><div class="val">{{ summary.VALID }}</div></a>
+  <a class="kpi warn" href="?show=WARNING"><div class="lbl">Warnings</div><div class="val">{{ summary.WARNING }}</div><div class="hint">import as exception</div></a>
+  <a class="kpi alert" href="?show=REJECTED"><div class="lbl">Rejected</div><div class="val">{{ summary.REJECTED }}</div></a>
+  <a class="kpi" href="?show=DUPLICATE"><div class="lbl">Duplicates</div><div class="val">{{ summary.DUPLICATE }}</div></a>
+</div>
+
+{% if not b.committed_at and b.status != 'CANCELLED' %}
+<form method="post" action="/imports/{{ b.id }}/mapping" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <div class="card-head"><h2>2 · Column mapping</h2><span class="muted small">Auto-detected from headers{% if b.template %} and template{% endif %}. * = mandatory</span></div>
+  <div class="form-grid">
+    <div><label>Source ERP</label><select name="erp_system_id"><option value="">—</option>{% for e in erps %}<option value="{{ e.id }}" {% if b.erp_system_id == e.id %}selected{% endif %}>{{ e.code }}</option>{% endfor %}</select></div>
+    <div><label>Default company (if not in file)</label><select name="company_id"><option value="">—</option>{% for c in companies %}<option value="{{ c.id }}" {% if b.company_id == c.id %}selected{% endif %}>{{ c.code }} · {{ c.name }}</option>{% endfor %}</select></div>
+    <div><label>Default CFA (if not in file)</label><select name="cfa_id"><option value="">—</option>{% for c in cfas %}<option value="{{ c.id }}" {% if b.cfa_id == c.id %}selected{% endif %}>{{ c.code }} · {{ c.name }}</option>{% endfor %}</select></div>
+    <div><label>Date format</label><select name="date_format">{% for d in date_formats %}<option value="{{ d }}" {% if b.date_format == d %}selected{% endif %}>{{ d }}</option>{% endfor %}</select></div>
+  </div>
+  <hr>
+  <div class="form-grid">
+    {% for key, (label, req, syn) in fields.items() %}
+    <div><label>{{ label }}{% if req %} <span class="req">*</span>{% endif %}</label>
+      <select name="map_{{ key }}"><option value="">— not in file —</option>{% for h in b.headers %}<option value="{{ h }}" {% if b.column_map.get(key) == h %}selected{% endif %}>{{ h }}</option>{% endfor %}</select></div>
+    {% endfor %}
+  </div>
+  <div class="form-actions">
+    <button class="btn btn-primary" type="submit">Apply mapping &amp; validate</button>
+    <input type="text" name="template_name" placeholder="Save as template (name)" style="max-width:260px">
+  </div>
+</form>
+
+<div class="card flush">
+  <div class="card-head"><h3>Preview (first 8 rows as in file)</h3></div>
+  <div class="table-wrap"><table class="data compact">
+    <thead><tr><th>#</th>{% for h in b.headers %}<th>{{ h }}</th>{% endfor %}</tr></thead>
+    <tbody>{% for r in b.rows[:8] %}<tr><td>{{ r.row_no }}</td>{% for h in b.headers %}<td>{{ r.raw.get(h) if r.raw.get(h) is not none else '' }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+
+<div class="card">
+  <form method="post" action="/imports/{{ b.id }}/commit" class="row">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <button class="btn btn-ok btn-lg" type="submit" {% if not (summary.VALID + summary.WARNING) %}disabled{% endif %}>4 · Import {{ summary.VALID + summary.WARNING }} valid row(s)</button>
+    <span class="muted">Rejected and duplicate rows are not imported; you can correct and retry them afterwards.</span>
+  </form>
+</div>
+{% elif b.committed_at and (summary.REJECTED or summary.VALID or summary.WARNING) %}
+<div class="card">
+  <form method="post" action="/imports/{{ b.id }}/retry" class="row">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <button class="btn btn-primary" type="submit">Re-validate &amp; retry remaining rows</button>
+    <span class="muted small">After fixing masters (new customer, location, ERP code mapping) or editing rows below.</span>
+  </form>
+</div>
+{% endif %}
+
+<div class="tabs">
+  {% for k, lbl in [('all','All'),('problems','Needs attention'),('IMPORTED','Imported'),('VALID','Valid'),('WARNING','Warnings'),('REJECTED','Rejected'),('DUPLICATE','Duplicates'),('SKIPPED','Skipped')] %}
+    <a href="?show={{ k }}" class="{% if show == k %}on{% endif %}">{{ lbl }}</a>{% endfor %}
+</div>
+<div class="card flush">
+  <div class="table-wrap"><table class="data compact">
+    <thead><tr><th>#</th><th>Status</th><th>Invoice</th><th>Date</th><th>Company</th><th>CFA</th><th>Customer</th><th>Location</th><th class="num">Sales</th><th class="num">Boxes</th><th style="min-width:280px">Messages</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      {% set d = r.data %}
+      <tr id="row-{{ r.id }}">
+        <td>{{ r.row_no }}</td><td>{{ badge(r.status) }}</td>
+        <td>{% if r.invoice_id %}<a href="/invoices/{{ r.invoice_id }}">{{ d.get('invoice_no') }}</a>{% else %}{{ d.get('invoice_no') or '' }}{% endif %}</td>
+        <td class="nowrap">{{ d.get('invoice_date') or '' }}</td><td>{{ d.get('company_code') or (b.company.code if b.company else '') }}</td><td>{{ d.get('cfa_code') or (b.cfa.code if b.cfa else '') }}</td>
+        <td>{{ d.get('customer_code') or '' }}<div class="small muted">{{ d.get('customer_name') or '' }}</div></td><td>{{ d.get('location') or '' }}</td>
+        <td class="num">{{ d.get('sales_value') or '' }}</td><td class="num">{{ d.get('boxes') if d.get('boxes') is not none else '' }}</td>
+        <td class="small">
+          {% for e in r.errors %}<div class="pos">✖ {{ e.msg }}</div>
+            {% if e.code == 'MISSING_CUSTOMER' and editable %}
+              <form method="post" action="/imports/{{ b.id }}/map-customer" class="row" style="margin:4px 0">
+                <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="source_code" value="{{ d.get('customer_code') }}"><input type="hidden" name="source_name" value="{{ d.get('customer_name') or '' }}">
+                <select name="customer_id" style="min-height:28px;padding:2px 6px;width:auto;max-width:210px">
+                  {% for s in e.suggestions or [] %}<option value="{{ s.id }}">≈ {{ s.code }} · {{ s.name }}</option>{% endfor %}
+                  <option disabled>──────────</option>
+                  {% for c in customers %}<option value="{{ c.id }}">{{ c.code }} · {{ c.name }}</option>{% endfor %}
+                </select>
+                <button class="btn btn-sm" type="submit">Map {{ b.erp_system.code if b.erp_system else 'ERP' }} code</button>
+                {% if can('master.edit') %}<a class="btn btn-sm btn-ghost" href="/masters/customers/new?code={{ d.get('customer_code') }}&name={{ d.get('customer_name') or '' }}&back=/imports/{{ b.id }}?show=problems">New customer</a>{% endif %}
+              </form>
+            {% endif %}
+            {% if e.code == 'MISSING_LOCATION' and can('master.edit') %}<a class="btn btn-sm btn-ghost" href="/masters/locations/new?name={{ d.get('location') or '' }}&code={{ (d.get('location') or '')|upper }}&back=/imports/{{ b.id }}?show=problems">Create location</a>{% endif %}
+          {% endfor %}
+          {% for w in r.warnings %}<div style="color:#9a4a06">⚠ {{ w.msg }}</div>{% endfor %}
+          {% if r.status in ['REJECTED','DUPLICATE'] and editable %}
+            <details><summary>Correct row</summary>
+              <form method="post" action="/imports/{{ b.id }}/rows/{{ r.id }}" class="form-grid" style="margin-top:6px;grid-template-columns:repeat(2,minmax(0,1fr))">
+                <input type="hidden" name="csrf_token" value="{{ csrf }}">
+                {% for key, (label, req, syn) in fields.items() if key in ['company_code','cfa_code','invoice_no','invoice_date','customer_code','location','sales_value','boxes'] %}
+                  <div><label>{{ label }}</label><input type="text" name="f_{{ key }}" value="{{ d.get(key) if d.get(key) is not none else '' }}"></div>
+                {% endfor %}
+                <div class="full row"><button class="btn btn-sm btn-primary" type="submit" name="then" value="{{ 'import' if b.committed_at else 'validate' }}">Save &amp; {{ 'retry import' if b.committed_at else 're-validate' }}</button></div>
+              </form>
+              <form method="post" action="/imports/{{ b.id }}/rows/{{ r.id }}/skip" class="row" style="margin-top:4px"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="text" name="reason" placeholder="Reason to skip" style="min-height:28px"><button class="btn btn-sm btn-ghost" type="submit">Skip row</button></form>
+            </details>
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}<tr><td colspan="11" class="empty">No rows in this view.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  {% if row_total > rows|length %}<div class="pager">Showing first {{ rows|length }} of {{ row_total }}</div>{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,3 @@
+company,cfa,customer,location,rate_per_box,effective_from,effective_to,is_default,reason
+COC,RPR,,Korba,10.50,01-09-2026,,,Korba rate for Company C
+COA,RPR,C-MET01,Raipur,2.50,26-09-2026,,,Customer-specific local rate

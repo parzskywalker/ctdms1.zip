@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge, select, pager with context %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Pending Dispatch</h1><div class="sub">Scan or type an invoice number and press Enter to open it directly. Completion rule: slip must be <b>{{ complete_rule }}</b>.</div></div>
+  <div class="actions">
+    <form method="get" class="row" style="margin:0">
+      <input type="hidden" name="tab" value="{{ tab }}">
+      <input id="pending-q" type="search" name="q" value="{{ q }}" placeholder="Invoice no / customer / LR" autofocus style="width:260px">
+      <button class="btn btn-primary" type="submit">Find</button>
+    </form>
+  </div>
+</div>
+<div class="tabs">
+  {% for key, (label, sts) in tabs.items() %}
+    <a href="?tab={{ key }}{% if q %}&q={{ q }}{% endif %}&{{ f.query() }}" class="{% if tab == key %}on{% endif %}">{{ label }}<span class="count">{{ counts[key] }}</span></a>
+  {% endfor %}
+</div>
+<form class="filters" method="get">
+  <input type="hidden" name="tab" value="{{ tab }}">
+  <div class="f"><label>Company</label>{{ select('company_id', opts.companies, f.company_id) }}</div>
+  <div class="f"><label>CFA</label>{{ select('cfa_id', opts.cfas, f.cfa_id) }}</div>
+  <div class="f"><label>Location</label>{{ select('location_id', opts.locations, f.location_id) }}</div>
+  <div class="f wide"><label>Customer</label>{{ select('customer_id', opts.customers, f.customer_id) }}</div>
+  <div class="f narrow"><label>Invoice from</label><input type="date" name="date_from" value="{{ f.date_from.isoformat() if f.date_from else '' }}"></div>
+  <div class="f narrow"><label>to</label><input type="date" name="date_to" value="{{ f.date_to.isoformat() if f.date_to else '' }}"></div>
+  <div class="f" style="flex:0 0 auto;min-width:0"><button class="btn" type="submit">Filter</button> <a class="btn btn-ghost" href="?tab={{ tab }}">Clear</a></div>
+</form>
+
+<form method="post" action="/dispatch/bulk/prepare" id="bulk-form">
+<div class="card flush">
+  <div class="table-wrap">
+    <table class="data">
+      <thead><tr>
+        <th style="width:28px"><input type="checkbox" data-check-all="ids" aria-label="Select all"></th>
+        <th>Invoice</th><th class="num">Age</th><th>Company · CFA</th><th>Customer</th><th>Location</th>
+        <th class="num">Boxes</th><th class="num">Rate/Box</th><th class="num">Freight</th><th>Status</th><th>Transporter / LR</th><th class="num sticky-col">Action</th>
+      </tr></thead>
+      <tbody>
+      {% for i in rows %}
+        <tr>
+          <td><input type="checkbox" name="ids" value="{{ i.id }}" aria-label="Select {{ i.invoice_no }}"></td>
+          <td class="nowrap"><b>{{ i.invoice_no }}</b><div class="small muted">{{ i.invoice_date|date }}</div>{% if i.dispatch_no %}<div class="small mono muted">{{ i.dispatch_no }}</div>{% endif %}</td>
+          <td class="num {% if i.age_days > 3 %}pos{% endif %}">{{ i.age_days }}d</td>
+          <td class="nowrap">{{ i.company.code }} · {{ i.cfa.code }}</td>
+          <td style="min-width:150px">{{ i.customer.name }}</td>
+          <td>{{ i.location.name }}</td>
+          <td class="num">{{ i.boxes if i.boxes is not none else '—' }}</td>
+          <td class="num">{{ i.rate_per_box|rate }}</td>
+          <td class="num"><b>{{ i.freight_amount|money }}</b></td>
+          <td class="nowrap">{{ badge(i.status) }}{% if i.exception_code %}<div class="small muted" title="{{ i.exception_reason }}">{{ i.exception_code.replace('_',' ').lower() }}</div>{% endif %}</td>
+          <td class="small" style="max-width:130px">{% if i.transporter %}<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="{{ i.transporter.name }}">{{ i.transporter.name }}</div>{% endif %}{% if i.lr_no %}<span class="mono muted">LR {{ i.lr_no }}</span>{% endif %}</td>
+          <td class="num sticky-col"><a class="btn btn-open" href="/dispatch/{{ i.id }}">OPEN DISPATCH</a></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="12" class="empty">Nothing pending here.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {{ pager(page, pages, total, qs) }}
+  {% if can('dispatch.operate') and rows %}
+  <div class="sticky-bar">
+    <b><span id="bulk-count">0</span> selected</b>
+    <button class="btn btn-primary" type="submit" data-needs-selection>Bulk dispatch (verify + slip)…</button>
+    <button class="btn" type="submit" formmethod="post" formaction="/dispatch/bulk/print" formtarget="_blank" data-needs-selection name="mode" value="print">Print slips</button>
+    <button class="btn" type="submit" formmethod="post" formaction="/dispatch/bulk/print" formtarget="_blank" data-needs-selection name="mode" value="pdf">Slips PDF</button>
+    {% if can('dispatch.complete') %}<button class="btn btn-ok" type="submit" formmethod="post" formaction="/dispatch/bulk/complete" data-needs-selection>Complete selected</button>{% endif %}
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <input type="hidden" name="size" value="A5">
+    <span class="muted small">Print / complete apply only to invoices whose slip is generated / printed.</span>
+  </div>
+  {% endif %}
+</div>
+</form>
+{% endblock %}

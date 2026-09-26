@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge with context %}
+{% block content %}
+{% set ro = not can('master.edit') %}
+<div class="crumbs"><a href="/masters/{{ md.key }}">{{ md.title }}</a> › {{ 'New' if is_new else obj.code }}</div>
+<div class="page-head"><div><h1>{{ ('New ' ~ md.singular) if is_new else (md.singular ~ ' · ' ~ obj.name) }}</h1>{% if not is_new and obj.merged_into_id is defined and obj.merged_into_id %}<div class="sub">Merged into another customer — imports using this code resolve to the surviving record.</div>{% endif %}</div></div>
+<div class="grid g-side">
+<div>
+<form method="post" action="/masters/{{ md.key }}/save" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  {% if not is_new %}<input type="hidden" name="id" value="{{ obj.id }}">{% endif %}
+  <input type="hidden" name="back" value="{{ back }}">
+  <div class="form-grid">
+  {% for f in md.fields %}
+    {% set v = obj[f.name] if obj[f.name] is defined else none %}
+    {% if f.kind == 'textarea' %}
+      <div class="w2"><label>{{ f.label }}{% if f.required %} <span class="req">*</span>{% endif %}</label><textarea name="{{ f.name }}" {% if ro %}readonly{% endif %}>{{ v or '' }}</textarea></div>
+    {% elif f.kind == 'bool' %}
+      <div><label>&nbsp;</label><label class="check"><input type="checkbox" name="{{ f.name }}" value="1" {% if v %}checked{% endif %} {% if ro %}disabled{% endif %}>{{ f.label }}</label></div>
+    {% elif f.kind == 'select' %}
+      <div><label>{{ f.label }}{% if f.required %} <span class="req">*</span>{% endif %}</label>
+        <select name="{{ f.name }}" {% if f.required %}required{% endif %} {% if ro %}disabled{% endif %}>
+          <option value="">—</option>
+          {% if f.options.startswith('choice:') %}
+            {% for c in f.options[7:].split(',') %}<option value="{{ c }}" {% if v == c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+          {% else %}
+            {% for o in opts[f.options] %}<option value="{{ o.id }}" {% if v is not none and v|string == o.id|string %}selected{% endif %}>{{ o.code }} · {{ o.name }}</option>{% endfor %}
+          {% endif %}
+        </select>{% if f.help %}<div class="field-hint">{{ f.help }}</div>{% endif %}</div>
+    {% elif f.kind == 'multi' %}
+      <div class="full"><label>{{ f.label }}</label>
+        <div class="checks">{% set sel = (v or [])|map(attribute='id')|list %}
+          {% for o in opts[f.options] %}<label class="check"><input type="checkbox" name="{{ f.name }}" value="{{ o.id }}" {% if o.id in sel %}checked{% endif %} {% if ro %}disabled{% endif %}>{{ o.code }} <span class="muted">· {{ o.name }}</span></label>{% endfor %}
+        </div></div>
+    {% else %}
+      <div><label>{{ f.label }}{% if f.required %} <span class="req">*</span>{% endif %}</label>
+        <input type="{{ 'email' if f.kind == 'email' else 'text' }}" name="{{ f.name }}" value="{{ v if v is not none else '' }}" {% if f.required %}required{% endif %} {% if f.upper %}data-upper{% endif %} {% if ro %}readonly{% endif %} {% if f.kind in ['int','decimal'] %}inputmode="decimal"{% endif %}>
+        {% if f.help %}<div class="field-hint">{{ f.help }}</div>{% endif %}</div>
+    {% endif %}
+  {% endfor %}
+  {% if not is_new and not ro %}<div class="full"><label>Reason for change (optional, stored in audit)</label><input type="text" name="change_reason"></div>{% endif %}
+  </div>
+  {% if not ro %}<div class="form-actions"><button class="btn btn-primary" type="submit">Save</button><a class="btn" href="/masters/{{ md.key }}">Back</a></div>{% endif %}
+</form>
+
+{% if md.key == 'customers' and not is_new %}
+<div class="card flush">
+  <div class="card-head"><h3>ERP codes mapped to this customer</h3><span class="muted small">Same customer, different code in each ERP</span></div>
+  <div class="table-wrap"><table class="data compact">
+    <thead><tr><th>ERP</th><th>ERP customer code</th><th>Name in ERP</th><th>Company scope</th><th>Active</th></tr></thead>
+    <tbody>
+      <tr><td><span class="tag">CENTRAL</span></td><td class="mono">{{ obj.code }}</td><td>{{ obj.name }}</td><td>—</td><td>Yes</td></tr>
+      {% for m in erp_maps %}<tr><td><span class="tag">{{ m.erp_system.code }}</span></td><td class="mono">{{ m.source_code }}</td><td>{{ m.source_name or '' }}</td><td>{{ m.company.code if m.company else 'All' }}</td><td>{{ 'Yes' if m.is_active else 'No' }}</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  {% if can('master.edit') %}
+  <form method="post" action="/masters/erp-mappings" class="row" style="padding:12px 16px">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <input type="hidden" name="entity_type" value="CUSTOMER"><input type="hidden" name="target_id" value="{{ obj.id }}">
+    <select name="erp_system_id" required style="width:140px">{% for e in erps %}<option value="{{ e.id }}">{{ e.code }}</option>{% endfor %}</select>
+    <input type="text" name="source_code" placeholder="ERP customer code" required style="width:180px">
+    <input type="text" name="source_name" placeholder="Name in that ERP (optional)" style="flex:1">
+    <button class="btn" type="submit">Add ERP code</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+</div>
+
+<div>
+  {% if md.key == 'customers' and not is_new %}
+  <div class="card">
+    <h3>Possible duplicates</h3>
+    <p class="small muted">Similar names in the customer master. If they are the same party, merge them.</p>
+    {% for c in similar %}<div class="small"><a href="/masters/customers/{{ c.id }}">{{ c.code }}</a> · {{ c.name }} · {{ c.city or '' }}</div>{% else %}<div class="small muted">None found.</div>{% endfor %}
+    {% if can('master.edit') %}
+    <hr>
+    <form method="post" action="/masters/customers/{{ obj.id }}/merge" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <label>Merge another customer into this one</label>
+      <select name="source_id" required><option value="">— select duplicate —</option>{% for c in all_customers if c.is_active %}<option value="{{ c.id }}">{{ c.code }} · {{ c.name }}</option>{% endfor %}</select>
+      <input type="text" name="reason" id="merge-reason" placeholder="Reason (required)">
+      <button class="btn btn-danger" type="submit" data-require-reason="#merge-reason">Merge into {{ obj.code }}</button>
+      <div class="field-hint">Moves invoices, rates and ERP code mappings; deactivates the duplicate. Audited.</div>
+    </form>
+    {% endif %}
+    <hr><div class="small">{{ invoice_count }} invoice(s) for this customer · <a href="/invoices?customer_id={{ obj.id }}&date_from=2000-01-01">view</a></div>
+  </div>
+  {% endif %}
+  {% if history %}
+  <div class="card">
+    <h3>Change history</h3>
+    <ul class="timeline scroll-y">{% for a in history %}<li><b>{{ a.field or a.action }}</b> · {{ a.username }} · <span class="muted">{{ a.ts|dt }}</span>{% if a.field %}<br>{{ a.old_value or '—' }} → {{ a.new_value or '—' }}{% endif %}{% if a.reason %}<br><i>{{ a.reason }}</i>{% endif %}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+</div>
+</div>
+{% endblock %}

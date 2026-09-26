@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% from "_macros.html" import filter_bar with context %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Management Dashboard</h1><div class="sub">Transportation expense across all authorised companies and CFAs · {{ f.describe() }} (invoice date)</div></div>
+  <div class="actions">
+    <a class="btn" href="/mis?{{ qs }}">Drill-down MIS</a>
+    <a class="btn" href="/reports/monthly-mis?{{ qs }}">Monthly MIS</a>
+  </div>
+</div>
+{{ filter_bar(f, opts, ['date','company','customer','cfa','location','transporter']) }}
+{% set k = d.kpi %}
+<div class="kpis">
+  <a class="kpi" href="/reports/invoice-freight?{{ qs }}"><div class="lbl">Total invoices</div><div class="val">{{ k.invoices|int }}</div><div class="hint">excl. cancelled</div></a>
+  <a class="kpi good" href="/reports/dispatch-register?{{ qs }}"><div class="lbl">Dispatched</div><div class="val">{{ k.dispatched|int }}</div><div class="hint">{{ ((k.dispatched / k.invoices * 100) if k.invoices else 0)|round(1) }}% of invoices</div></a>
+  <a class="kpi {% if k.pending %}warn{% endif %}" href="/dispatch/pending"><div class="lbl">Pending dispatch</div><div class="val">{{ k.pending|int }}</div><div class="hint">open, not yet dispatched</div></a>
+  <div class="kpi"><div class="lbl">Total boxes</div><div class="val">{{ k.boxes|int }}</div></div>
+  <div class="kpi"><div class="lbl">Sales value</div><div class="val" title="{{ k.sales|money }}">{{ k.sales|kpi_money }}</div></div>
+  <div class="kpi"><div class="lbl">Calculated freight</div><div class="val" title="{{ k.freight|money }}">{{ k.freight|kpi_money }}</div></div>
+  <div class="kpi"><div class="lbl">Freight per box</div><div class="val">{{ k.freight_per_box|rate }}</div></div>
+  <div class="kpi"><div class="lbl">Freight % of sales</div><div class="val">{{ k.freight_pct|pct }}</div></div>
+  <a class="kpi" href="/reports/freight-vs-actual?{{ qs }}"><div class="lbl">Actual transporter expense</div><div class="val" title="{{ k.actual|money }}">{{ k.actual|kpi_money }}</div><div class="hint">billed invoices</div></a>
+  <a class="kpi {% if k.variance and k.variance > 0 %}alert{% endif %}" href="/reports/freight-variance?{{ qs }}"><div class="lbl">Variance (actual − calc)</div><div class="val" title="{{ (k.variance or 0)|money }}">{{ (k.variance or 0)|kpi_money }}</div><div class="hint">on billed invoices</div></a>
+  <a class="kpi {% if k.rate_missing %}alert{% endif %}" href="/exceptions"><div class="lbl">Rate-missing invoices</div><div class="val">{{ k.rate_missing|int }}</div><div class="hint">need a freight rate</div></a>
+  <a class="kpi {% if k.exceptions %}warn{% endif %}" href="/reports/dispatch-exceptions"><div class="lbl">Dispatch exceptions</div><div class="val">{{ k.exceptions|int }}</div><div class="hint">boxes / override / conflict</div></a>
+</div>
+
+<div class="grid g2">
+  <div class="card">
+    <div class="card-head"><h3>Monthly trend · calculated freight</h3><a class="small" href="/reports/monthly-mis?{{ qs }}">Table</a></div>
+    <div class="chart-box"><canvas id="c-monthly" aria-label="Monthly calculated freight"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h3>Calculated vs actual freight · by transporter</h3><a class="small" href="/reports/transporter?{{ qs }}">Table</a></div>
+    <div class="chart-box"><canvas id="c-calc-actual" aria-label="Calculated versus actual freight by transporter"></canvas></div>
+    <div class="legend-inline"><span><i style="background:#2a78d6"></i>Calculated (billed invoices)</span><span><i style="background:#eb6834"></i>Actual transporter bill</span></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h3>Company-wise expense</h3><a class="small" href="/reports/company-freight?{{ qs }}">Table</a></div>
+    <div class="chart-box"><canvas id="c-company"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h3>CFA-wise expense</h3><a class="small" href="/reports/cfa-freight?{{ qs }}">Table</a></div>
+    <div class="chart-box"><canvas id="c-cfa"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h3>Top customers by freight</h3><a class="small" href="/reports/customer-freight?{{ qs }}">Customer-wise table</a></div>
+    <div class="chart-box tall"><canvas id="c-customers"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h3>Top locations by transportation cost</h3><a class="small" href="/reports/location-freight?{{ qs }}">Location-wise table</a></div>
+    <div class="chart-box tall"><canvas id="c-locations"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h3>Pending dispatch ageing</h3><a class="small" href="/reports/pending-dispatch">Table</a></div>
+    <div class="chart-box"><canvas id="c-ageing"></canvas></div>
+    <div class="muted small">All currently open invoices (date filter not applied). Age = days since invoice date.</div>
+  </div>
+  <div class="card flush">
+    <div class="card-head"><h3>Company summary</h3></div>
+    <div class="table-wrap">
+      <table class="data compact">
+        <thead><tr><th>Company</th><th class="num">Invoices</th><th class="num">Boxes</th><th class="num">Sales</th><th class="num">Freight</th><th class="num">₹/box</th><th class="num">% sales</th></tr></thead>
+        <tbody>
+        {% for r in d.company %}
+          <tr><td>{{ r.label }}</td><td class="num">{{ r.invoices|int }}</td><td class="num">{{ r.boxes|int }}</td><td class="num">{{ r.sales|money }}</td><td class="num">{{ r.freight|money }}</td><td class="num">{{ r.freight_per_box|rate }}</td><td class="num">{{ r.freight_pct|pct }}</td></tr>
+        {% else %}<tr><td colspan="7" class="empty">No data for the filter</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/vendor/chart.umd.min.js"></script>
+<script src="/static/js/charts.js?v={{ app_version }}"></script>
+<script>
+  const D = {{ d|jsdata|safe }};
+  CT.bar('c-monthly', D.monthly.map(r => r.label), [{label: 'Calculated freight', data: D.monthly.map(r => +r.freight)}]);
+  const tr = D.transporters.filter(r => +r.actual > 0);
+  CT.bar('c-calc-actual', tr.map(r => r.label), [
+    {label: 'Calculated (billed invoices)', data: tr.map(r => +r.billed_calc)},
+    {label: 'Actual transporter bill', data: tr.map(r => +r.actual)}
+  ], {legend: false});
+  CT.hbar('c-company', D.company.map(r => r.label), [{label: 'Freight', data: D.company.map(r => +r.freight)}]);
+  CT.hbar('c-cfa', D.cfas.map(r => r.label), [{label: 'Freight', data: D.cfas.map(r => +r.freight)}]);
+  CT.hbar('c-customers', D.customers.map(r => r.label), [{label: 'Freight', data: D.customers.map(r => +r.freight)}]);
+  CT.hbar('c-locations', D.locations.map(r => r.label), [{label: 'Freight', data: D.locations.map(r => +r.freight)}]);
+  CT.bar('c-ageing', D.ageing.map(r => r.label), [{label: 'Open invoices', data: D.ageing.map(r => r.count),
+          backgroundColor: ['#86b6ef', '#5598e7', '#2a78d6', '#1c5cab', '#104281']}], {money: false});
+</script>
+{% endblock %}

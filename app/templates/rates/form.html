@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% from "_macros.html" import select with context %}
+{% block content %}
+<div class="crumbs"><a href="/rates">Freight Rates</a> › New</div>
+<div class="page-head"><div><h1>New freight rate</h1><div class="sub">Choose the most specific level you need. Leave Customer blank for a standard rate; leave CFA blank for a company-wide location rate.</div></div></div>
+<div class="grid g-side">
+<form method="post" action="/rates" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <div class="form-grid">
+    <div><label>Company / Principal <span class="req">*</span></label>{{ select('company_id', opts.companies, qp.get('company_id'), blank='— select —', required=True, code=True) }}</div>
+    <div><label>CFA</label>{{ select('cfa_id', opts.cfas, qp.get('cfa_id'), blank='Any CFA (level 3)', code=True) }}</div>
+    <div><label>Delivery location</label>{{ select('location_id', opts.locations, qp.get('location_id'), blank='— select —') }}</div>
+    <div><label>Customer (optional)</label>{{ select('customer_id', opts.customers, qp.get('customer_id'), blank='All customers', code=True) }}</div>
+    <div><label>Rate per box (₹) <span class="req">*</span></label><input type="text" name="rate_per_box" inputmode="decimal" required placeholder="8.00"></div>
+    <div><label>Effective from <span class="req">*</span></label><input type="date" name="effective_from" value="{{ qp.get('effective_from') or today.isoformat() }}" required></div>
+    <div><label>Effective to</label><input type="date" name="effective_to"><div class="field-hint">Leave blank for open-ended</div></div>
+    <div><label>&nbsp;</label><label class="check"><input type="checkbox" name="is_default" value="1">Default rate (no location)</label></div>
+    <div class="full"><label>Remarks / reason</label><input type="text" name="remarks" placeholder="e.g. Agreed with Company A for FY 2026-27"></div>
+  </div>
+  <div class="form-actions"><button class="btn btn-primary" type="submit">Create rate</button><a class="btn" href="/rates">Cancel</a></div>
+</form>
+<div class="card">
+  <h3>Rate priority</h3>
+  <ol class="small" style="padding-left:18px;margin:6px 0">
+    <li><b>Customer-specific</b>: Company + CFA + Customer + Location</li>
+    <li><b>Standard</b>: Company + CFA + Location</li>
+    <li><b>Company-wide</b>: Company + Location (any CFA)</li>
+    <li><b>Default</b>: only if explicitly configured</li>
+  </ol>
+  <p class="small muted">If none matches on the invoice date, the invoice is marked <b>RATE MISSING</b> and blocked. Two rates matching at the same level is a <b>RATE CONFLICT</b> — also blocked.</p>
+  <p class="small muted">New rates need approval by a different user (maker-checker). On approval, the previous version is end-dated the day before and matching rate-missing invoices are re-priced.</p>
+</div>
+</div>
+{% endblock %}

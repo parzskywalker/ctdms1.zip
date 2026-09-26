@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge, active with context %}
+{% block content %}
+<div class="page-head"><div><h1>Integration settings</h1><div class="sub">One adapter per source ERP. Every source feeds the same central import pipeline (validation, duplicates, rate lookup, exceptions).</div></div>
+  <div class="actions"><a class="btn" href="/api/docs" target="_blank">REST API docs</a></div></div>
+<div class="card flush"><div class="table-wrap"><table class="data">
+  <thead><tr><th>Code</th><th>ERP</th><th>Adapter</th><th>Mode</th><th>Configured</th><th>Push API key</th><th>Last sync</th><th>Status</th></tr></thead>
+  <tbody>{% for e in erps %}
+    {% set cls = registry.get(e.adapter) %}
+    <tr><td><a href="/admin/integrations/{{ e.id }}"><b>{{ e.code }}</b></a></td><td>{{ e.name }}</td><td>{{ cls.name if cls else e.adapter }}</td><td><span class="tag">{{ e.integration_mode }}</span></td>
+      <td>{% if cls %}{% set miss = cls(e).missing_config() %}{% if miss %}<span class="badge b-WARNING">Needs {{ miss|length }} item(s)</span>{% else %}<span class="badge b-SUCCESS">Ready</span>{% endif %}{% endif %}</td>
+      <td class="small">{{ ('…' ~ e.api_key_hint) if e.api_key_hint else '—' }}</td><td class="small">{{ e.last_sync_at|dt or '—' }}</td><td>{{ active(e.is_active) }}</td></tr>
+  {% endfor %}</tbody>
+</table></div></div>
+<div class="grid g2">
+  <form method="post" action="/admin/integrations/new" class="card">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <h3>Add a source system</h3>
+    <div class="form-grid">
+      <div><label>Code</label><input type="text" name="code" required data-upper placeholder="TALLY"></div>
+      <div><label>Name</label><input type="text" name="name" required placeholder="Tally Prime"></div>
+      <div class="w2"><label>Adapter</label><select name="adapter">{% for k, c in registry.items() %}<option value="{{ k }}">{{ c.name }}</option>{% endfor %}</select></div>
+    </div>
+    <div class="form-actions"><button class="btn btn-primary" type="submit">Add ERP</button></div>
+  </form>
+  <div class="card flush">
+    <div class="card-head"><h3>Recent sync runs</h3></div>
+    <div class="table-wrap"><table class="data compact"><thead><tr><th>#</th><th>ERP</th><th>Started</th><th>Trigger</th><th class="num">Fetched</th><th class="num">Imported</th><th>Status</th></tr></thead>
+      <tbody>{% for r in runs %}<tr><td>{{ r.id }}</td><td>{{ r.erp_system.code }}</td><td class="small">{{ r.started_at|dt }}</td><td>{{ r.trigger }}</td><td class="num">{{ r.fetched }}</td><td class="num">{{ r.imported }}</td><td>{{ badge(r.status) }}</td></tr>{% else %}<tr><td colspan="7" class="empty">No runs yet</td></tr>{% endfor %}</tbody></table></div>
+  </div>
+</div>
+{% endblock %}
