@@ -446,6 +446,13 @@ def test_gatepass_detail_and_lr_pending_pages(web, db):
     assert re.search(r"Gatepasses", w.get("/gatepass?state=all").text)
 
 
+def test_gatepass_list_totals_not_multiplied(web, db):
+    page = web("admin").get("/gatepass?state=all&date_from=2000-01-01").text
+    shown = int(re.search(r'Gatepasses</div><div class="val">(\d+)<', page).group(1))
+    live = db.scalar(select(func.count(DispatchSlip.id)).where(DispatchSlip.is_void.is_(False)))
+    assert 0 < shown <= live
+
+
 def test_master_save_defaults_choice_fields(web, db):
     w = web("admin")
     lo = db.scalar(select(Location).where(Location.code == "RPR"))

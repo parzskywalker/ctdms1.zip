@@ -234,10 +234,10 @@ def register(request: Request, db: Session = Depends(get_db), user: User = Depen
         if s.transporter_id and not s.is_void:
             lr_missing[s.id] = db.scalar(select(func.count(Invoice.id)).where(
                 Invoice.dispatch_slip_id == s.id, Invoice.lr_no.is_(None), Invoice.status != S.CANCELLED)) or 0
-    sums = db.execute(select(func.count(DispatchSlip.id), func.coalesce(func.sum(DispatchSlip.total_cases), 0),
-                             func.coalesce(func.sum(DispatchSlip.total_charge), 0),
-                             func.coalesce(func.sum(DispatchSlip.amount_paid), 0))
-                      .select_from(stmt.where(DispatchSlip.is_void.is_(False)).subquery())).one() if total else (0, 0, 0, 0)
+    live = stmt.where(DispatchSlip.is_void.is_(False)).subquery()
+    sums = db.execute(select(func.count(live.c.id), func.coalesce(func.sum(live.c.total_cases), 0),
+                             func.coalesce(func.sum(live.c.total_charge), 0),
+                             func.coalesce(func.sum(live.c.amount_paid), 0))).one() if total else (0, 0, 0, 0)
     qs = "&".join(f"{k}={v}" for k, v in qp.items() if k != "page")
     return render(request, "gatepass/list.html", {
         "title": "Gatepasses", "slips": slips, "state": state, "states": STATE_FILTERS, "d_from": d_from, "d_to": d_to,
