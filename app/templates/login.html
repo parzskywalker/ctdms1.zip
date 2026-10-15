@@ -16,7 +16,6 @@
       <div><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required></div>
       <button class="btn btn-primary btn-lg" type="submit" style="width:100%">Sign in</button>
     </form>
-    {% if sso_label %}<a class="btn btn-lg" href="/login/sso?next={{ next|urlencode }}" style="width:100%;margin-top:10px;justify-content:center">{{ sso_label }}</a>{% endif %}
     {% if demo_users %}
     <div class="demo-creds">
       <b>Demo logins</b> <span class="muted">(click to fill)</span>

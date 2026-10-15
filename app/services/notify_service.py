@@ -55,8 +55,21 @@ def normalise_mobile(raw) -> str | None:
     return None
 
 
-def provider(db: Session) -> str:
+PAID_PROVIDERS = ("WHATSAPP_CLOUD", "HTTP_SMS")
+
+
+def configured_provider(db: Session) -> str:
     return cfg.get(db, "notify.provider") or "OFF"
+
+
+def provider(db: Session) -> str:
+    """The provider in effect: WhatsApp / SMS cost money per message and stay locked (OFF) unless
+    CTDMS_PAID_SERVICES=true. LOG (trial, nothing leaves the server) is always available."""
+    from app.config import get_settings
+    prov = configured_provider(db)
+    if prov in PAID_PROVIDERS and not get_settings().paid_services:
+        return "OFF"
+    return prov
 
 
 def enabled(db: Session, event: str) -> bool:

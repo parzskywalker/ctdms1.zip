@@ -12,7 +12,7 @@
     <div><label>Email</label><input type="email" name="email" value="{{ u.email or '' if u else '' }}"></div>
     <div><label>Mobile</label><input type="text" name="mobile" value="{{ u.mobile or '' if u else '' }}"></div>
     <div><label>Role <span class="req">*</span></label><select name="role_id" required>{% for r in roles %}<option value="{{ r.id }}" {% if u and u.role_id == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}</select></div>
-    {% if not u %}<div><label>Initial password <span class="req">*</span></label><input type="text" name="password" required><div class="field-hint">User must change it at first login</div></div>{% endif %}
+    {% if not u %}<div><label>Password <span class="req">*</span></label><input type="text" name="password" required autocomplete="off"><label class="check" style="margin-top:6px"><input type="checkbox" name="must_change" value="1" checked>Must change it at first login</label></div>{% endif %}
     <div><label>&nbsp;</label><label class="check"><input type="checkbox" name="is_active" value="1" {% if not u or u.is_active %}checked{% endif %}>Active</label></div>
     <div class="full"><label class="check"><input type="checkbox" name="all_companies" value="1" {% if u and u.all_companies %}checked{% endif %}>All companies</label>
       <div class="checks" style="margin-top:6px">{% for c in companies %}<label class="check"><input type="checkbox" name="companies" value="{{ c.id }}" {% if u and c in u.companies %}checked{% endif %}>{{ c.code }} <span class="muted">· {{ c.name }}</span></label>{% endfor %}</div></div>
@@ -25,10 +25,11 @@
 <div>
   <form method="post" action="/admin/users/{{ u.id }}/password" class="card stack">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
-    <h3>Reset password</h3>
-    <input type="text" name="password" placeholder="New temporary password" required>
-    <button class="btn" type="submit">Reset &amp; unlock</button>
-    <div class="field-hint">Signs the user out everywhere; they must change it at next login.</div>
+    <h3>Set new password</h3>
+    <input type="text" name="password" placeholder="New password" required autocomplete="off">
+    <label class="check"><input type="checkbox" name="must_change" value="1" checked>Must change it at next login</label>
+    <button class="btn" type="submit">Set password &amp; unlock</button>
+    <div class="field-hint">Signs the user out everywhere.</div>
   </form>
   <div class="card"><dl class="dl tight"><dt>Last login</dt><dd>{{ u.last_login_at|dt or '—' }}</dd><dt>Failed logins</dt><dd>{{ u.failed_logins }}</dd><dt>Locked until</dt><dd>{{ u.locked_until|dt or '—' }}</dd><dt>Created</dt><dd>{{ u.created_at|dt }}</dd></dl></div>
 </div>

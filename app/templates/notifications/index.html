@@ -11,7 +11,9 @@
     {% if can('admin.settings') %}<a class="btn" href="/admin/settings">Settings</a>{% endif %}
   </div>
 </div>
-{% if provider == 'OFF' %}
+{% if paid_locked %}
+<div class="alert alert-info">🔒 <b>WhatsApp / SMS sending is locked</b> — these are paid services. Choose <b>LOG</b> in System Settings › <i>notify.provider</i> to see the messages that would be sent, without sending anything.</div>
+{% elif provider == 'OFF' %}
 <div class="alert alert-info"><b>Notifications are switched off.</b> Nothing is queued or sent. An administrator can choose a provider in System Settings › <i>notify.provider</i>: <b>LOG</b> to try it without sending, <b>WHATSAPP_CLOUD</b> (WhatsApp Business Cloud API) or <b>HTTP_SMS</b> (your SMS gateway). The API token goes in <code>CTDMS_NOTIFY_TOKEN</code> in the <code>.env</code> file.</div>
 {% elif provider == 'LOG' %}
 <div class="alert alert-warn"><b>Trial mode (LOG):</b> messages are queued and marked sent, but nothing leaves the server. Switch to WHATSAPP_CLOUD or HTTP_SMS to really send.</div>

@@ -14,6 +14,7 @@ from pathlib import Path
 _tmp = Path(tempfile.mkdtemp(prefix="ctdms-test-"))
 os.environ["CTDMS_DATABASE_URL"] = os.environ.get("CTDMS_TEST_DATABASE_URL") or f"sqlite:///{_tmp / 'test.db'}"
 os.environ["CTDMS_ENVIRONMENT"] = "test"
+os.environ["CTDMS_PAID_SERVICES"] = "true"  # paid features are tested unlocked; test_v151 checks the lock
 os.environ["CTDMS_DATA_DIR"] = str(_tmp)
 os.environ["CTDMS_UPLOAD_DIR"] = str(_tmp / "uploads")
 os.environ["CTDMS_BACKUP_DIR"] = str(_tmp / "backups")

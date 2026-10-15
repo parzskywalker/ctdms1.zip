@@ -61,7 +61,8 @@ def index(request: Request, db: Session = Depends(get_db), user: User = Depends(
         "title": "Customer notifications", "rows": rows, "status": status, "event": event, "q": q,
         "d_from": d_from, "d_to": d_to, "statuses": NotifyStatus.ALL, "events": NotifyEvent.LABELS, "counts": counts,
         "total": total, "page": page, "pages": max(math.ceil(total / per), 1), "qs": qs,
-        "provider": ns.provider(db), "on_gate_out": cfg.get(db, "notify.on_gate_out"),
+        "provider": ns.provider(db), "paid_locked": ns.configured_provider(db) in ns.PAID_PROVIDERS
+        and ns.provider(db) == "OFF", "on_gate_out": cfg.get(db, "notify.on_gate_out"),
         "on_lr": cfg.get(db, "notify.on_lr")})
 
 

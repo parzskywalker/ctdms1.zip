@@ -4,8 +4,9 @@
 <div class="crumbs"><a href="/recon">Transporter bills</a> › Scan a bill</div>
 <div class="page-head">
   <div><h1>Scan a transporter bill</h1>
-    <div class="sub">Photograph each page of the bill (a phone photo is fine, handwritten Hindi bills included) or upload the PDF. {% if ai_ready %}CTDMS reads the lines for you; you then check them next to the photo.{% else %}Automatic reading is not set up, so the photo is shown next to an empty table for you to type the lines.{% endif %} Then every line is cross-checked against our gatepasses.</div></div>
+    <div class="sub">Photograph each page of the bill (a phone photo is fine, handwritten Hindi bills included) or upload the PDF. {% if ai_ready %}CTDMS reads the lines for you; you then check them next to the photo.{% else %}The photo is shown next to an empty table for you to type the lines.{% endif %} Then every line is cross-checked against our gatepasses.</div></div>
 </div>
+{% if ai_locked %}<div class="alert alert-info">🔒 <b>Automatic bill reading is locked</b> — it uses a paid AI service. Type the lines next to the photo; every check and the irregularity report work the same.</div>{% endif %}
 <form method="post" action="/recon/scan" enctype="multipart/form-data" class="card" id="scan-form">
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
   <div class="form-grid">

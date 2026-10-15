@@ -52,7 +52,11 @@ class Settings(BaseSettings):
     # Upload limits
     max_upload_mb: int = 20
 
-    # Reading photographed / scanned transporter bills with Claude (optional; without it lines are typed by hand)
+    # Paid outside services (AI bill reading, WhatsApp / SMS alerts) stay LOCKED until this is true. Everything else
+    # in CTDMS is free and runs on the office server without them.
+    paid_services: bool = False
+
+    # Reading photographed / scanned transporter bills with Claude (paid; locked unless paid_services is true)
     anthropic_api_key: str | None = None
 
     # Customer dispatch alerts: bearer token of the WhatsApp Cloud API / SMS gateway (kept out of the settings page)
@@ -69,21 +73,11 @@ class Settings(BaseSettings):
     smtp_from: str | None = None
     smtp_tls: str = "starttls"  # starttls | ssl | none
 
-    # Single sign-on (OpenID Connect: Google Workspace, Microsoft Entra ID / Azure AD, Okta, Keycloak ...)
-    oidc_issuer: str | None = None         # e.g. https://accounts.google.com or https://login.microsoftonline.com/<tenant>/v2.0
-    oidc_client_id: str | None = None
-    oidc_client_secret: str | None = None
-    oidc_label: str = "Sign in with company account"
-
     @model_validator(mode="after")
     def _environment_defaults(self):
         if self.show_demo_logins is None:
             self.show_demo_logins = not self.is_production
         return self
-
-    @property
-    def sso_enabled(self) -> bool:
-        return bool(self.oidc_issuer and self.oidc_client_id and self.oidc_client_secret)
 
     @property
     def is_sqlite(self) -> bool:

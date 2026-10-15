@@ -37,7 +37,7 @@ cross-check with irregularity report and rate review, seven new reports. See `CH
 
 Add Invoice screen with taxable amount and planned mode / transporter; cost per trip. Proof of delivery, Track
 Shipment, customer tracking link, Deliveries Pending, delivery performance reports, e-way bill gate rule, e-invoice
-QR signature check, case labels, e-mailed reports, single sign-on, tracking API. See `CHANGELOG.md`.
+QR signature check, case labels, e-mailed reports, tracking API. See `CHANGELOG.md`.
 
 ### v1.5 assumptions (please confirm)
 
@@ -45,7 +45,8 @@ QR signature check, case labels, e-mailed reports, single sign-on, tracking API.
 * On time = delivered within `delivery.expected_days` (default 4) of gate-out, same for every area.
 * The e-way bill rule is off until `gate.eway_required_above` is set; CTDMS records the number, it does not
   generate e-way bills (that needs NIC e-way bill API credentials).
-* SSO never creates users; the e-mail on the CTDMS user must match the company account.
+* Paid services (AI bill reading, WhatsApp / SMS) are locked (`CTDMS_PAID_SERVICES=false`). Login is by
+  username / password managed under Administration › Users (no Google / Microsoft sign-in).
 
 ## Assumptions made (change via settings / masters where noted)
 
@@ -68,7 +69,7 @@ QR signature check, case labels, e-mailed reports, single sign-on, tracking API.
 
 * Connect live ERPs (see [ERP_INTEGRATION.md](ERP_INTEGRATION.md) for what each needs) and confirm export layouts.
 * Load real masters and the real rate card; train users.
-* For v1.5 features: put the mail server, IRP public key and (if wanted) SSO credentials in `.env`; set
+* For v1.5 features: put the office mail server and the IRP public key in `.env`; set
   `org.public_url` once the server is reachable from outside.
 * Optional next: e-way bill generation through the NIC API, transporter portal / API for LR and POD updates,
   per-area expected transit days, mobile app for the gate / POD photos.

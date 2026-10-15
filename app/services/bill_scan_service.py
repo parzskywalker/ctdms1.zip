@@ -78,7 +78,15 @@ def api_key() -> str | None:
             or os.environ.get("ANTHROPIC_API_KEY"))
 
 
+def locked() -> bool:
+    """Automatic reading uses the paid Anthropic API: locked unless CTDMS_PAID_SERVICES=true."""
+    from app.config import get_settings
+    return not get_settings().paid_services
+
+
 def available() -> bool:
+    if locked():
+        return False
     try:
         import anthropic  # noqa: F401
     except ImportError:

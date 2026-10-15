@@ -92,7 +92,8 @@ def bill_detail(bill_id: int, request: Request, db: Session = Depends(get_db), u
                                                  "blocking": blocking, "spare_rows": 3 if b.status in rs.EDITABLE else 0,
                                                  "tol_amt": cfg.get(db, "recon.tolerance_amount"),
                                                  "tol_pct": cfg.get(db, "recon.tolerance_pct"),
-                                                 "ai_ready": scan_svc.available() and cfg.get(db, "ai.bill_reader") == "CLAUDE"})
+                                                 "ai_ready": scan_svc.available() and cfg.get(db, "ai.bill_reader") == "CLAUDE",
+                                                 "ai_locked": scan_svc.locked()})
 
 
 # ----------------------------------------------------------------------------- scanned bills
@@ -105,6 +106,7 @@ MEDIA = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".web
 def scan_form(request: Request, db: Session = Depends(get_db), user: User = Depends(require("recon.edit"))):
     return render(request, "recon/scan.html", {"title": "Scan a transporter bill", "opts": filter_options(db, user),
                                                "ai_ready": scan_svc.available() and cfg.get(db, "ai.bill_reader") == "CLAUDE",
+                                                 "ai_locked": scan_svc.locked(),
                                                "today": local_today()})
 
 

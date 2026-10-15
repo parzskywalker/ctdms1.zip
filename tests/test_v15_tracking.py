@@ -6,7 +6,6 @@ import json
 import re
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from urllib.parse import parse_qs, urlparse
 
 import pytest
 from sqlalchemy import select
@@ -363,87 +362,3 @@ def test_subscription_fails_cleanly_without_smtp(web, db, monkeypatch):
     assert "Not sent" in r.text and "CTDMS_SMTP_HOST" in r.text
     db.expire_all()
     assert "CTDMS_SMTP_HOST" in db.get(ReportSubscription, sub.id).last_error
-
-
-# ----------------------------------------------------------------------------- single sign-on
-@pytest.fixture()
-def oidc(monkeypatch):
-    import jwt
-    from cryptography.hazmat.primitives.asymmetric import rsa
-    from app.services import sso_service
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    s = get_settings()
-    for k, v in {"oidc_issuer": "https://idp.example.com", "oidc_client_id": "ctdms",
-                 "oidc_client_secret": "secret"}.items():
-        monkeypatch.setattr(s, k, v)
-    disc = {"issuer": "https://idp.example.com", "authorization_endpoint": "https://idp.example.com/auth",
-            "token_endpoint": "https://idp.example.com/token", "jwks_uri": "https://idp.example.com/jwks"}
-    monkeypatch.setattr(sso_service, "discovery", lambda: disc)
-    state = {"claims": {}}
-
-    class _Key:
-        def __init__(self, *_a, **_k):
-            pass
-
-        def get_signing_key_from_jwt(self, _t):
-            return type("K", (), {"key": key.public_key()})()
-    monkeypatch.setattr(jwt, "PyJWKClient", _Key)
-
-    class _Resp:
-        status_code = 200
-
-        def __init__(self, body):
-            self._b = body
-
-        def json(self):
-            return self._b
-
-    class _Http:
-        @staticmethod
-        def post(url, data=None, timeout=None):
-            now = int(datetime.now().timestamp())
-            claims = {"iss": "https://idp.example.com", "aud": "ctdms", "iat": now, "exp": now + 300,
-                      "nonce": state["nonce"], **state["claims"]}
-            return _Resp({"id_token": jwt.encode(claims, key, algorithm="RS256")})
-    monkeypatch.setattr(sso_service, "_http", lambda: _Http)
-    return state
-
-
-def _sso_login(c, state, claims):
-    from fastapi.testclient import TestClient  # noqa: F401
-    r = c.get("/login/sso", follow_redirects=False)
-    assert r.status_code == 303
-    q = parse_qs(urlparse(r.headers["location"]).query)
-    assert q["client_id"] == ["ctdms"] and q["redirect_uri"][0].endswith("/login/sso/callback")
-    state["nonce"] = q["nonce"][0]
-    state["claims"] = claims
-    return c.get(f"/login/sso/callback?code=abc&state={q['state'][0]}", follow_redirects=False), q
-
-
-def test_sso_login_by_email(oidc, db):
-    from fastapi.testclient import TestClient
-    from app.main import app
-    c = TestClient(app)
-    assert "Sign in with company account" in c.get("/login").text
-    viewer = _u(db, "viewer")
-    r, q = _sso_login(c, oidc, {"email": viewer.email.upper(), "email_verified": True})
-    assert r.status_code == 303 and r.headers["location"] != "/login"
-    who = c.get("/account/password")
-    assert who.status_code == 200 and viewer.full_name in who.text  # signed in as the viewer
-    assert db.scalar(select(AuditLog).where(AuditLog.action == "LOGIN", AuditLog.ref == "viewer")
-                     .order_by(AuditLog.id.desc())).details["method"] == "SSO"
-    # replaying the same callback fails (state is used once)
-    r2 = c.get(f"/login/sso/callback?code=abc&state={q['state'][0]}")
-    assert r2.status_code == 401
-
-
-def test_sso_refuses_unknown_wrong_nonce_and_inactive(oidc, db):
-    from fastapi.testclient import TestClient
-    from app.main import app
-    c = TestClient(app)
-    r, _ = _sso_login(c, oidc, {"email": "stranger@nowhere.in"})
-    assert r.status_code == 401 and "not set up in CTDMS" in r.text
-    r, q = _sso_login(TestClient(app), oidc, {"email": _u(db, "viewer").email, "nonce": "other"})
-    assert r.status_code == 401 and "does not belong" in r.text
-    r, _ = _sso_login(TestClient(app), oidc, {"email": _u(db, "viewer").email, "email_verified": False})
-    assert r.status_code == 401 and "not verified" in r.text

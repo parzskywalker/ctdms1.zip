@@ -191,7 +191,6 @@ def render(request: Request, name: str, ctx: dict | None = None, status_code: in
         "today": today,
         "last_month": (last_month_end.replace(day=1), last_month_end),
         "fy_from": fy_start(today),
-        "sso_label": s.oidc_label if s.sso_enabled else None,
     }
     base.update(ctx or {})
     return templates.TemplateResponse(request, name, base, status_code=status_code)

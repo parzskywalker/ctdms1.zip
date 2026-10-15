@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.5.1 — 15 Oct 2026 (office server, no paid services)
+
+- **Paid services locked**: automatic bill reading (Anthropic API) and WhatsApp / SMS sending stay locked unless
+  `CTDMS_PAID_SERVICES=true` (default false). The features remain in the code; screens say they are locked. Bills
+  are typed next to the photo (all cross-checks unchanged); alerts can be previewed with provider LOG.
+- **Single sign-on removed** (Google / Microsoft): users sign in with username and password only.
+- **Users**: the administrator sets each user's password and decides whether it must be changed at first login
+  (also when setting a new password). Audited.
+- Tests: `tests/test_v151_locks.py` (4); SSO tests removed. Suite: 176 passed.
+
 ## v1.5.0 — 15 Oct 2026 (delivery & tracking, courier-style)
 
 Migration 0006 (applied automatically; all data kept): delivery / POD, e-way bill and QR-signature columns on

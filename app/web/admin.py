@@ -100,7 +100,7 @@ def user_save(request: Request, form=Depends(get_form), db: Session = Depends(ge
         probs = password_problems(pwd)
         if probs:
             raise BusinessError("Initial password needs " + ", ".join(probs))
-        u = User(**values, password_hash=hash_password(pwd), must_change_password=True)
+        u = User(**values, password_hash=hash_password(pwd), must_change_password=bool(form.get("must_change")))
         u.companies, u.cfas = companies, cfas
         db.add(u)
         db.flush()
@@ -112,8 +112,8 @@ def user_save(request: Request, form=Depends(get_form), db: Session = Depends(ge
 
 
 @router.post("/admin/users/{uid:int}/password")
-def user_password(uid: int, request: Request, password: str = Form(...), db: Session = Depends(get_db),
-                  user: User = Depends(require("admin.users"))):
+def user_password(uid: int, request: Request, password: str = Form(...), must_change: str | None = Form(None),
+                  db: Session = Depends(get_db), user: User = Depends(require("admin.users"))):
     u = db.get(User, uid)
     if not u:
         raise HTTPException(404)
@@ -122,14 +122,16 @@ def user_password(uid: int, request: Request, password: str = Form(...), db: Ses
         raise BusinessError("Password needs " + ", ".join(probs))
     from app.models import utcnow
     u.password_hash = hash_password(password)
-    u.must_change_password = True
+    u.must_change_password = bool(must_change)
     u.password_changed_at = utcnow()
     u.failed_logins = 0
     u.locked_until = None
     sign_out_everywhere(db, u)
-    audit.log(db, user, "PASSWORD_RESET", "ADMIN", record_type="User", record_id=u.id, ref=u.username)
+    audit.log(db, user, "PASSWORD_RESET", "ADMIN", record_type="User", record_id=u.id, ref=u.username,
+              details={"must_change": bool(must_change)})
     db.commit()
-    flash(request, f"Password reset for {u.username}; they must change it at next login.", "success")
+    flash(request, f"Password set for {u.username}" + ("; they must change it at next login." if must_change else "."),
+          "success")
     return redirect(f"/admin/users/{u.id}")
 
 

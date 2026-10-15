@@ -31,8 +31,8 @@ DEFAULTS: dict[str, tuple[str, str, str, str, str | None]] = {
                       "Watch the drop folder (data/inbox) and import ERP exports placed there automatically", None),
     "inbox.interval_minutes": ("5", "int", "Import", "How often the drop folder is checked (minutes)", None),
     "ai.bill_reader": ("CLAUDE", "choice", "Reconciliation",
-                       "Read photographed / scanned transporter bills with Claude (needs CTDMS_ANTHROPIC_API_KEY) or OFF "
-                       "(type the lines next to the photo)", "CLAUDE,OFF"),
+                       "Read photographed / scanned transporter bills with Claude (PAID - locked unless CTDMS_PAID_SERVICES=true "
+                       "and CTDMS_ANTHROPIC_API_KEY are set) or OFF (type the lines next to the photo)", "CLAUDE,OFF"),
     "recon.match_window_days": ("3", "int", "Reconciliation",
                                 "Days either side of the LR date searched when a billed LR is not in our records", None),
     "recon.rate_tolerance": ("0.50", "decimal", "Reconciliation",
@@ -56,7 +56,8 @@ DEFAULTS: dict[str, tuple[str, str, str, str, str | None]] = {
     "notify.provider": ("OFF", "choice", "Customer notifications",
                         "Dispatch alerts to customers: OFF (nothing is queued or sent) / LOG (queued and marked sent "
                         "without sending - for trying it out) / WHATSAPP_CLOUD (WhatsApp Business Cloud API template) "
-                        "/ HTTP_SMS (your SMS gateway). The API token goes in CTDMS_NOTIFY_TOKEN (.env).",
+                        "/ HTTP_SMS (your SMS gateway). WhatsApp and SMS are PAID and stay locked unless CTDMS_PAID_SERVICES=true; "
+                        "the API token goes in CTDMS_NOTIFY_TOKEN (.env).",
                         "OFF,LOG,WHATSAPP_CLOUD,HTTP_SMS"),
     "notify.on_gate_out": ("true", "bool", "Customer notifications", "Tell the customer when their goods leave the gate",
                            None),

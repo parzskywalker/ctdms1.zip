@@ -93,12 +93,16 @@ Reprints need a reason and are marked "REPRINT #n (DUPLICATE)".
 * New reports: *Gatepass Register*, *Transporter × Area cost per case*, *SKU-wise Dispatch*, *Stockists / Retailers /
   Hospitals*, *Mode of Dispatch*, *Outside Auto Expense*, *Transporter Bill Irregularities* — all exportable.
 
-## Administrator (v1.5 options)
+## Administrator
 
-* **Single sign-on**: set `CTDMS_OIDC_ISSUER`, `CTDMS_OIDC_CLIENT_ID`, `CTDMS_OIDC_CLIENT_SECRET` (Google Workspace:
-  `https://accounts.google.com`; Microsoft: `https://login.microsoftonline.com/<tenant id>/v2.0`) and register
-  `<public url>/login/sso/callback` with the provider. The login page then shows "Sign in with company account".
-  A user signs in when their e-mail matches exactly one active CTDMS user; roles and scope stay in CTDMS.
+* **Users** (Administration › Users › *New user*): username, name, role (Admin, Management, Accounts, CFA
+  Manager, Dispatch Operator, Checker, Viewer), the companies / CFAs they may see, and a password you choose.
+  Untick *Must change it at first login* to hand over a fixed password. *Set new password* on a user unlocks the
+  account and signs them out everywhere. Every change is in the audit log.
+* **Locked (paid) features**: automatic bill reading (AI) and WhatsApp / SMS alerts cost money and are locked while
+  `CTDMS_PAID_SERVICES=false` (the default). Bills are typed next to the photo; alerts can be tried with
+  `notify.provider = LOG`. Nothing else depends on them.
+
 * **E-invoice QR signature**: download the IRP public key from the e-invoice portal, set
   `CTDMS_IRP_PUBLIC_KEY_FILE`, and choose `einvoice.signature_check` = WARN (flag) or BLOCK (refuse) in System
   Settings. Without the key QR scans are captured as "signature not checked".
