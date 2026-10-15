@@ -614,6 +614,18 @@ def completion_blockers(db: Session, inv: Invoice) -> list[str]:
         return ["Dispatch Slip must be generated before completing dispatch (control: GENERATED)"]
     if rule == "NONE" and inv.status not in (S.VERIFIED, S.SLIP_GENERATED, S.SLIP_PRINTED):
         return ["Invoice must at least be verified"]
+    return eway_blockers(db, inv)
+
+
+def eway_blockers(db: Session, inv: Invoice) -> list[str]:
+    """Setting gate.eway_required_above: invoices above that value need a valid e-way bill before gate-out."""
+    limit = cfg.get(db, "gate.eway_required_above") or 0
+    if not limit or (inv.sales_value or 0) <= limit:
+        return []
+    if not inv.eway_bill_no:
+        return [f"E-way bill number missing for invoice {inv.invoice_no} (value above ₹{limit:,.0f})"]
+    if inv.eway_valid_until and inv.eway_valid_until < local_today():
+        return [f"E-way bill {inv.eway_bill_no} of invoice {inv.invoice_no} expired on {inv.eway_valid_until:%d-%m-%Y}"]
     return []
 
 

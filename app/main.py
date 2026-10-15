@@ -120,11 +120,15 @@ async def lifespan(app: FastAPI):
         from app.services import inbox_service, notify_service
         inbox_service.start_watcher()  # ERP exports dropped into data/inbox are imported automatically
         notify_service.start_sender()  # queued WhatsApp / SMS dispatch alerts go out in the background
+        from app.services import subscription_service
+        subscription_service.start_sender()  # e-mailed reports (when SMTP is set up)
     yield
     if s.environment != "test":
         from app.services import inbox_service, notify_service
         inbox_service.stop_watcher()
         notify_service.stop_sender()
+        from app.services import subscription_service
+        subscription_service.stop_sender()
 
 
 def create_app() -> FastAPI:
@@ -237,10 +241,11 @@ def create_app() -> FastAPI:
     from app.web import (
         admin, approvals, auth_routes, dashboard_routes, dispatch_routes, gatepass_routes, imports_routes,
         invoices_routes, masters_routes, notify_routes, rate_card_routes, rates_routes, recon_routes, reports_routes,
+        subscription_routes, tracking_routes,
     )
     for mod in (auth_routes, dashboard_routes, invoices_routes, imports_routes, dispatch_routes, gatepass_routes,
-                notify_routes, approvals, masters_routes, rates_routes, rate_card_routes, recon_routes, reports_routes,
-                admin):
+                notify_routes, tracking_routes, approvals, masters_routes, rates_routes, rate_card_routes, recon_routes,
+                subscription_routes, reports_routes, admin):
         app.include_router(mod.router)
     app.include_router(v1.router)
 

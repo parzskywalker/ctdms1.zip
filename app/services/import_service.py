@@ -9,6 +9,7 @@ import logging
 import difflib
 import hashlib
 import io
+import re
 from dataclasses import dataclass, field
 from datetime import timedelta
 from decimal import Decimal
@@ -18,8 +19,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import (
-    CFA, BatchStatus, Company, Customer, ERPCodeMapping, ERPSystem, ImportBatch, ImportRow, ImportTemplate,
-    Invoice, InvoiceItem, InvoiceStatus, Location, RowStatus, Transporter, User, utcnow,
+    CFA, BatchStatus, Company, Customer, DispatchMode, ERPCodeMapping, ERPSystem, ImportBatch, ImportRow,
+    ImportTemplate, Invoice, InvoiceItem, InvoiceStatus, Location, RowStatus, Transporter, User, utcnow,
 )
 from app.services import audit
 from app.services import settings_service as cfg
@@ -55,7 +56,9 @@ TARGET_FIELDS: dict[str, tuple[str, bool, list[str]]] = {
                                                      "route", "place"]),
     "sales_value": ("Sales value", True, ["sales value", "net amount", "net value", "invoice value",
                                           "bill amount", "amount", "total", "invoice amount", "net amt",
-                                          "grand total", "taxable value"]),
+                                          "grand total"]),
+    "taxable_value": ("Taxable amount", False, ["taxable value", "taxable amount", "taxable amt", "assessable value",
+                                                "ass value", "basic amount", "value before tax"]),
     "boxes": ("Number of boxes", False, ["boxes", "no of boxes", "no. of boxes", "cases", "no of cases",
                                          "cartons", "no. of packages", "packages", "pkgs", "box", "shippers",
                                          "cartoon", "qty boxes"]),
@@ -63,6 +66,8 @@ TARGET_FIELDS: dict[str, tuple[str, bool, list[str]]] = {
                                                            "document id", "guid", "internal no"]),
     "transporter_code": ("Transporter (code or name)", False, ["transporter", "transporter code",
                                                                "transporter name", "carrier", "forwarding agent"]),
+    "dispatch_mode": ("Mode of dispatch (planned)", False, ["mode of dispatch", "dispatch mode", "despatch mode",
+                                                            "mode"]),
     "lr_no": ("LR / docket number", False, ["lr no", "lr number", "docket no", "docket", "gr no", "lr"]),
     "vehicle_no": ("Vehicle number", False, ["vehicle no", "vehicle number", "truck no", "vehicle"]),
     "remarks": ("Remarks", False, ["remarks", "narration", "note", "notes", "comment"]),
@@ -472,6 +477,20 @@ def group_rows(batch: ImportBatch) -> list[list[ImportRow]]:
     return list(groups.values())
 
 
+def _dispatch_mode(text) -> str | None:
+    """'Self', 'Transporter', 'Direct', 'Outside auto' (and common spellings) -> DispatchMode."""
+    t = re.sub(r"[^a-z]", "", str(text).lower())
+    if t in ("self", "selfpickup", "own", "hand", "byhand", "counter"):
+        return DispatchMode.SELF
+    if t.startswith("direct"):
+        return DispatchMode.DIRECT
+    if "auto" in t:
+        return DispatchMode.OUTSIDE_AUTO
+    if t.startswith("transport") or t in ("courier", "road", "lorry", "truck"):
+        return DispatchMode.TRANSPORTER
+    return None
+
+
 def validate_row(db: Session, batch: ImportBatch, row: ImportRow, res: Resolver, user: User | None,
                  seen: set, group: list[ImportRow] | None = None) -> dict | None:
     """Validate one row (or the header row of an item-wise invoice group). Returns resolved values (for commit)
@@ -510,6 +529,22 @@ def validate_row(db: Session, batch: ImportBatch, row: ImportRow, res: Resolver,
             errors.append(_err("NEGATIVE", "Sales value cannot be negative", field="sales_value"))
     except ValueError as e:
         errors.append(_err("INVALID_NUMBER", str(e), field="sales_value"))
+    taxable = None
+    try:
+        taxable = parse_decimal(val("taxable_value"))
+        if taxable is not None and taxable < 0:
+            errors.append(_err("NEGATIVE", "Taxable amount cannot be negative", field="taxable_value"))
+        elif taxable is not None and sales is not None and taxable > sales:
+            warnings.append(_err("TAXABLE_HIGH", "Taxable amount is more than the invoice amount - check the columns",
+                                 field="taxable_value"))
+    except ValueError as e:
+        errors.append(_err("INVALID_NUMBER", str(e), field="taxable_value"))
+    mode = None
+    if val("dispatch_mode") is not None:
+        mode = _dispatch_mode(val("dispatch_mode"))
+        if mode is None:
+            warnings.append(_err("MODE_UNKNOWN", f"Mode of dispatch '{val('dispatch_mode')}' not understood - ignored "
+                                                 "(Self / Transporter / Direct / Outside auto)"))
     try:
         boxes = parse_int(val("boxes"))
         if boxes is not None and boxes <= 0:
@@ -648,7 +683,8 @@ def validate_row(db: Session, batch: ImportBatch, row: ImportRow, res: Resolver,
     row.status = RowStatus.WARNING if warnings else RowStatus.VALID
     return {
         "company": company, "cfa": cfa, "customer": customer, "location": location, "invoice_no": invoice_no,
-        "invoice_date": inv_date, "fy": fy, "sales": sales or Decimal("0"), "boxes": boxes,
+        "invoice_date": inv_date, "fy": fy, "sales": sales or Decimal("0"), "boxes": boxes, "taxable": taxable,
+        "mode": mode,
         "customer_code": str(val("customer_code") or customer.code), "source_invoice_id": src_id or invoice_no,
         "transporter": transporter, "lr_no": (str(val("lr_no")).strip().upper() if val("lr_no") else None),
         "vehicle_no": norm_vehicle(val("vehicle_no")), "remarks": val("remarks"), "irn": irn,
@@ -743,11 +779,12 @@ def commit_batch(db: Session, user: User, batch: ImportBatch) -> dict:
                 company_id=v["company"].id, cfa_id=v["cfa"].id, customer_id=v["customer"].id,
                 customer_code=v["customer_code"], location_id=v["location"].id, invoice_no=v["invoice_no"],
                 invoice_date=v["invoice_date"], fiscal_year=v["fy"], sales_value=v["sales"], boxes=v["boxes"],
-                boxes_source="ERP", remarks=v["remarks"],
+                taxable_value=v["taxable"], dispatch_mode=v["mode"],
+                boxes_source="MANUAL" if batch.source == "MANUAL" else "ERP", remarks=v["remarks"],
                 transporter_id=v["transporter"].id if v["transporter"] else None,
                 lr_no=v["lr_no"], vehicle_no=v["vehicle_no"], import_batch_id=batch.id, imported_at=utcnow(),
                 imported_by_id=user.id if user else None, status=InvoiceStatus.PENDING, irn=v["irn"],
-                capture_mode="API" if batch.source in ("API", "ADAPTER") else "IMPORT",
+                capture_mode={"API": "API", "ADAPTER": "API", "MANUAL": "MANUAL"}.get(batch.source, "IMPORT"),
             )
             db.add(inv)
             db.flush()

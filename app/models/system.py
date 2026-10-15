@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -74,3 +74,25 @@ class IntegrationRun(Base):
 
     erp_system = relationship("ERPSystem")
     triggered_by = relationship("User")
+
+
+class ReportSubscription(Base):
+    """A report e-mailed on a schedule (daily / weekly / monthly) as an Excel attachment."""
+
+    __tablename__ = "report_subscriptions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120))
+    report_code: Mapped[str] = mapped_column(String(40))
+    frequency: Mapped[str] = mapped_column(String(10))  # DAILY / WEEKLY / MONTHLY
+    params: Mapped[dict | None] = mapped_column(JSON)    # report filters other than the date range
+    recipients: Mapped[str] = mapped_column(Text)        # comma separated e-mail addresses
+    fmt: Mapped[str] = mapped_column(String(5), default="xlsx")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"))  # the report runs with this user's data scope
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
+    last_sent_at: Mapped[datetime | None] = mapped_column(DateTime)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    owner = relationship("User")

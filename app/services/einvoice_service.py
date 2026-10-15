@@ -9,8 +9,11 @@ like a keyboard) or a phone camera is enough.
 * Buyer GSTIN  -> customer (customer master GSTIN; stockist, retailer or hospital)
 * IRN          -> unique per invoice: scanning the same invoice twice finds it instead of creating a duplicate
 
-The signature is not verified here (that needs the IRP's public key); the payload is trusted the same way the
-printed invoice is. Scanning a plain invoice number (1D barcode) finds an invoice already imported.
+Signature: the QR is a JWT signed (RS256) by the IRP. With the IRP's public key (PEM file from the e-invoice portal,
+CTDMS_IRP_PUBLIC_KEY_FILE) every scan is checked - VERIFIED / INVALID (fake or altered QR) - and setting
+`einvoice.signature_check` decides what happens to an invalid one: OFF (not checked), WARN (captured but flagged),
+BLOCK (refused). Without the key the result is UNVERIFIED and the payload is trusted like the printed invoice.
+Scanning a plain invoice number (1D barcode) finds an invoice already imported.
 """
 from __future__ import annotations
 
@@ -25,6 +28,7 @@ from sqlalchemy.orm import Session
 
 from app.models import CFA, Invoice, InvoiceStatus, User, utcnow
 from app.services import audit
+from app.services import settings_service as cfg
 from app.services.errors import BusinessError
 from app.services.import_service import company_by_gstin, customer_by_gstin
 from app.services.invoice_service import apply_freight
@@ -97,6 +101,50 @@ def decode(text: str) -> QRData | None:
                   irn_date=str(data.get("IrnDt") or "") or None)
 
 
+_key_cache: dict = {}
+
+
+def _public_key():
+    from app.config import get_settings
+    path = get_settings().irp_public_key_file
+    if not path:
+        return None
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        return None
+    hit = _key_cache.get(str(path))
+    if hit and hit[0] == mtime:
+        return hit[1]
+    from cryptography.hazmat.primitives.serialization import load_pem_public_key
+    raw = path.read_bytes()
+    if b"BEGIN" not in raw:  # the portal also hands it out as bare base64
+        raw = b"-----BEGIN PUBLIC KEY-----\n" + raw.strip() + b"\n-----END PUBLIC KEY-----\n"
+    key = load_pem_public_key(raw)
+    _key_cache[str(path)] = (mtime, key)
+    return key
+
+
+def signature_status(text: str) -> str:
+    """VERIFIED / INVALID / UNVERIFIED (no key configured, or not a signed QR)."""
+    import jwt
+    t = (text or "").strip()
+    if t.count(".") != 2 or t.startswith("{"):
+        return "UNVERIFIED"
+    try:
+        key = _public_key()
+    except (ValueError, OSError):
+        return "UNVERIFIED"
+    if key is None:
+        return "UNVERIFIED"
+    try:
+        jwt.decode(t, key, algorithms=["RS256"], options={"verify_exp": False, "verify_aud": False,
+                                                          "verify_iat": False, "verify_nbf": False})
+        return "VERIFIED"
+    except jwt.PyJWTError:
+        return "INVALID"
+
+
 def make_demo_qr(seller_gstin: str, buyer_gstin: str, doc_no: str, doc_date: date, value, item_count: int = 3,
                  hsn: str = "30049099") -> str:
     """A QR payload in the IRP format (unsigned) - for the demo and tests only."""
@@ -153,6 +201,15 @@ def scan(db: Session, user: User, text: str, *, cfa_id: int | None = None, cases
                                        "has that number")
     if qr.doc_type not in ("INV", "BIL"):
         return ScanResult(None, False, f"This QR is a {qr.doc_type} (credit / debit note), not an invoice", qr)
+    check = cfg.get(db, "einvoice.signature_check")
+    sig = signature_status(text) if check != "OFF" else None
+    if sig == "INVALID":
+        audit.log(db, user, "QR_SIGNATURE_INVALID", MODULE, ref=qr.doc_no,
+                  details={"irn": qr.irn, "seller": qr.seller_gstin, "buyer": qr.buyer_gstin, "action": check})
+        if check == "BLOCK":
+            db.commit()  # keep the audit entry (the caller rolls back the refused scan)
+            return ScanResult(None, False, f"The QR of invoice {qr.doc_no} is NOT signed by the GST portal - it may "
+                                           "be fake or altered. Check the paper invoice; it was not captured.", qr)
     if qr.irn:
         existing = db.scalar(select(Invoice).where(Invoice.irn == qr.irn))
         if existing:
@@ -201,12 +258,13 @@ def scan(db: Session, user: User, text: str, *, cfa_id: int | None = None, cases
                   location_id=customer.location_id, invoice_no=qr.doc_no, invoice_date=qr.doc_date, fiscal_year=fy,
                   sales_value=qr.value, boxes=boxes, boxes_source="MANUAL" if boxes else "ERP",
                   imported_at=utcnow(), imported_by_id=user.id, status=InvoiceStatus.PENDING, capture_mode="QR_SCAN",
-                  irn=qr.irn, item_count=qr.item_count)
+                  irn=qr.irn, item_count=qr.item_count, qr_signature=sig)
     db.add(inv)
     db.flush()
     apply_freight(db, inv)
     audit.log(db, user, "INVOICE_SCANNED", MODULE, record_type="Invoice", record_id=inv.id, ref=inv.invoice_no,
               details={"irn": qr.irn, "seller": qr.seller_gstin, "buyer": qr.buyer_gstin, "value": str(qr.value),
                        "items": qr.item_count, "cases": boxes})
+    warn = " WARNING: the QR signature is NOT valid - check the paper invoice." if sig == "INVALID" else ""
     return ScanResult(inv, True, f"Invoice {inv.invoice_no} captured from the e-invoice QR "
-                                 f"({customer.name}, ₹{qr.value:,.2f})", qr)
+                                 f"({customer.name}, ₹{qr.value:,.2f}).{warn}", qr)

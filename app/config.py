@@ -58,11 +58,32 @@ class Settings(BaseSettings):
     # Customer dispatch alerts: bearer token of the WhatsApp Cloud API / SMS gateway (kept out of the settings page)
     notify_token: str | None = None
 
+    # E-invoice QR signature check: the GST IRP's public key (PEM file, from the e-invoice portal)
+    irp_public_key_file: Path | None = None
+
+    # E-mailed reports (report subscriptions)
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_user: str | None = None
+    smtp_password: str | None = None
+    smtp_from: str | None = None
+    smtp_tls: str = "starttls"  # starttls | ssl | none
+
+    # Single sign-on (OpenID Connect: Google Workspace, Microsoft Entra ID / Azure AD, Okta, Keycloak ...)
+    oidc_issuer: str | None = None         # e.g. https://accounts.google.com or https://login.microsoftonline.com/<tenant>/v2.0
+    oidc_client_id: str | None = None
+    oidc_client_secret: str | None = None
+    oidc_label: str = "Sign in with company account"
+
     @model_validator(mode="after")
     def _environment_defaults(self):
         if self.show_demo_logins is None:
             self.show_demo_logins = not self.is_production
         return self
+
+    @property
+    def sso_enabled(self) -> bool:
+        return bool(self.oidc_issuer and self.oidc_client_id and self.oidc_client_secret)
 
     @property
     def is_sqlite(self) -> bool:

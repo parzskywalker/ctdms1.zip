@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+{% set first = invs[0] %}
+<div class="crumbs"><a href="/track">Track</a> › {{ invs|map(attribute='invoice_no')|join(', ') }}</div>
+<div class="page-head">
+  <div><h1>{{ first.customer.name }} <span class="tag">{{ stage }}</span></h1>
+    <div class="sub">{{ first.location.name }} · {{ invs|length }} invoice(s) · {{ invs|map(attribute='boxes')|select|sum }} cases{% if slip %} · gatepass <a href="/gatepass/{{ slip.id }}">{{ slip.dispatch_no }}</a>{% endif %}</div></div>
+  {% if link %}<div class="actions"><a class="btn" href="{{ link }}" target="_blank" rel="noopener">Customer's tracking page</a></div>{% endif %}
+</div>
+<div class="grid g-side">
+  <div>
+    <div class="card"><div class="card-head"><h3>Shipment progress</h3>{% if due and not first.delivery_status %}<span class="small muted">expected by {{ due|date }}</span>{% endif %}</div>
+      {% include "tracking/_timeline.html" %}
+    </div>
+    <div class="card flush">
+      <div class="card-head"><h3>Invoices</h3></div>
+      <div class="table-wrap"><table class="data compact">
+        <thead><tr><th>Invoice</th><th>Date</th><th>Company</th><th class="num">Amount</th><th class="num">Cases</th><th>E-way bill</th></tr></thead>
+        <tbody>{% for i in invs %}<tr><td class="mono"><a href="/invoices/{{ i.id }}">{{ i.invoice_no }}</a></td><td>{{ i.invoice_date|date }}</td><td>{{ i.company.name }}</td><td class="num">{{ i.sales_value|money }}</td><td class="num">{{ i.boxes or '—' }}</td><td class="mono small">{{ i.eway_bill_no or '—' }}{% if i.eway_valid_until %}<div class="muted">valid to {{ i.eway_valid_until|date }}</div>{% endif %}</td></tr>{% endfor %}</tbody>
+      </table></div>
+    </div>
+  </div>
+  <div>
+    {% if first.delivery_status %}
+    <div class="card"><div class="card-head"><h3>Proof of delivery</h3></div>
+      <dl class="dl tight">
+        <dt>Status</dt><dd>{{ first.delivery_label }}</dd><dt>Date</dt><dd>{{ first.delivered_on|date }}{% if first.transit_days is not none %} <span class="muted">({{ first.transit_days }} day(s) in transit)</span>{% endif %}</dd>
+        {% if first.received_by %}<dt>Received by</dt><dd>{{ first.received_by }}</dd>{% endif %}
+        {% if first.pod_note %}<dt>Note</dt><dd>{{ first.pod_note }}</dd>{% endif %}
+        <dt>Recorded</dt><dd>{{ first.pod_at|dt }} · {{ 'by the customer (tracking link)' if first.pod_source == 'CUSTOMER' else (first.pod_by.full_name if first.pod_by else '') }}</dd>
+        {% if first.pod_file %}<dt>Copy</dt><dd><a href="/track/{{ first.id }}/pod-file" target="_blank">View POD</a></dd>{% endif %}
+      </dl>
+    </div>
+    {% endif %}
+    {% if can('dispatch.operate') and first.status == InvoiceStatus.DISPATCHED %}
+    <form method="post" action="/track/{{ first.id }}/pod" enctype="multipart/form-data" class="card stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <h3 style="margin:0">{{ 'Correct delivery' if first.delivery_status else 'Record delivery' }}</h3>
+      <div><label>Result</label><select name="status">{% for k, v in statuses.items() %}<option value="{{ k }}" {% if first.delivery_status == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
+      <div><label>Delivered on</label><input type="date" name="delivered_on" value="{{ (first.delivered_on or today).isoformat() }}" max="{{ today.isoformat() }}" min="{{ first.dispatch_date.isoformat() if first.dispatch_date else '' }}" required></div>
+      <div><label>Received by</label><input type="text" name="received_by" value="{{ first.received_by or '' }}" placeholder="name / stamp on the LR"></div>
+      <div><label>Note <span class="muted small">(required if short / damaged / refused)</span></label><input type="text" name="note" value="{{ first.pod_note or '' }}"></div>
+      <div><label>Photo of signed LR / receipt</label><input type="file" name="photo" accept="image/*,application/pdf" capture="environment"></div>
+      {% if first.delivery_status %}<div><label>Reason for the change</label><input type="text" name="reason"></div>{% endif %}
+      <button class="btn btn-primary" type="submit">Save</button>
+    </form>
+    {% endif %}
+    {% if can('dispatch.operate') and slip and not slip.is_void %}
+    <form method="post" action="/track/{{ first.id }}/eway" class="card stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <h3 style="margin:0">E-way bill</h3>
+      {% if eway_limit %}<div class="small muted">Needed before gate-out for invoices above ₹{{ '{:,.0f}'.format(eway_limit) }}.</div>{% endif %}
+      {% for i in invs %}
+      <div><label>Invoice {{ i.invoice_no }} · {{ i.sales_value|money }}</label>
+        <input type="text" name="eway_{{ i.id }}" value="{{ i.eway_bill_no or '' }}" placeholder="E-way bill no (12 digits)" inputmode="numeric">
+        <label class="small muted" style="margin-top:4px">Valid until</label>
+        <input type="date" name="ewayvalid_{{ i.id }}" value="{{ i.eway_valid_until.isoformat() if i.eway_valid_until else '' }}"></div>
+      {% endfor %}
+      <button class="btn" type="submit">Save e-way bills</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

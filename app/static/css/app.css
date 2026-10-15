@@ -304,3 +304,16 @@ details summary { cursor: pointer; font-weight: 600; font-size: 13px; color: var
   .table-wrap { overflow: visible; }
   a { color: inherit; }
 }
+
+/* v1.5 shipment timeline */
+.tl { list-style: none; margin: 0; padding: 0; }
+.tl-step { position: relative; display: flex; gap: 12px; padding: 0 0 14px 0; }
+.tl-step:not(:last-child)::before { content: ""; position: absolute; left: 7px; top: 18px; bottom: 0; width: 2px; background: var(--line, #d8dee6); }
+.tl-dot { flex: 0 0 16px; height: 16px; margin-top: 2px; border-radius: 50%; border: 2px solid #9aa7b4; background: #fff; }
+.tl-step.done .tl-dot { border-color: #10b981; background: #10b981; }
+.tl-step.done:not(:last-child)::before { background: #10b981; }
+.tl-step.problem .tl-dot { border-color: #dc2626; background: #dc2626; }
+.tl-label { font-weight: 600; }
+.track-public { max-width: 520px; }
+tr.row-warn td { background: #fff7ed; }
+@media print { .case-labels .label { break-inside: avoid; } }

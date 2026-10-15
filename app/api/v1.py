@@ -17,7 +17,7 @@ from app import __version__
 from app.db import get_db
 from app.integrations.runner import erp_for_api_key, field_map_for
 from app.models import (
-    CFA, Company, Customer, ERPSystem, Invoice, InvoiceStatus, Location, Transporter, User, utcnow,
+    CFA, Company, Customer, DispatchSlip, ERPSystem, Invoice, InvoiceStatus, Location, Transporter, User, utcnow,
 )
 from app.security.auth import (
     PermissionDenied, authenticate, create_access_token, current_user_optional, require, same_token,
@@ -71,6 +71,8 @@ class InvoiceIn(BaseModel):
     invoice_date: str = Field(description="YYYY-MM-DD or DD-MM-YYYY")
     customer_code: str
     sales_value: Decimal | str
+    taxable_value: Decimal | str | None = None
+    dispatch_mode: str | None = Field(default=None, description="Planned: Self / Transporter / Direct / Outside auto")
     company_code: str | None = None
     cfa_code: str | None = None
     customer_name: str | None = None
@@ -126,6 +128,8 @@ def _inv_out(inv: Invoice) -> dict:
                      "name": inv.customer.name},
         "location": {"id": inv.location_id, "code": inv.location.code, "name": inv.location.name},
         "sales_value": str(inv.sales_value), "boxes": inv.boxes,
+        "taxable_value": str(inv.taxable_value) if inv.taxable_value is not None else None,
+        "capture_mode": inv.capture_mode,
         "rate_per_box": str(inv.rate_per_box) if inv.rate_per_box is not None else None,
         "rate_level": inv.rate_level, "freight_rate_id": inv.freight_rate_id,
         "transportation_expense": str(inv.freight_amount) if inv.freight_amount is not None else None,
@@ -138,6 +142,13 @@ def _inv_out(inv: Invoice) -> dict:
                      "print_count": inv.print_count,
                      "completed_at": inv.completed_at.isoformat() if inv.completed_at else None},
         "actual_freight": str(inv.actual_freight) if inv.actual_freight is not None else None,
+        "eway_bill": {"no": inv.eway_bill_no,
+                      "valid_until": inv.eway_valid_until.isoformat() if inv.eway_valid_until else None},
+        "delivery": {"status": inv.delivery_status,
+                     "delivered_on": inv.delivered_on.isoformat() if inv.delivered_on else None,
+                     "received_by": inv.received_by, "note": inv.pod_note, "recorded_by": inv.pod_source,
+                     "transit_days": inv.transit_days},
+        "qr_signature": inv.qr_signature,
         "erp_sync_status": inv.erp_sync_status,
         "created_at": inv.created_at.isoformat(), "updated_at": inv.updated_at.isoformat(),
     }
@@ -336,6 +347,44 @@ def cancel(invoice_id: int, body: ReasonIn, db: Session = Depends(get_db), user:
     ds.cancel(db, user, inv, body.reason)
     db.commit()
     return _inv_out(inv)
+
+
+# ----------------------------------------------------------------------------- tracking & proof of delivery
+class DeliveryIn(BaseModel):
+    status: str = Field(description="DELIVERED / SHORT / DAMAGED / REFUSED")
+    delivered_on: date
+    received_by: str | None = None
+    note: str | None = Field(default=None, description="Required for SHORT / DAMAGED / REFUSED")
+    reason: str | None = Field(default=None, description="Required when changing an existing delivery record")
+
+
+@router.get("/track", tags=["tracking"])
+def track(q: str, db: Session = Depends(get_db), user: User = Depends(require("dispatch.view"))):
+    """Invoice no, LR, gatepass, e-way bill or IRN -> consignments with their milestones."""
+    from app.services import delivery_service as dsv
+    out = []
+    for group in dsv.consignments_of(dsv.search(db, user, q)):
+        slip = db.get(DispatchSlip, group[0].dispatch_slip_id) if group[0].dispatch_slip_id else None
+        out.append({"stage": dsv.stage(group, slip), "gatepass": slip.dispatch_no if slip else None,
+                    "customer": {"code": group[0].customer.code, "name": group[0].customer.name},
+                    "area": group[0].location.name, "invoices": [_inv_out(i) for i in group],
+                    "milestones": [{"key": st.key, "label": st.label, "done": st.done, "problem": st.problem,
+                                    "at": st.when.isoformat() if st.when else None, "detail": st.detail}
+                                   for st in dsv.timeline(db, group)]})
+    return {"query": q, "consignments": out}
+
+
+@router.post("/invoices/{invoice_id:int}/delivery", tags=["tracking"], dependencies=[Depends(api_csrf)])
+def delivery(invoice_id: int, body: DeliveryIn, db: Session = Depends(get_db),
+             user: User = Depends(require("dispatch.operate"))):
+    """Proof of delivery for the consignment this invoice travels in (all its invoices are updated)."""
+    from app.services import delivery_service as dsv
+    inv = _get(db, user, invoice_id)
+    group = dsv.consignment(db, inv)
+    dsv.record(db, user, group, status=body.status.upper(), delivered_on=body.delivered_on,
+               received_by=body.received_by, note=body.note, source="STAFF", reason=body.reason)
+    db.commit()
+    return {"updated": [_inv_out(i) for i in group]}
 
 
 # ----------------------------------------------------------------------------- masters / reports / dashboard

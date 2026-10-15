@@ -71,7 +71,9 @@ def _inv_json(db: Session, inv: Invoice) -> dict:
             "amount": float(inv.sales_value or 0), "cases": inv.boxes, "status": inv.status_label,
             "company_freight": float(inv.freight_amount) if inv.freight_amount is not None else None,
             "company_rate": float(inv.rate_per_box) if inv.rate_per_box is not None else None,
-            "blocked": blocked, "capture": inv.capture_mode}
+            "blocked": blocked, "capture": inv.capture_mode,
+            "plan_mode": inv.dispatch_mode if inv.status in S.PRE_SLIP else None,
+            "plan_tr": inv.transporter_id if inv.status in S.PRE_SLIP else None}
 
 
 def _cards(db: Session, on) -> dict:
@@ -272,6 +274,32 @@ def detail(slip_id: int, request: Request, db: Session = Depends(get_db), user: 
         "title": f"Gatepass {slip.dispatch_no}", "slip": slip, "groups": list(groups.values()), "invs": invs,
         "print_events": print_events, "complete_blockers": complete_blockers, "alerts": alerts,
         "slip_size": cfg.get(db, "dispatch.default_slip_size"), "rule": cfg.get(db, "dispatch.complete_requires")})
+
+
+@router.get("/gatepass/{slip_id:int}/labels")
+def case_labels(slip_id: int, request: Request, db: Session = Depends(get_db),
+                user: User = Depends(require("dispatch.view"))):
+    """One label per case: gatepass barcode (scanning any case at the gate opens its gatepass), customer, area,
+    invoices, carrier and 'case k of N' per consignment."""
+    slip = _slip(db, user, slip_id)
+    if slip.is_void:
+        raise BusinessError("This gatepass is void - no labels")
+    line_by_inv = {ln.invoice_id: ln for ln in slip.lines}
+    groups: OrderedDict = OrderedDict()
+    for inv in ds.slip_invoices(db, slip):
+        if inv.status != S.CANCELLED:
+            groups.setdefault(inv.customer_id, []).append(inv)
+    carrier = slip.transporter.name if slip.transporter else (slip.outside_auto.name if slip.outside_auto
+                                                               else "Self pickup")
+    labels = []
+    for invs in groups.values():
+        n = sum((line_by_inv[i.id].cases if i.id in line_by_inv else i.boxes or 0) for i in invs)
+        for k in range(1, n + 1):
+            labels.append({"k": k, "n": n, "customer": invs[0].customer, "location": invs[0].location,
+                           "invoices": ", ".join(i.invoice_no for i in invs), "lr": invs[0].lr_no})
+    return templates.TemplateResponse(request, "gatepass/labels.html", {
+        "request": request, "slip": slip, "labels": labels[:2000], "carrier": carrier,
+        "org": cfg.get(db, "org.name"), "sheet": request.query_params.get("sheet") == "a4"})
 
 
 def _label(slip: DispatchSlip, log: SlipPrintLog) -> tuple[str, str]:

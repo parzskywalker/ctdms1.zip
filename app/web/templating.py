@@ -91,10 +91,13 @@ NAV = [
         ("Gatepasses", "/gatepass", "dispatch.view", "clipboard"),
         ("Gate Check", "/gatepass/gate", "dispatch.view", "shield"),
         ("LR Pending", "/gatepass/lr-pending", "dispatch.view", "list"),
+        ("Track Shipment", "/track", "dispatch.view", "pin"),
+        ("Deliveries Pending", "/deliveries", "dispatch.view", "check"),
         ("Customer Alerts", "/notifications", "dispatch.view", "bell"),
         ("Pending Dispatch", "/dispatch/pending", "dispatch.view", "truck"),
     ]),
     ("Operations", [
+        ("Add Invoice", "/invoices/new", "invoice.import", "plus"),
         ("Invoice Import", "/imports", "invoice.import", "upload"),
         ("Invoice Register", "/invoices", "invoice.view", "list"),
         ("Dispatch Register", "/dispatch/register", "dispatch.view", "clipboard"),
@@ -120,6 +123,8 @@ NAV = [
         ("Transporter × Area", "/reports/transporter-area", "report.view", "bar"),
         ("SKU-wise Dispatch", "/reports/sku-dispatch", "report.view", "bar"),
         ("Customer Types", "/reports/customer-type", "report.view", "bar"),
+        ("Delivery Performance", "/reports/delivery-performance", "report.view", "bar"),
+        ("Delivery Register", "/reports/delivery-register", "report.view", "bar"),
         ("Bill Irregularities", "/reports/bill-irregularities", "report.view", "bar"),
         ("Company-wise", "/reports/company-freight", "report.view", "bar"),
         ("Customer-wise", "/reports/customer-freight", "report.view", "bar"),
@@ -130,6 +135,7 @@ NAV = [
         ("Variance", "/reports/freight-variance", "report.view", "bar"),
         ("Audit", "/reports/audit", "audit.view", "bar"),
         ("All Reports", "/reports", "report.view", "list"),
+        ("E-mailed Reports", "/report-subscriptions", "report.view", "mail"),
     ]),
     ("Administration", [
         ("Users", "/admin/users", "admin.users", "user"),
@@ -185,6 +191,7 @@ def render(request: Request, name: str, ctx: dict | None = None, status_code: in
         "today": today,
         "last_month": (last_month_end.replace(day=1), last_month_end),
         "fy_from": fy_start(today),
+        "sso_label": s.oidc_label if s.sso_enabled else None,
     }
     base.update(ctx or {})
     return templates.TemplateResponse(request, name, base, status_code=status_code)

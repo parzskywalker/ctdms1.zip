@@ -849,6 +849,9 @@ def run(reset: bool = True, quiet: bool = False) -> dict:
         log("transporter bills ✓")
 
         pending_rate_proposal(c)
+        _deliveries(c, today)
+        db.commit()
+        log("proofs of delivery ✓")
         # a demo API pull so the integration log is not empty
         from app.integrations.runner import run_sync
         clock(today, 8, 45)
@@ -870,6 +873,30 @@ def run(reset: bool = True, quiet: bool = False) -> dict:
         set_fake_now(None)
         _DB = None
         db.close()
+
+
+def _deliveries(c: Ctx, today: date) -> None:
+    """Proofs of delivery for most consignments that left more than a day ago: transit 1-6 days, a few short /
+    damaged, some confirmed by the customer on the tracking link; the rest stay 'in transit' (some overdue)."""
+    from app.services import delivery_service as dsv
+    rnd = random.Random(20261015)  # separate stream: the rest of the demo data stays as it was
+    invs = list(_DB.scalars(select(Invoice).where(Invoice.status == InvoiceStatus.DISPATCHED,
+                                                  Invoice.dispatch_slip_id.isnot(None),
+                                                  Invoice.dispatch_date <= today - timedelta(days=2))
+                            .order_by(Invoice.dispatch_date, Invoice.id)))
+    clock(today, 18, 0)
+    for group in dsv.consignments_of(invs):
+        first = group[0]
+        if rnd.random() > 0.85:
+            continue  # still on the road / POD not back yet
+        d = min(first.dispatch_date + timedelta(days=rnd.choice([1, 1, 2, 2, 2, 3, 3, 4, 5, 6])), today)
+        roll = rnd.random()
+        status, note = ("SHORT", "1 case short on arrival") if roll < 0.03 else \
+            ("DAMAGED", "one case wet / torn") if roll < 0.06 else ("DELIVERED", None)
+        customer = rnd.random() < 0.15 and status == "DELIVERED"
+        dsv.record(_DB, None if customer else _operator(c, first), group, status=status, delivered_on=d,
+                   received_by=rnd.choice(["Owner", "Store keeper", "Accounts", "Pharmacist", "Godown in-charge"]),
+                   note=note, source="CUSTOMER" if customer else "STAFF")
 
 
 QR_DEMO = [  # (company, customer, invoice no, value, cases) - captured at the desk by scanning the e-invoice QR

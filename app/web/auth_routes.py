@@ -68,6 +68,63 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
     return redirect(target)
 
 
+def _sso_redirect_uri(request: Request, db: Session) -> str:
+    from app.services import settings_service as cfg
+    base = (cfg.get(db, "org.public_url") or "").strip().rstrip("/") or str(request.base_url).rstrip("/")
+    return base + "/login/sso/callback"
+
+
+def _login_error(request: Request, msg: str, status: int = 401):
+    return render(request, "login.html", {"error": msg, "next": "/", "demo_users": DEMO_USERS
+                                          if get_settings().show_demo_logins else []}, status_code=status)
+
+
+@router.get("/login/sso")
+def sso_start(request: Request, next: str = "/", db: Session = Depends(get_db)):
+    from app.services import sso_service
+    from app.services.errors import BusinessError
+    if not get_settings().sso_enabled:
+        return redirect("/login")
+    try:
+        url, saved = sso_service.start(_sso_redirect_uri(request, db))
+    except BusinessError as e:
+        return _login_error(request, e.message, 503)
+    except Exception:  # noqa: BLE001 - provider down / misconfigured
+        return _login_error(request, "The sign-in provider cannot be reached right now - use your password", 503)
+    request.session["sso"] = {**saved, "next": safe_path(next)}
+    return redirect(url)
+
+
+@router.get("/login/sso/callback")
+def sso_callback(request: Request, db: Session = Depends(get_db)):
+    from app.services import sso_service
+    from app.services.errors import BusinessError
+    saved = request.session.pop("sso", None)
+    qp = request.query_params
+    if qp.get("error"):
+        return _login_error(request, f"Sign-in cancelled ({qp.get('error')})")
+    try:
+        claims = sso_service.finish(qp.get("code") or "", qp.get("state") or "", saved)
+        user = sso_service.user_for(db, claims)
+    except BusinessError as e:
+        audit.log(db, None, "LOGIN_FAILED", "SECURITY", ref=str((saved or {}).get("state", ""))[:8] + " SSO",
+                  reason=e.message)
+        db.commit()
+        return _login_error(request, e.message)
+    except Exception:  # noqa: BLE001
+        return _login_error(request, "Sign-in failed - please try again or use your password", 503)
+    token = create_session(db, user, client_ip(request), request.headers.get("user-agent"))
+    request.session.clear()
+    request.session["sid"] = token
+    user.last_login_at = utcnow()
+    user.failed_logins = 0
+    audit.log(db, user, "LOGIN", "SECURITY", record_type="User", record_id=user.id, ref=user.username,
+              details={"method": "SSO", "issuer": claims.get("iss")})
+    db.commit()
+    nxt = (saved or {}).get("next") or "/"
+    return redirect(safe_path(nxt, "") if nxt != "/" else _home_for(user))
+
+
 @router.post("/logout")
 def logout(request: Request, db: Session = Depends(get_db), user: User | None = Depends(current_user_optional)):
     revoke_session(db, request.session.get("sid"))

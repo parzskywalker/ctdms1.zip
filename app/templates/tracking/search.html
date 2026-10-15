@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Track a shipment</h1><div class="sub">Invoice no, LR / bilty no, gatepass no, e-way bill no or e-invoice IRN.</div></div>
+  <a class="btn" href="/deliveries">Deliveries pending</a>
+</div>
+<form method="get" action="/track" class="card row" role="search">
+  <input type="search" name="q" value="{{ q }}" placeholder="Scan or type a number" autofocus style="flex:1">
+  <button class="btn btn-primary" type="submit">Track</button>
+</form>
+{% if q %}
+<div class="card flush">
+  <div class="table-wrap"><table class="data compact">
+    <thead><tr><th>Invoices</th><th>Customer · area</th><th>Gatepass</th><th>Carrier · LR</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td class="mono"><a href="/track/{{ r.invs[0].id }}">{{ r.invs|map(attribute='invoice_no')|join(', ') }}</a></td>
+        <td>{{ r.invs[0].customer.name }}<div class="small muted">{{ r.invs[0].location.name }}</div></td>
+        <td class="mono">{{ r.slip.dispatch_no if r.slip else '—' }}</td>
+        <td>{{ r.slip.transporter.name if r.slip and r.slip.transporter else (r.slip.outside_auto.name if r.slip and r.slip.outside_auto else '—') }}{% if r.invs[0].lr_no %}<div class="small muted">LR {{ r.invs[0].lr_no }}</div>{% endif %}</td>
+        <td><span class="tag">{{ r.stage }}</span></td></tr>
+    {% else %}<tr><td colspan="5" class="empty">Nothing found for “{{ q }}”.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endif %}
+{% endblock %}

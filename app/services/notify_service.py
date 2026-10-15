@@ -94,6 +94,9 @@ def render(db: Session, event: str, slip: DispatchSlip, invs: list[Invoice]) -> 
         lr=first.lr_no or "",
         lr_date=f" dated {first.lr_date:%d-%m-%Y}" if first.lr_date else "",
     )
+    from app.services import delivery_service
+    url = delivery_service.track_url(db, slip, first.customer_id) or ""
+    values.update(track_url=url, track=f" Track: {url}" if url else "")
     tpl = cfg.get(db, "notify.template_gate_out" if event == NotifyEvent.GATE_OUT else "notify.template_lr")
     text = tpl.format_map(values)
     return re.sub(r"\s+", " ", text).strip()[:1000]  # WhatsApp template parameters cannot hold newlines

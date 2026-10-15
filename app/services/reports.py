@@ -13,7 +13,7 @@ from typing import Callable
 from urllib.parse import urlencode
 
 from sqlalchemy import and_, case, func, or_, select
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy.orm import Session, aliased, selectinload
 
 from app.models import (
     CFA, AuditLog, Company, Customer, CustomerType, DispatchMode, DispatchSlip, DispatchSlipLine, ERPSystem,
@@ -226,16 +226,18 @@ def rpt_invoice_freight(db, user, f):
             Col("customer", "Customer"), Col("location", "Location"), Col("invoice_no", "Invoice No", "invoice"),
             Col("boxes", "Boxes", "int", True), Col("rate", "Rate/Box", "rate"),
             Col("freight", "Transportation Expense", "money", True), Col("sales", "Sales Value", "money", True),
+            Col("taxable", "Taxable Amount", "money", True),
             Col("status", "Dispatch Status", "status"), Col("erp", "ERP")]
     stmt = (select(Invoice.id, Invoice.invoice_date, Company.name, CFA.name, Customer.name, Location.name,
                    Invoice.invoice_no, Invoice.boxes, Invoice.rate_per_box, Invoice.freight_amount,
-                   Invoice.sales_value, Invoice.status, ERPSystem.code)
+                   Invoice.sales_value, Invoice.status, ERPSystem.code, Invoice.taxable_value)
             .select_from(Invoice).join(Company).join(CFA).join(Customer).join(Location, Invoice.location_id == Location.id)
             .outerjoin(ERPSystem, Invoice.source_erp_id == ERPSystem.id))
     stmt = _apply_filters(apply_invoice_scope(stmt, user), f, Invoice.invoice_date)
     stmt = stmt.order_by(Invoice.invoice_date, Invoice.invoice_no)
     rows = [dict(invoice_id=r[0], invoice_date=r[1], company=r[2], cfa=r[3], customer=r[4], location=r[5],
-                 invoice_no=r[6], boxes=r[7], rate=r[8], freight=r[9], sales=r[10], status=r[11], erp=r[12])
+                 invoice_no=r[6], boxes=r[7], rate=r[8], freight=r[9], sales=r[10], status=r[11],
+                 erp=r[12], taxable=r[13])
             for r in db.execute(stmt)]
     return ReportResult(cols, rows, _totals(cols, rows, {"rate": AGG_DERIVED["rate"]}), date_basis="Invoice date")
 
@@ -292,23 +294,33 @@ def rpt_transporter(db, user, f):
     cols = [Col("transporter", "Transporter"), Col("invoices", "Invoices", "int", True),
             Col("boxes", "Boxes", "int", True), Col("freight", "Calculated Freight", "money", True),
             Col("actual", "Actual Transporter Bill", "money", True), Col("billed_calc", "Calculated (billed)", "money", True),
-            Col("variance", "Variance", "money"), Col("lr_numbers", "LR Numbers"), Col("vehicles", "Vehicle Numbers")]
+            Col("variance", "Variance", "money"), Col("trips", "Trips (gatepasses)", "int", True),
+            Col("per_case", "Cost / case", "rate"), Col("per_trip", "Cost / trip", "rate"),
+            Col("lr_numbers", "LR Numbers"), Col("vehicles", "Vehicle Numbers")]
     statuses = [S.SLIP_GENERATED, S.SLIP_PRINTED, S.DISPATCHED]
     rows = _grouped(db, user, f, [("transporter_id", Transporter.id), ("transporter", Transporter.name)],
                     [(Transporter, Invoice.transporter_id == Transporter.id)], order_by=[Transporter.name],
                     date_col=Invoice.dispatch_date, statuses=statuses)
-    det = select(Invoice.transporter_id, Invoice.lr_no, Invoice.vehicle_no)
+    det = select(Invoice.transporter_id, Invoice.lr_no, Invoice.vehicle_no, Invoice.dispatch_slip_id)
     det = _apply_filters(apply_invoice_scope(det, user), f, Invoice.dispatch_date, statuses)
-    lrs, vehs = defaultdict(list), defaultdict(list)
-    for tid, lr, veh in db.execute(det):
+    lrs, vehs, trips = defaultdict(list), defaultdict(list), defaultdict(set)
+    for tid, lr, veh, slip_id in db.execute(det):
         if lr and lr not in lrs[tid]:
             lrs[tid].append(lr)
         if veh and veh not in vehs[tid]:
             vehs[tid].append(veh)
+        if slip_id:
+            trips[tid].add(slip_id)
     for r in rows:
         r["lr_numbers"] = ", ".join(lrs[r["transporter_id"]])
         r["vehicles"] = ", ".join(vehs[r["transporter_id"]])
-    return ReportResult(cols, rows, _totals(cols, rows, AGG_DERIVED), date_basis="Dispatch date")
+        r["trips"] = len(trips[r["transporter_id"]])
+        r["per_case"] = _ratio(r["freight"], r["boxes"])
+        r["per_trip"] = _ratio(r["freight"], r["trips"])
+    derived = {**AGG_DERIVED, "per_case": lambda t: _ratio(t.get("freight"), t.get("boxes")),
+               "per_trip": lambda t: _ratio(t.get("freight"), t.get("trips"))}
+    return ReportResult(cols, rows, _totals(cols, rows, derived), date_basis="Dispatch date",
+                        note="A trip is one gatepass. Cost = calculated freight of the invoices on it.")
 
 
 def rpt_dispatch_register(db, user, f):
@@ -788,6 +800,85 @@ def rpt_bill_irregularities(db, user, f):
     return ReportResult(cols, rows, _totals(cols, rows), date_basis="Bill date")
 
 
+def _consignment_rows(db, user, f):
+    """Dispatched consignments (customer on a gatepass) in the period - delivery analytics work per consignment."""
+    from app.services import delivery_service as dsv
+    stmt = _apply_filters(apply_invoice_scope(select(Invoice), user), f, Invoice.dispatch_date, [S.DISPATCHED])
+    stmt = (stmt.where(Invoice.dispatch_slip_id.isnot(None)).order_by(Invoice.dispatch_date, Invoice.id)
+            .options(selectinload(Invoice.transporter), selectinload(Invoice.location),
+                     selectinload(Invoice.customer)))
+    return dsv.consignments_of(list(db.scalars(stmt)))
+
+
+def rpt_delivery_performance(db, user, f):
+    """Transit time and delivery outcome per transporter and area - who delivers on time, where."""
+    from app.services import settings_service as cfg
+    days = int(cfg.get(db, "delivery.expected_days") or 4)
+    cols = [Col("transporter", "Transporter / mode"), Col("location", "Area"),
+            Col("consignments", "Consignments", "int", True), Col("cases", "Cases", "int", True),
+            Col("delivered", "Delivered", "int", True), Col("on_time", f"On time (≤{days} d)", "int", True),
+            Col("late", "Late", "int", True), Col("problems", "Short / damaged / refused", "int", True),
+            Col("open", "No POD yet", "int", True), Col("overdue", "Overdue now", "int", True),
+            Col("avg_days", "Average transit days", "num"), Col("on_time_pct", "On-time %", "pct")]
+    today = local_today()
+    acc: dict = {}
+    for g in _consignment_rows(db, user, f):
+        first = g[0]
+        carrier = first.transporter.name if first.transporter else DispatchMode.LABELS.get(first.dispatch_mode or "", "—")
+        r = acc.setdefault((carrier, first.location.name), dict(
+            transporter=carrier, location=first.location.name, consignments=0, cases=0, delivered=0, on_time=0,
+            late=0, problems=0, open=0, overdue=0, _days=0))
+        r["consignments"] += 1
+        r["cases"] += sum(i.boxes or 0 for i in g)
+        if first.delivery_status:
+            r["delivered"] += 1
+            t = first.transit_days or 0
+            r["_days"] += t
+            r["on_time" if t <= days else "late"] += 1
+            if first.delivery_status in ("SHORT", "DAMAGED", "REFUSED"):
+                r["problems"] += 1
+        else:
+            r["open"] += 1
+            if first.dispatch_date and (today - first.dispatch_date).days > days:
+                r["overdue"] += 1
+    rows = []
+    for r in sorted(acc.values(), key=lambda x: (x["transporter"], x["location"])):
+        d = r.pop("_days")
+        r["avg_days"] = round(d / r["delivered"], 1) if r["delivered"] else None
+        r["on_time_pct"] = _ratio(r["on_time"], r["delivered"], 100)
+        rows.append(r)
+    tot = _totals(cols, rows, {"on_time_pct": lambda t: _ratio(t.get("on_time"), t.get("delivered"), 100)})
+    return ReportResult(cols, rows, tot, date_basis="Dispatch date",
+                        note=f"On time = delivered within {days} day(s) of gate-out (setting delivery.expected_days). "
+                             "A consignment is the invoices of one customer on one gatepass.")
+
+
+def rpt_delivery_register(db, user, f):
+    """Every dispatched consignment with its proof of delivery (or how long it has been on the road)."""
+    cols = [Col("dispatch_date", "Dispatched", "date"), Col("dispatch_no", "Gatepass"), Col("customer", "Customer"),
+            Col("location", "Area"), Col("invoices", "Invoices"), Col("cases", "Cases", "int", True),
+            Col("carrier", "Transporter / mode"), Col("lr", "LR"), Col("eway", "E-way bill"),
+            Col("status", "Delivery"), Col("delivered_on", "Delivered on", "date"), Col("days", "Days", "int"),
+            Col("received_by", "Received by"), Col("note", "Note"), Col("source", "Recorded by")]
+    today = local_today()
+    rows = []
+    for g in _consignment_rows(db, user, f):
+        first = g[0]
+        rows.append(dict(
+            dispatch_date=first.dispatch_date, dispatch_no=first.dispatch_no, customer=first.customer.name,
+            location=first.location.name, invoices=", ".join(i.invoice_no for i in g),
+            cases=sum(i.boxes or 0 for i in g),
+            carrier=first.transporter.name if first.transporter else DispatchMode.LABELS.get(first.dispatch_mode or "", ""),
+            lr=first.lr_no, eway=", ".join(i.eway_bill_no for i in g if i.eway_bill_no),
+            status=first.delivery_label or "In transit", delivered_on=first.delivered_on,
+            days=first.transit_days if first.delivery_status else ((today - first.dispatch_date).days
+                                                                   if first.dispatch_date else None),
+            received_by=first.received_by, note=first.pod_note,
+            source={"STAFF": "Staff", "CUSTOMER": "Customer"}.get(first.pod_source or "", "")))
+    return ReportResult(cols, rows, _totals(cols, rows), date_basis="Dispatch date",
+                        note="Days = transit days when delivered, otherwise days since gate-out.")
+
+
 INV_F = ["date", "company", "customer", "cfa", "location", "transporter", "erp", "status", "invoice_no"]
 REPORTS: dict[str, ReportDef] = {r.code: r for r in [
     ReportDef("gatepass-register", "Gatepass Register", "Operational",
@@ -809,6 +900,13 @@ REPORTS: dict[str, ReportDef] = {r.code: r for r in [
     ReportDef("bill-irregularities", "Transporter Bill Irregularities", "Reconciliation",
               "Every billed line that did not match our gatepasses or rate card, across bills.",
               rpt_bill_irregularities, filters=["date", "transporter"], default_range="fy"),
+    ReportDef("delivery-performance", "Delivery Performance (transit time)", "MIS",
+              "On-time %, average transit days, late and damaged deliveries per transporter and area.",
+              rpt_delivery_performance, filters=["date", "company", "customer", "cfa", "location", "transporter"],
+              default_range="fy"),
+    ReportDef("delivery-register", "Delivery Register (POD)", "Operational",
+              "Every dispatched consignment with its proof of delivery, e-way bill and LR.", rpt_delivery_register,
+              filters=["date", "company", "customer", "cfa", "location", "transporter"], default_range="month"),
     ReportDef("invoice-freight", "Invoice-wise Transportation Expense", "MIS",
               "Every invoice with boxes, rate per box and calculated transportation expense.", rpt_invoice_freight),
     ReportDef("customer-freight", "Customer-wise Transportation Expense", "MIS",

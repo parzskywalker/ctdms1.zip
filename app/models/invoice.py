@@ -33,6 +33,17 @@ class InvoiceStatus:
     }
 
 
+class DeliveryStatus:
+    DELIVERED = "DELIVERED"
+    SHORT = "SHORT"        # fewer cases received than dispatched
+    DAMAGED = "DAMAGED"
+    REFUSED = "REFUSED"    # customer refused / returned
+    ALL = [DELIVERED, SHORT, DAMAGED, REFUSED]
+    PROBLEM = [SHORT, DAMAGED, REFUSED]
+    LABELS = {DELIVERED: "Delivered", SHORT: "Delivered - short", DAMAGED: "Delivered - damaged",
+              REFUSED: "Refused / returned"}
+
+
 class ExceptionCode:
     RATE_MISSING = "RATE_MISSING"
     RATE_CONFLICT = "RATE_CONFLICT"
@@ -68,7 +79,8 @@ class Invoice(Base, TimestampMixin):
     invoice_no: Mapped[str] = mapped_column(String(50), index=True)
     invoice_date: Mapped[date] = mapped_column(Date)
     fiscal_year: Mapped[str] = mapped_column(String(7))
-    sales_value: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=0)
+    sales_value: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=0)  # invoice amount (incl. GST)
+    taxable_value: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))  # before GST, when the source gives it
 
     boxes: Mapped[int | None] = mapped_column(Integer)
     boxes_source: Mapped[str] = mapped_column(String(12), default="ERP")  # ERP / MANUAL / OVERRIDE
@@ -104,6 +116,19 @@ class Invoice(Base, TimestampMixin):
     capture_mode: Mapped[str] = mapped_column(String(10), default="IMPORT")  # IMPORT / QR_SCAN / API / MANUAL
     irn: Mapped[str | None] = mapped_column(String(70), index=True)
     item_count: Mapped[int | None] = mapped_column(Integer)
+    qr_signature: Mapped[str | None] = mapped_column(String(12))  # VERIFIED / UNVERIFIED / INVALID (QR scans only)
+    eway_bill_no: Mapped[str | None] = mapped_column(String(20), index=True)
+    eway_valid_until: Mapped[date | None] = mapped_column(Date)
+
+    # Proof of delivery (the consignment reached the customer)
+    delivery_status: Mapped[str | None] = mapped_column(String(12), index=True)  # DeliveryStatus
+    delivered_on: Mapped[date | None] = mapped_column(Date)
+    received_by: Mapped[str | None] = mapped_column(String(120))
+    pod_note: Mapped[str | None] = mapped_column(Text)
+    pod_file: Mapped[str | None] = mapped_column(String(255))
+    pod_source: Mapped[str | None] = mapped_column(String(10))  # STAFF / CUSTOMER
+    pod_at: Mapped[datetime | None] = mapped_column(DateTime)
+    pod_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
 
     verified_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     verified_at: Mapped[datetime | None] = mapped_column(DateTime)
@@ -147,6 +172,7 @@ class Invoice(Base, TimestampMixin):
     imported_by = relationship("User", foreign_keys=[imported_by_id])
     import_batch = relationship("ImportBatch", foreign_keys=[import_batch_id])
     lr_updated_by = relationship("User", foreign_keys=[lr_updated_by_id])
+    pod_by = relationship("User", foreign_keys=[pod_by_id])
     outside_auto = relationship("OutsideAuto")
     dispatch_slip = relationship("DispatchSlip", primaryjoin="foreign(Invoice.dispatch_slip_id) == DispatchSlip.id",
                                  viewonly=True)
@@ -158,6 +184,16 @@ class Invoice(Base, TimestampMixin):
         if self.freight_amount is None and self.extra_charge is None:
             return None
         return (self.freight_amount or Decimal("0")) + (self.extra_charge or Decimal("0"))
+
+    @property
+    def delivery_label(self) -> str | None:
+        return DeliveryStatus.LABELS.get(self.delivery_status) if self.delivery_status else None
+
+    @property
+    def transit_days(self) -> int | None:
+        if self.delivered_on and self.dispatch_date:
+            return max((self.delivered_on - self.dispatch_date).days, 0)
+        return None
 
     @property
     def central_id(self) -> str:

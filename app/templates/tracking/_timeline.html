@@ -1,0 +1,11 @@
+<ol class="tl">
+{% for s in steps %}
+  <li class="tl-step {% if s.done %}done{% endif %} {% if s.problem %}problem{% endif %}">
+    <span class="tl-dot" aria-hidden="true"></span>
+    <div class="tl-body">
+      <div class="tl-label">{{ s.label }}{% if not s.done %} <span class="muted small">· pending</span>{% endif %}</div>
+      <div class="small muted">{% if s.when %}{% if s.when.hour is defined %}{{ s.when|dt }}{% else %}{{ s.when|date }}{% endif %}{% endif %}{% if s.when and s.detail %} · {% endif %}{{ s.detail }}</div>
+    </div>
+  </li>
+{% endfor %}
+</ol>

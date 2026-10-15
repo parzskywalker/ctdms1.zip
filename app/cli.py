@@ -292,6 +292,18 @@ def notify(args) -> None:
     print(f"Sent {res['sent']}, will retry {res['retry']}, failed {res['failed']}")
 
 
+def reports_mail(args) -> None:
+    """E-mail the report subscriptions that are due - for cron / Task Scheduler setups."""
+    from app.db import SessionLocal
+    from app.services import subscription_service
+    if not subscription_service.smtp_ready():
+        print("E-mail is not set up (CTDMS_SMTP_HOST / CTDMS_SMTP_FROM in .env)")
+        return
+    with SessionLocal() as db:
+        res = subscription_service.send_due(db)
+    print(f"Sent {res['sent']}, failed {res['failed']}")
+
+
 def main(argv=None) -> None:
     p = argparse.ArgumentParser(prog="ctdms")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -321,6 +333,7 @@ def main(argv=None) -> None:
     sp = sub.add_parser("notify", help="send queued WhatsApp / SMS dispatch alerts now")
     sp.add_argument("--limit", type=int, default=200)
     sp.set_defaults(fn=notify)
+    sub.add_parser("reports-mail", help="e-mail the report subscriptions that are due").set_defaults(fn=reports_mail)
     args = p.parse_args(argv)
     args.fn(args)
 

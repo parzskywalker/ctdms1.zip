@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block public %}
+<div class="login-wrap">
+  <div class="login track-public">
+    {% if expired %}
+      <h1>This tracking link has expired</h1>
+      <p class="muted">Please contact the sender for the status of your order.</p>
+    {% else %}
+      <div class="small muted">{{ org }}</div>
+      <h1>Your order · <span class="tag">{{ stage }}</span></h1>
+      <p class="small">Invoice {{ invs|map(attribute='invoice_no')|join(', ') }} · {{ invs|map(attribute='boxes')|select|sum }} cases · to {{ invs[0].customer.name }}, {{ invs[0].location.name }}</p>
+      {% include "tracking/_timeline.html" %}
+      {% if thanks %}<div class="alert alert-success">Thank you - your confirmation has been recorded.</div>{% endif %}
+      {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+      {% if can_confirm %}
+      <form method="post" class="stack" style="margin-top:12px">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <h3 style="margin:0">Received the goods?</h3>
+        <div><label>Condition</label><select name="status">{% for k, v in statuses.items() %}<option value="{{ k }}" {% if invs[0].delivery_status == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
+        <div><label>Date received</label><input type="date" name="delivered_on" value="{{ (invs[0].delivered_on or today).isoformat() }}" max="{{ today.isoformat() }}" required></div>
+        <div><label>Your name</label><input type="text" name="received_by" value="{{ invs[0].received_by or '' }}" required></div>
+        <div><label>Remarks (cases short / damaged ...)</label><input type="text" name="note" value="{{ invs[0].pod_note or '' }}"></div>
+        <button class="btn btn-primary" type="submit">Confirm receipt</button>
+      </form>
+      {% endif %}
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

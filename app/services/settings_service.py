@@ -64,12 +64,13 @@ DEFAULTS: dict[str, tuple[str, str, str, str, str | None]] = {
                      None),
     "notify.template_gate_out": (
         "{org}: your order is on the way. Invoice {invoices} ({cases} cases) left on {date} with {carrier}{carrier_mobile}. "
-        "Gatepass {gatepass}. The LR number will follow.", "str", "Customer notifications",
+        "Gatepass {gatepass}. The LR number will follow.{track}", "str", "Customer notifications",
         "Message on gate-out. Placeholders: {org} {customer} {invoices} {companies} {cases} {carrier} "
-        "{carrier_mobile} {gatepass} {date} {lr} {lr_date}", None),
+        "{carrier_mobile} {gatepass} {date} {lr} {lr_date} {track} (' Track: <link>' when org.public_url is set) "
+        "{track_url}", None),
     "notify.template_lr": (
         "{org}: LR / bilty no {lr}{lr_date} for invoice {invoices} ({cases} cases) with {carrier}{carrier_mobile}. "
-        "Gatepass {gatepass}.", "str", "Customer notifications",
+        "Gatepass {gatepass}.{track}", "str", "Customer notifications",
         "Message when the LR number is entered (same placeholders)", None),
     "notify.whatsapp_api_url": ("https://graph.facebook.com/v21.0", "str", "Customer notifications",
                                 "WhatsApp Cloud API base URL", None),
@@ -90,6 +91,23 @@ DEFAULTS: dict[str, tuple[str, str, str, str, str | None]] = {
                             None),
     "notify.interval_seconds": ("60", "int", "Customer notifications", "How often queued messages are sent (seconds)",
                                 None),
+    "org.public_url": ("", "str", "Organisation",
+                       "Address customers open for tracking links, e.g. https://dispatch.example.com (blank = no "
+                       "tracking link in messages)", None),
+    "delivery.expected_days": ("4", "int", "Delivery & tracking",
+                               "Days from gate-out to delivery counted as on time (transit-time report, overdue list)",
+                               None),
+    "delivery.customer_confirm": ("true", "bool", "Delivery & tracking",
+                                  "Customers may confirm receipt (received / short / damaged) on their tracking link",
+                                  None),
+    "delivery.link_days": ("60", "int", "Delivery & tracking", "How many days a customer tracking link keeps working",
+                           None),
+    "gate.eway_required_above": ("0", "decimal", "Dispatch controls",
+                                 "Gate-out needs an e-way bill number for every invoice above this amount (₹). "
+                                 "0 = no check. The GST limit is usually 50000.", None),
+    "einvoice.signature_check": ("WARN", "choice", "Import",
+                                 "E-invoice QR signature (needs the IRP public key, CTDMS_IRP_PUBLIC_KEY_FILE): "
+                                 "OFF / WARN (flag invalid QRs) / BLOCK (refuse invalid QRs)", "OFF,WARN,BLOCK"),
     "slip.footer_note": ("Goods dispatched in good condition. Please check seals and box count on receipt.",
                          "str", "Dispatch slip", "Footer note printed on each dispatch slip", None),
 }

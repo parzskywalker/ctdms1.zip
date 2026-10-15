@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div><h1>E-mailed reports</h1><div class="sub">Any report sent automatically at 7 am: daily (yesterday), weekly on Mondays (last 7 days) or monthly on the 1st (previous month). It shows the data the subscription's owner may see.</div></div>
+</div>
+{% if not smtp_ready %}<div class="alert alert-warn">E-mail is not set up yet. Put the mail server in <code>.env</code> (CTDMS_SMTP_HOST, CTDMS_SMTP_PORT, CTDMS_SMTP_USER, CTDMS_SMTP_PASSWORD, CTDMS_SMTP_FROM) and restart. Subscriptions can be prepared now.</div>{% endif %}
+<div class="card flush">
+  <div class="table-wrap"><table class="data compact">
+    <thead><tr><th>Name</th><th>Report</th><th>How often</th><th>To</th><th>Format</th><th>Owner</th><th>Next</th><th>Last sent</th><th></th></tr></thead>
+    <tbody>
+    {% for s in rows %}
+      <tr class="{% if not s.is_active %}muted{% endif %}">
+        <td>{{ s.name }}{% if s.last_error %}<div class="small pos">{{ s.last_error }}</div>{% endif %}</td>
+        <td><a href="/reports/{{ s.report_code }}">{{ titles.get(s.report_code, s.report_code) }}</a></td>
+        <td>{{ freqs[s.frequency].split(' (')[0] }}</td><td class="small">{{ s.recipients }}</td><td>{{ formats[s.fmt] }}</td>
+        <td class="small">{{ s.owner.full_name if s.owner else '' }}</td>
+        <td class="nowrap small">{{ s.next_run_at|dt if s.is_active and s.next_run_at else 'paused' }}</td>
+        <td class="nowrap small">{{ s.last_sent_at|dt if s.last_sent_at else '—' }}</td>
+        <td class="nowrap">
+          <form method="post" action="/report-subscriptions/{{ s.id }}/send" style="display:inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn btn-sm" type="submit">Send now</button></form>
+          <form method="post" action="/report-subscriptions/{{ s.id }}/toggle" style="display:inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn btn-sm" type="submit">{{ 'Pause' if s.is_active else 'Resume' }}</button></form>
+          <form method="post" action="/report-subscriptions/{{ s.id }}/delete" style="display:inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn btn-sm btn-ghost" type="submit" data-confirm="Delete '{{ s.name }}'?">✕</button></form>
+        </td>
+      </tr>
+    {% else %}<tr><td colspan="9" class="empty">No e-mailed reports yet.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% if can_export %}
+<form method="post" action="/report-subscriptions" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <h3 style="margin-top:0">New e-mailed report</h3>
+  <div class="form-grid">
+    <div class="w2"><label>Report <span class="req">*</span></label><select name="report_code" required><option value="">— select —</option>{% for r in reports %}<option value="{{ r.code }}">{{ r.group }} · {{ r.title }}</option>{% endfor %}</select></div>
+    <div><label>Name</label><input type="text" name="name" placeholder="(report title)"></div>
+    <div><label>How often <span class="req">*</span></label><select name="frequency">{% for k, v in freqs.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></div>
+    <div><label>Format</label><select name="fmt">{% for k, v in formats.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></div>
+    <div class="w2"><label>E-mail to <span class="req">*</span></label><input type="text" name="recipients" placeholder="md@example.com, accounts@example.com" required></div>
+    <div><label>Company</label><select name="company_id"><option value="">All</option>{% for c in opts.companies %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></div>
+    <div><label>CFA</label><select name="cfa_id"><option value="">All</option>{% for c in opts.cfas %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></div>
+    <div><label>Transporter</label><select name="transporter_id"><option value="">All</option>{% for t in opts.transporters %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</select></div>
+  </div>
+  <div class="form-actions"><button class="btn btn-primary" type="submit">Save</button></div>
+</form>
+{% endif %}
+{% endblock %}

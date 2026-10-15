@@ -14,7 +14,7 @@ psycopg[binary]>=3.1
 
 # Security
 bcrypt>=4.1
-pyjwt>=2.8
+pyjwt[crypto]>=2.8      # RS256: e-invoice QR signature, SSO id-tokens
 
 # Config
 pydantic>=2.7

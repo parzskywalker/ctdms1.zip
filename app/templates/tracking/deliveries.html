@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Deliveries pending</h1><div class="sub">Consignments that left the gate without a proof of delivery yet. On time = within {{ days }} day(s). Tick the ones whose POD copy came back and save.</div></div>
+  <form method="get" class="row" style="margin:0">
+    <select name="transporter_id" style="width:auto"><option value="">All transporters</option>{% for t in transporters %}<option value="{{ t.id }}" {% if t.id == tid %}selected{% endif %}>{{ t.name }}</option>{% endfor %}</select>
+    <label class="check"><input type="checkbox" name="overdue" value="1" {% if overdue %}checked{% endif %}>Overdue only</label>
+    <button class="btn" type="submit">Filter</button>
+  </form>
+</div>
+<form method="post" class="card flush">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="transporter_id" value="{{ tid or '' }}">
+  <div class="table-wrap"><table class="data compact">
+    <thead><tr><th></th><th>Gatepass</th><th>Left on</th><th class="num">Days</th><th>Carrier · LR</th><th>Customer · area</th><th>Invoices</th><th class="num">Cases</th><th>Received by</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr class="{% if r.overdue %}row-warn{% endif %}">
+        <td>{% if can('dispatch.operate') %}<input type="checkbox" name="pick" value="{{ r.invs[0].id }}" aria-label="Delivered">{% endif %}</td>
+        <td class="mono nowrap"><a href="/track/{{ r.invs[0].id }}">{{ r.dispatch_no }}</a></td><td class="nowrap">{{ r.date|date }}</td>
+        <td class="num {% if r.overdue %}pos{% endif %}">{{ r.age }}</td>
+        <td>{{ r.transporter.name if r.transporter else '—' }}{% if r.lr_no %}<div class="small muted">LR {{ r.lr_no }}</div>{% endif %}</td>
+        <td>{{ r.customer.name }}<div class="small muted">{{ r.location.name }}</div></td>
+        <td class="small">{{ r.invs|map(attribute='invoice_no')|join(', ') }}</td><td class="num">{{ r.cases }}</td>
+        <td>{% if can('dispatch.operate') %}<input type="text" name="rcv_{{ r.invs[0].id }}" style="min-height:28px;padding:3px 6px;width:130px">{% endif %}</td>
+      </tr>
+    {% else %}<tr><td colspan="9" class="empty">Every consignment that left has a proof of delivery.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  {% if rows and can('dispatch.operate') %}<div class="sticky-bar"><label>Delivered on</label><input type="date" name="delivered_on" value="{{ today.isoformat() }}" max="{{ today.isoformat() }}" style="width:auto"><button class="btn btn-primary" type="submit">Mark ticked as delivered</button><span class="small muted">Short / damaged / refused: open the consignment instead.</span></div>{% endif %}
+</form>
+{% endblock %}

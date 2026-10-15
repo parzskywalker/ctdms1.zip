@@ -14,6 +14,8 @@
       <button class="btn {{ 'btn-primary' if not slip.print_count else '' }}" type="submit" name="mode" value="print" {% if slip.print_count and not can('dispatch.reprint') %}disabled{% endif %}>{{ 'Print gatepass' if not slip.print_count else 'Reprint' }}</button>
       <button class="btn" type="submit" name="mode" value="pdf" {% if slip.print_count and not can('dispatch.reprint') %}disabled{% endif %}>PDF</button>
     </form>
+    <a class="btn" href="/gatepass/{{ slip.id }}/labels" target="_blank" title="One label per case, 100 × 50 mm">Case labels</a>
+    <a class="btn" href="/gatepass/{{ slip.id }}/labels?sheet=a4" target="_blank" title="10 labels per A4 sheet">Labels (A4)</a>
     {% endif %}
   </div>
 </div>
@@ -39,7 +41,8 @@
       {% for g in groups %}
         {% set locked = g.locked %}
         <tr>
-          <td><b>{{ g.customer.name }}</b> <span class="small muted">{{ g.customer.type_label }}</span><div class="small muted">{{ g.location.name }}{% if g.customer.contact_phone %} · {{ g.customer.contact_phone }}{% endif %}</div></td>
+          <td><b>{{ g.customer.name }}</b> <span class="small muted">{{ g.customer.type_label }}</span><div class="small muted">{{ g.location.name }}{% if g.customer.contact_phone %} · {{ g.customer.contact_phone }}{% endif %}</div>
+            <div class="small"><a href="/track/{{ g.invs[0][0].id }}">Track · delivery · e-way bill</a>{% if g.invs[0][0].delivery_status %} <span class="tag">{{ g.invs[0][0].delivery_label }}</span>{% endif %}</div></td>
           <td class="small">{% for inv, ln in g.invs %}<div><a href="/invoices/{{ inv.id }}">{{ inv.invoice_no }}</a> <span class="muted">{{ inv.company.code }} · {{ inv.sales_value|money }}</span> {% if inv.status in ('CANCELLED','DISPATCHED') %}{{ badge(inv.status) }}{% endif %}</div>{% endfor %}</td>
           <td class="num">{% for inv, ln in g.invs %}<div>{{ ln.cases if ln else inv.boxes }}</div>{% endfor %}</td>
           <td class="num">{% for inv, ln in g.invs %}<div>{{ (ln.rate_per_case if ln else inv.rate_per_box)|rate }}</div>{% endfor %}</td>

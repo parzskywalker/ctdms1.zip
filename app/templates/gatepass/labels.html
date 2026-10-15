@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Case labels · {{ slip.dispatch_no }}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #000; }
+  .bar { padding: 8px 12px; background: #f1f5f9; display: flex; gap: 12px; align-items: center; font-size: 13px; }
+  .labels { display: flex; flex-wrap: wrap; }
+  .label { width: 100mm; height: 50mm; padding: 3mm 4mm; border: 1px dashed #999; overflow: hidden; display: flex; flex-direction: column; gap: 1mm; break-inside: avoid; page-break-inside: avoid; }
+  .top { display: flex; justify-content: space-between; font-size: 9pt; }
+  .cust { font-size: 13pt; font-weight: 700; line-height: 1.1; }
+  .area { font-size: 12pt; font-weight: 700; }
+  .meta { font-size: 8.5pt; }
+  .case { font-size: 16pt; font-weight: 800; white-space: nowrap; }
+  .bc svg { height: 10mm; width: auto; max-width: 60mm; }
+  .row { display: flex; justify-content: space-between; align-items: flex-end; margin-top: auto; }
+  {% if sheet %}
+  @page { size: A4; margin: 8mm 5mm; }
+  .label { width: 50%; height: 55mm; }
+  {% else %}
+  @page { size: 100mm 50mm; margin: 0; }
+  .labels { display: block; }
+  .label { border: 0; page-break-after: always; }
+  {% endif %}
+  @media print { .bar { display: none; } }
+</style>
+</head>
+<body>
+<div class="bar"><b>{{ labels|length }} label(s)</b> for gatepass {{ slip.dispatch_no }} · {{ 'A4 sheet, 10 per page' if sheet else '100 × 50 mm label printer' }}<button onclick="window.print()">Print</button></div>
+{% set bc = slip.dispatch_no|barcode_svg %}
+<div class="labels">
+{% for l in labels %}
+  <div class="label">
+    <div class="top"><span>{{ org }}</span><span>{{ slip.dispatch_date.strftime('%d-%m-%Y') if slip.dispatch_date else '' }}</span></div>
+    <div class="cust">{{ l.customer.name }}</div>
+    <div class="area">{{ l.location.name }}</div>
+    <div class="meta">Inv {{ l.invoices }} · {{ carrier }}{% if l.lr %} · LR {{ l.lr }}{% endif %}</div>
+    <div class="row"><div class="bc">{{ bc }}<div class="meta">{{ slip.dispatch_no }}</div></div><div class="case">{{ l.k }} / {{ l.n }}</div></div>
+  </div>
+{% else %}<p style="padding:12px">No cases on this gatepass.</p>{% endfor %}
+</div>
+</body>
+</html>

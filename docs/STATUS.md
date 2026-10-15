@@ -33,6 +33,20 @@ cross-check with irregularity report and rate review, seven new reports. See `CH
 * Bill photos are sent to the Anthropic API only when `CTDMS_ANTHROPIC_API_KEY` is set; extracted lines are always
   checked by a person before they count.
 
+## v1.4.1 / v1.5 — delivered
+
+Add Invoice screen with taxable amount and planned mode / transporter; cost per trip. Proof of delivery, Track
+Shipment, customer tracking link, Deliveries Pending, delivery performance reports, e-way bill gate rule, e-invoice
+QR signature check, case labels, e-mailed reports, single sign-on, tracking API. See `CHANGELOG.md`.
+
+### v1.5 assumptions (please confirm)
+
+* A consignment (customer on a gatepass) is delivered as a whole; one POD for all its invoices.
+* On time = delivered within `delivery.expected_days` (default 4) of gate-out, same for every area.
+* The e-way bill rule is off until `gate.eway_required_above` is set; CTDMS records the number, it does not
+  generate e-way bills (that needs NIC e-way bill API credentials).
+* SSO never creates users; the e-mail on the CTDMS user must match the company account.
+
 ## Assumptions made (change via settings / masters where noted)
 
 1. *(v1.0–v1.2)* One invoice = one dispatch = one dispatch slip. **Superseded in v1.3**: a gatepass carries many
@@ -54,15 +68,17 @@ cross-check with irregularity report and rate review, seven new reports. See `CH
 
 * Connect live ERPs (see [ERP_INTEGRATION.md](ERP_INTEGRATION.md) for what each needs) and confirm export layouts.
 * Load real masters and the real rate card; train users.
-* Optional: consolidated trip sheet (multiple invoices per vehicle slip), e-way bill / LR number integration with
-  transporters, SMS/WhatsApp dispatch notification to customers, barcode label printing, per-transporter rate
-  cards for comparing transporter quotes, e-mail report subscriptions, SSO (Azure AD / Google).
+* For v1.5 features: put the mail server, IRP public key and (if wanted) SSO credentials in `.env`; set
+  `org.public_url` once the server is reachable from outside.
+* Optional next: e-way bill generation through the NIC API, transporter portal / API for LR and POD updates,
+  per-area expected transit days, mobile app for the gate / POD photos.
 
 ## Known limitations
 
 * ERP adapters other than file/demo have not been run against real MARG/SAP/CBO/Intrect systems (no credentials yet).
-* The Docker image was validated (compose config, entrypoint, gunicorn, migrations, backups) but not built in the
-  development sandbox, because Docker Hub was not reachable there. Build it once on the target server.
+* The Docker image's Python part was built and run (v1.5: pip install from the lock file, migrations, gunicorn,
+  /health). The OS-package layer (postgresql-client, curl) could not be fetched in the build sandbox - build the
+  image once on the target server.
 * SQLite serialises writes — fine for a single site or demo; use PostgreSQL for multi-user production.
 * Print confirmation is software-level (see assumption 6).
 * Report screens show up to 2,000 rows (exports contain everything); invoice-level drill shows up to 1,000 rows per node.

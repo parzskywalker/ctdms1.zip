@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge with context %}
+{% block content %}
+<div class="crumbs"><a href="/invoices">Invoice Register</a> › Add invoice</div>
+<div class="page-head">
+  <div><h1>Add invoice</h1><div class="sub">For an invoice that is not in an ERP export and has no e-invoice QR. Faster ways: <a href="/gatepass/new">scan the QR</a> or drop the ERP export into the <a href="/imports">import</a> folder.</div></div>
+</div>
+{% if errors %}<div class="alert alert-error">{% for e in errors %}<div>{{ e }}</div>{% endfor %}</div>{% endif %}
+<form method="post" action="/invoices/new" class="card" id="newinv">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <div class="form-grid">
+    <div class="w2"><label>Stockist / customer <span class="req">*</span></label>
+      <select name="customer_id" id="customer_id" required>
+        <option value="">— select —</option>
+        {% for c in customers %}<option value="{{ c.id }}" {% if form.customer_id|string == c.id|string %}selected{% endif %}>{{ c.name }} · {{ c.code }}</option>{% endfor %}
+      </select></div>
+    <div><label>Area</label><input type="text" id="area" readonly placeholder="(from the customer master)"><div class="field-hint" id="ctype"></div></div>
+    <div><label>Company <span class="req">*</span></label>
+      <select name="company_id" required><option value="">— select —</option>
+        {% for c in companies %}<option value="{{ c.id }}" {% if form.company_id|string == c.id|string or companies|length == 1 %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+      </select></div>
+    <div><label>CFA / warehouse <span class="req">*</span></label>
+      <select name="cfa_id" required><option value="">— select —</option>
+        {% for c in cfas %}<option value="{{ c.id }}" {% if form.cfa_id|string == c.id|string or cfas|length == 1 %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+      </select></div>
+    <div><label>Mode of dispatch (planned)</label>
+      <select name="dispatch_mode"><option value="">— decide at gatepass —</option>
+        {% for k, v in modes.items() %}<option value="{{ k }}" {% if form.dispatch_mode == k %}selected{% endif %}>{{ v }}</option>{% endfor %}
+      </select></div>
+    <div><label>Transporter (planned)</label>
+      <select name="transporter_id"><option value="">—</option>
+        {% for t in transporters %}<option value="{{ t.id }}" {% if form.transporter_id|string == t.id|string %}selected{% endif %}>{{ t.name }}</option>{% endfor %}
+      </select><div class="field-hint">Pre-selected when the gatepass is made; can still be changed there.</div></div>
+    <div><label>Invoice no <span class="req">*</span></label><input type="text" name="invoice_no" value="{{ form.invoice_no or '' }}" required data-upper autofocus></div>
+    <div><label>Invoice date <span class="req">*</span></label><input type="date" name="invoice_date" value="{{ form.invoice_date or today.isoformat() }}" max="{{ today.isoformat() }}" required></div>
+    <div><label>Invoice amount (₹) <span class="req">*</span></label><input type="text" name="sales_value" value="{{ form.sales_value or '' }}" inputmode="decimal" required></div>
+    <div><label>Taxable amount (₹)</label><input type="text" name="taxable_value" value="{{ form.taxable_value or '' }}" inputmode="decimal"></div>
+    <div><label>No. of cases</label><input type="text" name="boxes" value="{{ form.boxes or '' }}" inputmode="numeric"><div class="field-hint">Can also be entered on the gatepass.</div></div>
+    <div class="w2"><label>Remarks</label><input type="text" name="remarks" value="{{ form.remarks or '' }}"></div>
+  </div>
+  <div class="field-hint" style="margin-top:8px">The LR number is entered after dispatch (transporters give it later) — on the gatepass or under <a href="/gatepass/lr-pending">LR Pending</a>.</div>
+  <div class="form-actions">
+    <button class="btn btn-primary" type="submit" name="next" value="another">Add invoice</button>
+    {% if can('dispatch.operate') %}<button class="btn" type="submit" name="next" value="gatepass">Add &amp; make gatepass</button>{% endif %}
+  </div>
+</form>
+
+<div class="card flush">
+  <div class="card-head"><h3>Latest invoices</h3><a class="small" href="/invoices">All invoices →</a></div>
+  <div class="table-wrap"><table class="data compact">
+    <thead><tr><th>Invoice</th><th>Date</th><th>Stockist</th><th>Company</th><th class="num">Amount</th><th class="num">Cases</th><th>How captured</th><th>Dispatch status</th></tr></thead>
+    <tbody>
+    {% for i in recent %}
+      <tr><td class="mono"><a href="/invoices/{{ i.id }}">{{ i.invoice_no }}</a></td><td class="nowrap">{{ i.invoice_date|date }}</td>
+        <td>{{ i.customer.name }}<div class="small muted">{{ i.location.name }}</div></td><td>{{ i.company.name }}</td>
+        <td class="num">{{ i.sales_value|money }}</td><td class="num">{{ i.boxes or '—' }}</td>
+        <td class="small">{{ {'QR_SCAN': 'QR scan', 'IMPORT': 'Import', 'API': 'ERP / API', 'MANUAL': 'Typed'}.get(i.capture_mode, i.capture_mode) }}</td>
+        <td>{{ badge(i.status) }}</td></tr>
+    {% else %}<tr><td colspan="8" class="empty">No invoices yet.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+<script>
+(function () {
+  var areas = {{ areas|tojson }}, types = {{ customer_types|tojson }};
+  var sel = document.getElementById('customer_id');
+  function show() { document.getElementById('area').value = areas[sel.value] || ''; document.getElementById('ctype').textContent = types[sel.value] || ''; }
+  sel.addEventListener('change', show); show();
+})();
+</script>
+{% endblock %}

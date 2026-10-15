@@ -1,5 +1,49 @@
 # Changelog
 
+## v1.5.0 — 15 Oct 2026 (delivery & tracking, courier-style)
+
+Migration 0006 (applied automatically; all data kept): delivery / POD, e-way bill and QR-signature columns on
+invoices, `report_subscriptions` table. New packages: `cryptography` (via `pyjwt[crypto]`).
+
+- **Proof of delivery**: delivered / short / damaged / refused, date, received by, note, photo of the signed LR.
+  Recorded per consignment (customer on a gatepass), only after gate-out; changes need a reason; all audited.
+  **Deliveries Pending** list (overdue after `delivery.expected_days`) with bulk "delivered on <date>".
+- **Track Shipment**: one search for invoice / LR / gatepass / e-way bill / IRN → milestone timeline
+  (order received → gatepass → printed → left warehouse → LR → delivered → bill checked → paid).
+- **Customer tracking link** (signed, expires after `delivery.link_days`) in WhatsApp / SMS alerts via `{track}` /
+  `{track_url}` when `org.public_url` is set; customers see the timeline without prices and can confirm receipt.
+  A customer confirmation never overwrites a staff record.
+- **E-way bill** number + validity per invoice (12 digits, one invoice per e-way bill); optional gate rule
+  `gate.eway_required_above` blocks gate-out for bigger invoices without a valid e-way bill (default 0 = off).
+- **E-invoice QR signature check** with the IRP public key (`CTDMS_IRP_PUBLIC_KEY_FILE`): VERIFIED / INVALID /
+  UNVERIFIED; `einvoice.signature_check` OFF / WARN (default) / BLOCK. Shown on the invoice.
+- **Case labels**: one per case (customer, area, invoices, carrier, "k / N", gatepass barcode) — 100×50 mm or A4.
+- **Reports**: Delivery Performance (on-time %, average transit days per transporter × area), Delivery Register
+  (POD). **E-mailed reports**: any report daily / weekly / monthly as Excel / CSV / PDF (SMTP in `.env`), sent by
+  the app or `python -m app.cli reports-mail`; runs with the owner's data scope; never sent twice.
+- **Single sign-on** (OpenID Connect: Google Workspace, Microsoft Entra ID, Okta …): user matched by e-mail, no
+  automatic accounts; password login unchanged.
+- **API**: `GET /api/v1/track?q=`, `POST /api/v1/invoices/{id}/delivery`; invoice JSON carries delivery, e-way bill
+  and QR-signature fields.
+- Demo data: proofs of delivery for most older consignments (some short / damaged / confirmed by the customer).
+- Docker: `requirements.lock.txt` updated; image verified on Python 3.11 (pip install, migrations, gunicorn,
+  `/health`) — the OS-package step could not be fetched in the build sandbox.
+- Tests: `tests/test_v15_tracking.py` (17).
+
+## v1.4.1 — 15 Oct 2026 (items from the management brief still missing)
+
+Migration 0005: `invoices.taxable_value`.
+
+- **Add Invoice** screen (flowchart "Add Invoices"): stockist (area filled in automatically), company, CFA,
+  invoice no / date / amount / **taxable amount** / cases, planned **mode of dispatch** and **transporter**
+  (pre-selected when the gatepass is made). Same checks as an import (duplicates, scope, customer area);
+  latest invoices with their dispatch status listed below.
+- Imports: "Taxable value" columns go to the new taxable amount (before, they could land in the invoice amount);
+  a "Mode of dispatch" column is read as the planned mode. API ingest accepts `taxable_value` and `dispatch_mode`.
+- Transporter-wise report: **trips (gatepasses), cost per case, cost per trip**. Invoice-wise report: taxable amount.
+- Fix: totals on the Gatepass list were multiplied by the number of rows (204 gatepasses shown as 41,820).
+- Tests: `tests/test_v141_gaps.py` (5) and a regression test for the totals.
+
 ## v1.4.0 — 15 Oct 2026 (customer dispatch alerts)
 
 Migration 0004 adds the `notifications` table (applied automatically; data kept).

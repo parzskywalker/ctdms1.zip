@@ -33,9 +33,13 @@
           <dt>Company</dt><dd>{{ inv.company.name }} <span class="muted">({{ inv.company.code }})</span></dd>
           <dt>CFA</dt><dd>{{ inv.cfa.name }}</dd>
           <dt>Customer</dt><dd><a href="/masters/customers/{{ inv.customer_id }}">{{ inv.customer.name }}</a> <span class="tag">{{ inv.customer.type_label }}</span><br><span class="muted small">Central {{ inv.customer.code }} · ERP code {{ inv.customer_code or '—' }}</span></dd>
-          <dt>Captured by</dt><dd>{{ {'QR_SCAN': 'E-invoice QR scan', 'IMPORT': 'ERP export import', 'API': 'ERP API / adapter', 'MANUAL': 'Manual'}.get(inv.capture_mode, inv.capture_mode) }}{% if inv.irn %}<br><span class="muted small mono" title="E-invoice IRN">IRN {{ inv.irn[:16] }}…</span>{% endif %}</dd>
+          <dt>Captured by</dt><dd>{{ {'QR_SCAN': 'E-invoice QR scan', 'IMPORT': 'ERP export import', 'API': 'ERP API / adapter', 'MANUAL': 'Manual'}.get(inv.capture_mode, inv.capture_mode) }}{% if inv.irn %}<br><span class="muted small mono" title="E-invoice IRN">IRN {{ inv.irn[:16] }}…</span>{% endif %}{% if inv.qr_signature %} <span class="tag" title="Signature of the GST portal on the QR">QR {{ {'VERIFIED': 'signature verified', 'INVALID': 'signature INVALID', 'UNVERIFIED': 'signature not checked'}[inv.qr_signature] }}</span>{% endif %}</dd>
+          {% if inv.eway_bill_no %}<dt>E-way bill</dt><dd class="mono">{{ inv.eway_bill_no }}{% if inv.eway_valid_until %} <span class="muted small">valid to {{ inv.eway_valid_until|date }}</span>{% endif %}</dd>{% endif %}
+          {% if inv.delivery_status %}<dt>Delivery</dt><dd>{{ inv.delivery_label }} · {{ inv.delivered_on|date }} <a class="small" href="/track/{{ inv.id }}">tracking</a></dd>{% elif inv.dispatch_slip_id %}<dt>Tracking</dt><dd><a href="/track/{{ inv.id }}">Shipment progress</a></dd>{% endif %}
           <dt>Delivery location</dt><dd>{{ inv.location.name }}{% if inv.location.route %} <span class="muted">· route {{ inv.location.route }}</span>{% endif %}</dd>
-          <dt>Sales value</dt><dd>{{ inv.sales_value|money }}</dd>
+          <dt>Invoice amount</dt><dd>{{ inv.sales_value|money }}</dd>
+          {% if inv.taxable_value is not none %}<dt>Taxable amount</dt><dd>{{ inv.taxable_value|money }}</dd>{% endif %}
+          {% if inv.dispatch_mode and inv.status in InvoiceStatus.PRE_SLIP %}<dt>Planned dispatch</dt><dd>{{ {"TRANSPORTER": "Transporter", "DIRECT": "Transporter - direct pickup", "OUTSIDE_AUTO": "Outside auto", "SELF": "Self pickup"}.get(inv.dispatch_mode, inv.dispatch_mode) }}{% if inv.transporter %} · {{ inv.transporter.name }}{% endif %}</dd>{% endif %}
           <dt>Imported</dt><dd>{{ inv.imported_at|dt }}{% if inv.imported_by %} by {{ inv.imported_by.full_name }}{% endif %}{% if inv.import_batch %}<br><a class="small" href="/imports/{{ inv.import_batch_id }}">batch {{ inv.import_batch.batch_no }}</a> ({{ inv.import_batch.source }}){% endif %}</dd>
           <dt>ERP sync</dt><dd>{{ badge(inv.erp_sync_status, inv.erp_sync_status.replace('_',' ').title()) }}</dd>
           {% if inv.remarks %}<dt>Remarks</dt><dd>{{ inv.remarks }}</dd>{% endif %}

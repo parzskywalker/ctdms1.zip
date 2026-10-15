@@ -160,6 +160,11 @@
     const cfa = $('#gp-cfa');
     if (lines.size && [...lines.values()][0].inv.cfa_id !== inv.cfa_id) { say('All invoices on one gatepass must be from the same CFA / warehouse', 'error'); return; }
     if (cfa && cfa.tagName === 'SELECT' && cfa.value && Number(cfa.value) !== inv.cfa_id) cfa.value = inv.cfa_id;
+    if (!lines.size) {  // first invoice: take the mode / transporter planned when it was entered
+      const pm = inv.plan_mode && $(`input[name=mode][value="${inv.plan_mode}"]`);
+      if (pm) pm.checked = true;
+      if (inv.plan_tr && !$('#gp-tr').value) $('#gp-tr').value = String(inv.plan_tr);
+    }
     const tr = document.createElement('tr');
     tr.dataset.id = inv.id;
     const c = cases || inv.cases || '';

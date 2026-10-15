@@ -23,6 +23,23 @@
 7. **LR numbers** come later from the transporter: type them on the gatepass page (one per customer) or on
    **LR Pending** in bulk. They can be corrected (with a reason) until the transporter's bill is approved.
 
+8. **Case labels** (gatepass page): one label per case — customer, area, invoices, carrier, "case 3 / 12" and the
+   gatepass barcode (scanning any case at the gate opens its gatepass). 100 × 50 mm label printer or A4 sheets.
+9. **E-way bill**: on the consignment's *Track* page (link on the gatepass). When System Settings ›
+   `gate.eway_required_above` is set (e.g. 50000), gate-out is refused for bigger invoices without a valid e-way bill.
+10. **Delivery (POD)**: when the signed LR / receipt comes back, open **Deliveries Pending**, tick the consignments
+    and *Mark ticked as delivered* — or open one (*Track Shipment*) to record short / damaged / refused with a note
+    and a photo of the POD. Consignments past `delivery.expected_days` are highlighted as overdue.
+11. **Track Shipment**: type or scan any invoice, LR, gatepass, e-way bill or IRN number → the full timeline
+    (order received → gatepass → printed → left the warehouse → LR → delivered → bill checked → paid).
+
+Typing an invoice by hand (no ERP export, no QR): **Add Invoice** (menu *Operations*) — stockist (area filled in),
+company, invoice no / date / amount / taxable amount / cases, and optionally the planned mode and transporter, which
+are pre-selected when the gatepass is made. The same duplicate and scope checks as an import apply.
+
+Customers: when System Settings › `org.public_url` is set, the WhatsApp / SMS alerts carry a **tracking link**. The
+customer sees the timeline (no prices) and can confirm receipt (received / short / damaged). Staff records always win.
+
 Wrong gatepass before gate-out: a checker **voids** it (reason), the invoices return to the queue, make a new one.
 Reprints need a reason and are marked "REPRINT #n (DUPLICATE)".
 
@@ -69,5 +86,24 @@ Reprints need a reason and are marked "REPRINT #n (DUPLICATE)".
 ## Management
 
 * **Dashboard** and **Transportation MIS** as before.
+* v1.5 reports: **Delivery Performance** (on-time %, average transit days, late / damaged per transporter and area),
+  **Delivery Register (POD)**; *Transporter-wise* now shows trips, cost per case and **cost per trip**.
+* **E-mailed Reports** (menu *Reports*): any report sent at 7 am daily / weekly (Mondays) / monthly (1st) as
+  Excel, CSV or PDF — needs the mail server in `.env`.
 * New reports: *Gatepass Register*, *Transporter × Area cost per case*, *SKU-wise Dispatch*, *Stockists / Retailers /
   Hospitals*, *Mode of Dispatch*, *Outside Auto Expense*, *Transporter Bill Irregularities* — all exportable.
+
+## Administrator (v1.5 options)
+
+* **Single sign-on**: set `CTDMS_OIDC_ISSUER`, `CTDMS_OIDC_CLIENT_ID`, `CTDMS_OIDC_CLIENT_SECRET` (Google Workspace:
+  `https://accounts.google.com`; Microsoft: `https://login.microsoftonline.com/<tenant id>/v2.0`) and register
+  `<public url>/login/sso/callback` with the provider. The login page then shows "Sign in with company account".
+  A user signs in when their e-mail matches exactly one active CTDMS user; roles and scope stay in CTDMS.
+* **E-invoice QR signature**: download the IRP public key from the e-invoice portal, set
+  `CTDMS_IRP_PUBLIC_KEY_FILE`, and choose `einvoice.signature_check` = WARN (flag) or BLOCK (refuse) in System
+  Settings. Without the key QR scans are captured as "signature not checked".
+* **Mail server** for e-mailed reports: `CTDMS_SMTP_HOST`, `CTDMS_SMTP_PORT`, `CTDMS_SMTP_USER`,
+  `CTDMS_SMTP_PASSWORD`, `CTDMS_SMTP_FROM`, `CTDMS_SMTP_TLS` (starttls / ssl / none). `python -m app.cli reports-mail`
+  sends what is due (for cron / Task Scheduler setups; the app also sends by itself every 5 minutes).
+* **Tracking links**: `org.public_url` (System Settings) = the address customers can open; links expire after
+  `delivery.link_days`.
