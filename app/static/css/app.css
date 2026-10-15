@@ -110,6 +110,9 @@ table.data tr.row-muted td { color: var(--muted); }
 table.data tr.sel td { background: #eef5ff !important; }
 table.data .sticky-col { position: sticky; right: 0; background: var(--surface); box-shadow: -6px 0 8px -6px rgba(16,24,40,.18); z-index: 1; }
 table.data thead th.sticky-col { background: var(--surface-2); z-index: 2; }
+.decision-form { flex-wrap: wrap; gap: 6px; }
+.btn.filters-toggle { display: none; }
+.decision-form input[type=text] { flex: 1 1 100% !important; }
 .empty { padding: 28px; text-align: center; color: var(--muted); }
 .pager { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 10px 14px; font-size: 13px; color: var(--muted); border-top: 1px solid var(--line-2); }
 
@@ -123,6 +126,9 @@ table.data thead th.sticky-col { background: var(--surface-2); z-index: 2; }
 .b-SLIP_PRINTED { background: #e9ecfb; color: #3538cd; }
 .b-DISPATCHED, .b-MATCHED, .b-PAID, .b-COMPLETED, .b-IMPORTED, .b-VALID, .b-SUCCESS, .b-APPLIED, .b-ACTIVE { background: var(--ok-soft); color: var(--ok); }
 .b-CANCELLED, .b-INACTIVE, .b-SKIPPED { background: #f1f2f4; color: #6b7280; text-decoration: line-through; }
+.b-VOID, .b-PAID_IN_CASH { background: var(--err-soft); color: var(--err); }
+.b-TBB, .b-PARTIAL { background: var(--warn-soft); color: var(--warn); }
+.b-NIL { background: #f1f2f4; color: #6b7280; }
 .b-yes { background: var(--ok-soft); color: var(--ok); }
 .b-no { background: #f1f2f4; color: #6b7280; }
 .tag { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--brand-soft); color: var(--brand); font-weight: 600; }
@@ -201,6 +207,7 @@ input[type=file] { font-size: 13px; }
 .calc .part small { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .4px; }
 .action-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .blockers { margin: 8px 0 0; padding: 8px 12px 8px 28px; background: var(--warn-soft); border-radius: 6px; color: #7a3a05; font-size: 12.5px; }
+.blockers.soft { background: var(--surface-2); color: var(--muted, #5b6675); border: 1px dashed var(--line); }
 .blockers li { margin: 2px 0; }
 
 /* ---------- tabs */
@@ -233,6 +240,8 @@ input[type=file] { font-size: 13px; }
 .demo-creds table { width: 100%; border-collapse: collapse; }
 .demo-creds td { padding: 2px 4px; }
 .demo-creds code { cursor: pointer; }
+.demo-creds .demo-row { cursor: pointer; }
+.demo-creds .demo-row:hover, .demo-creds .demo-row:focus { background: var(--surface); outline: none; }
 
 /* ---------- misc */
 .stack > * + * { margin-top: 10px; }
@@ -272,6 +281,10 @@ details summary { cursor: pointer; font-weight: 600; font-size: 13px; color: var
 }
 @media (max-width: 720px) {
   .g2, .g4 { grid-template-columns: 1fr; }
+  /* phones: the bulk action bar only appears once something is selected, filters collapse behind a toggle */
+  .sticky-bar.is-empty { display: none; }
+  .btn.filters-toggle { display: inline-flex; margin-bottom: 8px; }
+  .filters.collapsible.collapsed { display: none; }
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .content { padding: 14px 12px 30px; }
   .dl { grid-template-columns: 110px 1fr; }

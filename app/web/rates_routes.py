@@ -13,24 +13,24 @@ from app.services import rate_service
 from app.services.errors import BusinessError
 from app.services.freight_engine import calc_freight, find_rate
 from app.services.import_service import Resolver, read_table
-from app.services.scope import apply_company_scope, can_see
-from app.services.utils import local_today, parse_date, parse_decimal
-from app.web.templating import back_url, filter_options, flash, redirect, render
+from app.services.scope import apply_scope_allow_null_cfa, can_change, can_see
+from app.services.utils import local_today, parse_date, parse_decimal, safe_int
+from app.web.templating import back_url, filter_options, flash, read_upload, redirect, render
 
 router = APIRouter(dependencies=[Depends(csrf_protect)], include_in_schema=False)
 
 
 def _int(v):
-    try:
-        return int(v) if v not in (None, "", "0") else None
-    except ValueError:
-        return None
+    return safe_int(v) or None
 
 
-def _get_rate(db, user, rate_id) -> FreightRate:
+def _get_rate(db, user, rate_id, *, for_change: bool = False) -> FreightRate:
+    """View: company in scope and CFA in scope or company-wide (NULL). Change: fully inside the user's scope."""
     r = db.get(FreightRate, rate_id)
-    if not r or not can_see(user, r.company_id):
+    if not r or not can_see(user, r.company_id, r.cfa_id):
         raise HTTPException(404)
+    if for_change and not can_change(user, r.company_id, r.cfa_id):
+        raise BusinessError("This rate applies outside your assigned CFA(s); only a user with all-CFA access can change it")
     return r
 
 
@@ -38,7 +38,7 @@ def _get_rate(db, user, rate_id) -> FreightRate:
 def rate_list(request: Request, db: Session = Depends(get_db), user: User = Depends(require("rate.view"))):
     qp = request.query_params
     view = qp.get("view", "current")
-    stmt = apply_company_scope(select(FreightRate), user, FreightRate.company_id)
+    stmt = apply_scope_allow_null_cfa(select(FreightRate), user, FreightRate)
     today = local_today()
     if view == "current":
         stmt = stmt.where(FreightRate.status == RateStatus.APPROVED, FreightRate.effective_from <= today,
@@ -62,7 +62,7 @@ def rate_list(request: Request, db: Session = Depends(get_db), user: User = Depe
     counts = {}
     for v in ("pending",):
         counts[v] = db.scalar(select(func.count()).select_from(
-            apply_company_scope(select(FreightRate), user, FreightRate.company_id)
+            apply_scope_allow_null_cfa(select(FreightRate), user, FreightRate)
             .where(FreightRate.status == RateStatus.PENDING_APPROVAL).subquery()))
     return render(request, "rates/list.html", {"title": "Freight Rates", "rows": rows, "view": view, "counts": counts,
                                                "opts": filter_options(db, user), "qp": qp, "levels": RateLevel.LABELS})
@@ -72,7 +72,7 @@ def rate_list(request: Request, db: Session = Depends(get_db), user: User = Depe
 def finder(request: Request, db: Session = Depends(get_db), user: User = Depends(require("rate.view"))):
     qp = request.query_params
     result = None
-    if _int(qp.get("company_id")):
+    if _int(qp.get("company_id")) and can_see(user, _int(qp.get("company_id")), _int(qp.get("cfa_id"))):
         try:
             d = parse_date(qp.get("on_date")) if qp.get("on_date") else local_today()
         except ValueError:
@@ -98,8 +98,8 @@ def create(request: Request, company_id: int = Form(...), cfa_id: str = Form("")
            location_id: str = Form(""), is_default: str = Form(""), rate_per_box: str = Form(...),
            effective_from: str = Form(...), effective_to: str = Form(""), remarks: str = Form(""),
            db: Session = Depends(get_db), user: User = Depends(require("rate.create"))):
-    if not can_see(user, company_id):
-        raise BusinessError("You cannot create rates for this company")
+    if not can_change(user, company_id, _int(cfa_id)):
+        raise BusinessError("You can only create rates for your own company / CFA (select your CFA)")
     try:
         ef = parse_date(effective_from)
         et = parse_date(effective_to) if effective_to else None
@@ -130,7 +130,7 @@ def detail(rate_id: int, request: Request, db: Session = Depends(get_db), user: 
 @router.post("/rates/{rate_id:int}/revise")
 def revise(rate_id: int, request: Request, rate_per_box: str = Form(...), effective_from: str = Form(...),
            change_reason: str = Form(""), db: Session = Depends(get_db), user: User = Depends(require("rate.create"))):
-    prev = _get_rate(db, user, rate_id)
+    prev = _get_rate(db, user, rate_id, for_change=True)
     try:
         ef = parse_date(effective_from)
         rate = parse_decimal(rate_per_box)
@@ -147,7 +147,7 @@ def revise(rate_id: int, request: Request, rate_per_box: str = Form(...), effect
 @router.post("/rates/{rate_id:int}/decide")
 def decide(rate_id: int, request: Request, decision: str = Form(...), remarks: str = Form(""),
            db: Session = Depends(get_db), user: User = Depends(require("rate.approve"))):
-    r = _get_rate(db, user, rate_id)
+    r = _get_rate(db, user, rate_id, for_change=True)
     if decision == "approve":
         n = rate_service.approve_rate(db, user, r, remarks or None)
         db.commit()
@@ -163,14 +163,18 @@ def decide(rate_id: int, request: Request, decision: str = Form(...), remarks: s
 @router.post("/rates/{rate_id:int}/close")
 def close(rate_id: int, request: Request, effective_to: str = Form(...), reason: str = Form(""),
           db: Session = Depends(get_db), user: User = Depends(require("rate.approve"))):
-    r = _get_rate(db, user, rate_id)
+    r = _get_rate(db, user, rate_id, for_change=True)
     try:
         et = parse_date(effective_to)
     except ValueError as e:
         raise BusinessError(str(e)) from e
     rate_service.close_rate(db, user, r, et, reason)
     db.commit()
-    flash(request, f"Rate #{r.id} closed with effect to {et:%d-%m-%Y}.", "success")
+    if r.status == RateStatus.INACTIVE:
+        flash(request, f"Rate #{r.id} had not started yet (effective from {r.effective_from:%d-%m-%Y}), so it was "
+                       "deactivated instead of end-dated.", "warn")
+    else:
+        flash(request, f"Rate #{r.id} closed with effect to {et:%d-%m-%Y}.", "success")
     return redirect(f"/rates/{r.id}")
 
 
@@ -178,7 +182,7 @@ def close(rate_id: int, request: Request, effective_to: str = Form(...), reason:
 def import_rates(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db),
                  user: User = Depends(require("rate.create"))):
     """Bulk upload: company, cfa, customer (optional), location, rate_per_box, effective_from, effective_to."""
-    content = file.file.read()
+    content = read_upload(file)
     _, records = read_table(content, file.filename or "rates.csv")
     res = Resolver(db, None)
     ok, errors = 0, []
@@ -189,9 +193,9 @@ def import_rates(request: Request, file: UploadFile = File(...), db: Session = D
                 co = res.company(r.get("company") or r.get("company_code"))
                 if not co:
                     raise BusinessError(f"unknown company '{r.get('company') or r.get('company_code')}'")
-                if not can_see(user, co.id):
-                    raise BusinessError(f"not authorised for {co.code}")
                 cfa = res.cfa(r.get("cfa") or r.get("cfa_code")) if (r.get("cfa") or r.get("cfa_code")) else None
+                if not can_change(user, co.id, cfa.id if cfa else None):
+                    raise BusinessError(f"not authorised for {co.code}/{cfa.code if cfa else 'all CFAs'}")
                 cu = res.customer(r.get("customer") or r.get("customer_code")) if (r.get("customer") or r.get("customer_code")) else None
                 loc_v = r.get("location") or r.get("delivery_location")
                 loc = res.location(loc_v) if loc_v else None

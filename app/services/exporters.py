@@ -13,7 +13,7 @@ from openpyxl.utils import get_column_letter
 from app.models import InvoiceStatus
 from app.services.pdf_service import table_pdf
 from app.services.reports import ReportResult
-from app.services.utils import fmt_date, fmt_dt, fmt_money, to_local
+from app.services.utils import csv_safe, fmt_date, fmt_dt, fmt_money, to_local
 
 
 def _plain(v, kind):
@@ -42,13 +42,29 @@ def to_csv(res: ReportResult) -> bytes:
                 v = v.strftime("%d-%m-%Y %H:%M")
             elif isinstance(v, date):
                 v = v.strftime("%d-%m-%Y")
-            row.append(v)
+            row.append(csv_safe(v))
         w.writerow(row)
     if res.totals:
         w.writerow([_plain(res.totals.get(c.key), c.kind) if res.totals.get(c.key) is not None else ""
                     for c in res.columns])
     return buf.getvalue().encode("utf-8-sig")
 
+
+XLSX_CELL_LIMIT = 32_767  # Excel cannot hold more text than this in one cell
+
+
+def _fit_cell(v):
+    """Excel silently cuts text longer than 32,767 characters (e.g. a transporter's LR list for a whole year).
+    Cut it ourselves at an item boundary and say so, instead of losing the tail without warning."""
+    if not isinstance(v, str) or len(v) <= XLSX_CELL_LIMIT:
+        return v
+    note_tpl = " ... (+{n:,} more not shown: Excel allows 32,767 characters per cell - use the CSV export or " \
+               "the Dispatch Register report for the full list)"
+    room = XLSX_CELL_LIMIT - len(note_tpl.format(n=10 ** 9))
+    cut = v.rfind(",", 0, room)
+    cut = cut if cut > 0 else room
+    hidden = v[cut:].count(",") if "," in v[cut:] else 1
+    return v[:cut] + note_tpl.format(n=hidden)
 
 FORMATS = {"money": '#,##0.00', "rate": '#,##0.00', "pct": '0.00', "int": '#,##0', "date": 'dd-mm-yyyy',
            "datetime": 'dd-mm-yyyy hh:mm', "num": '#,##0.00'}
@@ -72,7 +88,7 @@ def to_xlsx(res: ReportResult, title: str, subtitle: str) -> bytes:
         cell.fill = fill
         cell.alignment = Alignment(wrap_text=True, vertical="center")
     for r in res.rows:
-        ws.append([_plain(r.get(c.key), c.kind) for c in res.columns])
+        ws.append([_fit_cell(csv_safe(_plain(r.get(c.key), c.kind))) for c in res.columns])
     if res.totals:
         ws.append([_plain(res.totals.get(c.key), c.kind) if res.totals.get(c.key) is not None else None
                    for c in res.columns])

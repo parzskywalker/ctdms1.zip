@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% from "_macros.html" import select with context %}
+{% block content %}
+<div class="crumbs"><a href="/recon">Transporter bills</a> › Scan a bill</div>
+<div class="page-head">
+  <div><h1>Scan a transporter bill</h1>
+    <div class="sub">Photograph each page of the bill (a phone photo is fine, handwritten Hindi bills included) or upload the PDF. {% if ai_ready %}CTDMS reads the lines for you; you then check them next to the photo.{% else %}Automatic reading is not set up, so the photo is shown next to an empty table for you to type the lines.{% endif %} Then every line is cross-checked against our gatepasses.</div></div>
+</div>
+<form method="post" action="/recon/scan" enctype="multipart/form-data" class="card" id="scan-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <div class="form-grid">
+    <div><label>Transporter <span class="req">*</span></label>{{ select('transporter_id', opts.transporters, none, blank='— whose bill is it? —', required=True) }}</div>
+    <div class="w2"><label>Photos / PDF of the bill <span class="req">*</span></label><input type="file" name="files" accept="image/*,application/pdf" capture="environment" multiple required>
+      <div class="field-hint">Up to 6 pages. Flat, well lit, whole page in the frame.</div></div>
+    <div><label>Bill no</label><input type="text" name="bill_no" placeholder="{{ 'read from the bill if empty' if ai_ready else 'as on the bill' }}"></div>
+    <div><label>Bill date</label><input type="date" name="bill_date" max="{{ today.isoformat() }}"></div>
+    <div><label>Bill total (₹)</label><input type="text" inputmode="decimal" name="bill_amount" placeholder="{{ 'read from the bill if empty' if ai_ready else '' }}"></div>
+    <div><label>Period from</label><input type="date" name="period_from"></div>
+    <div><label>Period to</label><input type="date" name="period_to"></div>
+    <div><label>Company</label>{{ select('company_id', opts.companies, none, blank='All companies') }}</div>
+    <div><label>CFA</label>{{ select('cfa_id', opts.cfas, none, blank='All CFAs') }}</div>
+  </div>
+  <div class="form-actions">
+    <button class="btn btn-primary btn-lg" type="submit" id="scan-go">{{ 'Read the bill' if ai_ready else 'Upload and type the lines' }}</button>
+    {% if ai_ready %}<button class="btn" type="submit" name="read" value="manual">Upload only (type the lines myself)</button>{% endif %}
+    <span class="small muted" id="scan-wait" hidden>Reading the bill… this can take up to a minute for a long handwritten bill.</span>
+  </div>
+  <p class="small muted">Duplicate protection: the same bill number of the same transporter can only be entered once, and a consignment can only be paid on one bill.</p>
+</form>
+<script>
+document.getElementById('scan-form').addEventListener('submit', () => { document.getElementById('scan-wait').hidden = false; });
+</script>
+{% endblock %}

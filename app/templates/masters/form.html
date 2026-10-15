@@ -22,7 +22,7 @@
         <select name="{{ f.name }}" {% if f.required %}required{% endif %} {% if ro %}disabled{% endif %}>
           <option value="">—</option>
           {% if f.options.startswith('choice:') %}
-            {% for c in f.options[7:].split(',') %}<option value="{{ c }}" {% if v == c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+            {% for c in f.options[7:].split(',') %}<option value="{{ c }}" {% if v == c %}selected{% endif %}>{{ {'TBB': 'TBB (to be billed)', 'CASH': 'Cash at dispatch'}.get(c, c.replace('_', ' ').title()) }}</option>{% endfor %}
           {% else %}
             {% for o in opts[f.options] %}<option value="{{ o.id }}" {% if v is not none and v|string == o.id|string %}selected{% endif %}>{{ o.code }} · {{ o.name }}</option>{% endfor %}
           {% endif %}
@@ -80,7 +80,7 @@
       <label>Merge another customer into this one</label>
       <select name="source_id" required><option value="">— select duplicate —</option>{% for c in all_customers if c.is_active %}<option value="{{ c.id }}">{{ c.code }} · {{ c.name }}</option>{% endfor %}</select>
       <input type="text" name="reason" id="merge-reason" placeholder="Reason (required)">
-      <button class="btn btn-danger" type="submit" data-require-reason="#merge-reason">Merge into {{ obj.code }}</button>
+      <button class="btn btn-danger" type="submit" data-require-reason="#merge-reason" data-confirm="Merge the selected customer into {{ obj.code }}? All its invoices move here. This cannot be undone.">Merge into {{ obj.code }}</button>
       <div class="field-hint">Moves invoices, rates and ERP code mappings; deactivates the duplicate. Audited.</div>
     </form>
     {% endif %}

@@ -1,0 +1,164 @@
+# Changelog
+
+## v1.4.0 — 15 Oct 2026 (customer dispatch alerts)
+
+Migration 0004 adds the `notifications` table (applied automatically; data kept).
+
+- WhatsApp / SMS alerts to customers, one per customer per gatepass: **on gate-out** (invoices, cases, carrier
+  and its mobile, gatepass no) and **when the LR number is entered** (again if it is corrected). Never queued twice.
+- Providers (System Settings › `notify.provider`): OFF (default, nothing queued), LOG (trial: marked sent, nothing
+  leaves the server), WHATSAPP_CLOUD (approved template with one body parameter), HTTP_SMS (any HTTP SMS gateway).
+  Token in `CTDMS_NOTIFY_TOKEN` (.env). Message templates are editable settings.
+- Background sender with retries (5, 10, 15 … min, `notify.max_attempts`), safe with several workers;
+  `python -m app.cli notify` for cron. Every send / failure / retry is audited.
+- **Customer Alerts** screen (Dispatch desk): status tabs, search, retry; alerts listed on each gatepass.
+- Mobile numbers normalised to +91; landlines (e.g. 0771-…) are refused, not texted.
+- Tests: `tests/test_v14_notify.py` (12).
+
+## v1.3.0 — 15 Oct 2026 (management feedback)
+
+Plan and reasoning: `docs/ITERATION_v1.3_PLAN.md`. Day-to-day use: `docs/USER_GUIDE.md`.
+
+**Database change** (migration 0003, applied by `start_demo.bat` / `init-db` / the Docker entrypoint; all data
+kept). Every existing one-invoice slip becomes a one-line gatepass. Existing installations keep pricing from the
+principal rate card (`freight.source = COMPANY`) until transporter rate cards are loaded and the setting is switched
+to `TRANSPORTER` in System Settings; new installations start with `TRANSPORTER`. LR and vehicle numbers are no
+longer required to print.
+
+### Invoices in without re-typing (no ERP access needed)
+- **E-invoice QR scanning**: the GST QR on every invoice (any ERP) is decoded at the dispatch desk — seller GSTIN →
+  company, buyer GSTIN → customer, IRN prevents double capture. A USB 2D scanner or a phone camera works.
+- **Drop folder** `data/inbox` (or `inbox/<ERP>`): exports are imported automatically every few minutes and moved
+  to `processed/` or `failed/`; `python -m app.cli inbox` for cron / Task Scheduler.
+- **One-click import** with **layout recognition** from the column headings.
+- **Item-wise exports**: rows grouped per invoice into SKU lines; SKU lines are added to invoices already captured
+  by QR instead of being rejected as duplicates. Customers can also be found by **GSTIN**.
+
+### Gatepass (dispatch slip) — nothing leaves without it
+- One gatepass per pickup with **many invoices for many customers**; modes Transporter / Direct pickup / Outside
+  auto / Self pickup; outside auto to the transporter's office.
+- Printed slip: barcode, carrier name, contact, GST, payment mode (Cash / TBB) or auto; per customer: invoices,
+  cases, rate per case, charge; totals, paid now, to be billed. **No vehicle number.**
+- **LR entered later** per consignment (gatepass page or *LR Pending*), audited, locked once the bill is approved;
+  one LR cannot belong to two consignees.
+- **Gate check**: scan the gatepass at the gate → DISPATCHED; void / unprinted / already-used gatepasses are stopped.
+
+### Rates and masters
+- **Transporter rate cards** (rate per case per area, effective-dated, maker-checker, history kept, CSV upload).
+- **Outside autos** master (per trip / per case). Transporters: payment mode (Cash / TBB), direct-pickup extra.
+- **Customer type**: stockist / retailer / hospital; WhatsApp number.
+
+### Transporter bills
+- **Scan a bill** (photo / PDF): read by Claude (`CTDMS_ANTHROPIC_API_KEY`) into lines, or typed next to the photo.
+- Consignment-level cross-check against gatepasses with an **irregularity report** (screen / print / Excel): LR not
+  ours (with suggested match that fills our LR), billed twice, **already paid in cash**, more cases, rate ≠ rate
+  card, cases × rate ≠ amount, station / party mismatch, date outside period, lines ≠ bill total, our dispatches
+  missing from the bill.
+- **Rate review** after checking: "Has the transporter changed any rates?" → proposals to the rate card.
+
+### Reports
+- Gatepass Register, Transporter × Area cost per case, SKU-wise Dispatch, Stockists / Retailers / Hospitals,
+  Mode of Dispatch, Outside Auto Expense, Transporter Bill Irregularities.
+
+### Tests
+- `tests/test_v13_gatepass.py` (42 tests). The v1.0–v1.2 suites run with `freight.source = COMPANY` (still
+  supported); `test_rec02` no longer depends on test order; the upgrade test covers 0001 → 0003.
+  Suite: 139 passed on SQLite (PostgreSQL not re-run for v1.3).
+
+## v1.2.0 — 27 Sep 2026 (second QA round)
+
+Fixes for the six issues from an independent QA / stress test that v1.1 had not covered, plus seven follow-ups
+found by an independent code review of those fixes. Plain-language explanation with before/after results:
+`docs/CTDMS_v1.2_Fix_Report.pdf`.
+
+**One small database change** (migration 0002: `users.tokens_valid_after`). It is applied automatically by
+`start_demo.bat` / `start_demo.sh` (and by `python -m app.cli init-db` / the Docker entrypoint). All data is kept.
+
+### Security
+- QA-07 API writes from a browser session always need the CSRF token. Before, *any* `Authorization` or
+  `X-API-Key` header (even rubbish) switched that check off. Now a request with `Authorization: Bearer …` is
+  judged by the token alone (invalid token → 401, no fallback to the cookie; valid token → no CSRF needed) and
+  everything else that uses the session cookie needs the CSRF token.
+- QA-03 Signing out "everywhere" now really means everywhere. `create-admin` on an existing account (password
+  recovery) resets the password, clears a lockout, ends all browser sessions **and** API tokens, and writes an
+  ADMIN_RECOVERY audit entry; turning a non-admin into an admin needs `--promote`. Deactivating a user or
+  changing their role (Admin → Users) does the same, and old API tokens stay invalid even if the account is
+  re-activated later (new `tokens_valid_after` stamp).
+- CSRF tokens with non-ASCII characters are rejected with 403 (was HTTP 500).
+
+### Bugs
+- QA-10 Report PDFs no longer crash (HTTP 500 / LayoutError) when a cell is very long, e.g. a transporter with
+  hundreds of LR numbers. Lists with more than 10 items and text over 400 characters are shown as
+  "N items – full list in note [k]" and printed in full in a Notes section after the table; rows still taller
+  than a page continue on the next page. Excel exports cut cells at Excel's 32,767-character limit at an item
+  boundary and say how many items are not shown (before: silently cut by Excel).
+- QA-11 `GET /api/v1/dispatch/pending` is paged – **changed response shape**:
+  `{total, page, page_size, has_more, next_cursor, items}` (was a bare list silently cut at 2,000). For complete
+  reading use `?after=<next_cursor>` until `has_more` is false: every open invoice exactly once, even while
+  others are dispatched meanwhile. `page` / `page_size` (max 1000) also work for browsing. Absurd page numbers
+  now give 422 instead of 500 (also on `/api/v1/invoices`).
+- QA-09 `start_demo.bat` / `start_demo.sh` decide from what is inside the database, not whether the file exists
+  (new `python -m app.cli prepare-demo`): empty → demo data; any real data → never reset (structure brought up to
+  date first); data but no active user → stops and explains `create-admin`. The launchers stop with a clear
+  message — and the Windows window stays open — if Python 3.11+ is missing, packages fail to install or the app
+  cannot start (e.g. already running).
+
+### Performance (QA-13)
+- Page views no longer take SQLite's single write lock (plain `BEGIN` for GET/HEAD, `BEGIN IMMEDIATE` for saves),
+  so people reading never queue behind each other. "Last seen" bookkeeping waits at most 0.25 s and is skipped
+  if busy. Exports read and build the file without the lock and take it only for the audit entry at the end.
+- Safety net: a page view that still collides with a save is run once more — but never if it already saved
+  something (no double audit entries) or was already waiting for the lock.
+- Larger SQLite page cache; the pending API loads related records in bulk.
+- Same 3,300-invoice data, one worker, 10 users for 60 s: failed requests 2 → 0, slowest 30.2 s → 2.9 s,
+  95th percentile 5.8 s → 1.5 s, 634 → 811 requests. Readers + writers together: 693 → 1,327 requests in ~47 s
+  with identical correctness (no duplicate invoices / slip numbers, integrity OK).
+
+### Tests
+- `tests/test_v12_fixes.py`: 26 new regression tests, incl. a v1.1 → v1.2 database upgrade test.
+  Suite: 97 on SQLite; 95 + 2 SQLite-only skips on PostgreSQL 16.
+
+## v1.1.0 — 26 Sep 2026 (QA fixes)
+
+Result of an end-to-end QA round on v1.0 (live on the owner's laptop + automated security / edge-case testing).
+Full details, reproduction steps and before/after screenshots: `docs/CTDMS_QA_Report.pdf`.
+No database migration is needed.
+
+### Security / data scope
+- SEC-01 Transporter bills are now restricted to the user's company **and CFA** (list, detail, all actions, approvals, reports).
+- SEC-02 Import batches are only visible to the uploader or users whose scope covers the batch CFA.
+- SEC-03 Changing an existing ERP code mapping requires Masters-edit rights.
+- SEC-04 NaN / Infinity / values >= 1e12 are rejected everywhere (one such row used to crash dashboard and reports).
+- SEC-05 20 MB / 100,000-row limit on every importer (rates and bills had none); uploads are read with a bounded buffer.
+- SEC-06 Excel / CSV exports neutralise formula injection (text starting with = + - @).
+- SEC-07 Freight rates checked against the CFA scope (view: CFA or company-wide; change: fully in scope).
+- SEC-08 "Must change password" is enforced on every page and on API token issue.
+- SEC-09 Audit IP taken from the trusted-proxy setting (FORWARDED_ALLOW_IPS, default 127.0.0.1) - no more X-Forwarded-For spoofing.
+- SEC-10 Login message states the lockout rule; identical text for unknown users.
+- SEC-11 Content-Security-Policy header; /api/docs hidden in production (CTDMS_API_DOCS_PUBLIC).
+- SEC-12 Common / demo passwords and passwords containing the username are refused.
+- SEC-13 Company / CFA master pages and API lists respect scope.
+- SEC-14 Demo logins default to OFF in production; production refuses to start with the default / short secret key.
+
+### Bugs
+- BUG-01 Damaged / fake / protected Excel files show a clear message instead of HTTP 500 (invoice, rate and bill import).
+- BUG-02 Non-numeric or oversized ids / page numbers / filters no longer cause HTTP 500.
+- BUG-03 API validation errors with raw bytes return 422 instead of 500.
+
+### Reconciliation
+- REC-01 System freight counts only valid lines; approval blocked while problem lines exist (double-payment risk).
+- REC-02 A user who edited a bill cannot approve it; approved/paid bills cannot be edited.
+
+### Usability
+- Confirmation dialogs on Complete, bulk Complete, Void, Cancel, Reject, Mark paid, Merge, Cancel batch.
+- No false "Dispatch date/time missing" warnings (fields are pre-filled).
+- Bulk result: Complete enabled only after printing; grouped errors; stays on the Slip tab.
+- Pending queue: blocked (rate missing / exception) invoices sorted last; printed / not-printed shown per slip.
+- Read-only roles see the slip number and a "Read-only for your role" badge instead of "No active slip".
+- No dead invoice links for roles without invoice access (reports, MIS).
+- Import warns on implausible rows (> 2,000 boxes or freight > 10% of sales); dispatch warns on odd vehicle numbers and LR re-use.
+- Mobile: collapsible filters, action bar only when something is selected; approvals decision column always visible.
+- Labels linked to fields for screen readers; demo-login rows fully clickable; reprint reason 5 characters everywhere.
+
+### Tests
+- 43 new regression tests (`tests/test_qa_fixes.py`); 71/71 pass on SQLite and PostgreSQL 16.

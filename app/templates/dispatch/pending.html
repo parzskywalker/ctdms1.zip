@@ -2,7 +2,7 @@
 {% from "_macros.html" import badge, select, pager with context %}
 {% block content %}
 <div class="page-head">
-  <div><h1>Pending Dispatch</h1><div class="sub">Scan or type an invoice number and press Enter to open it directly. Completion rule: slip must be <b>{{ complete_rule }}</b>.</div></div>
+  <div><h1>Pending Dispatch</h1><div class="sub">Tick the invoices going in one pickup and press <b>Make one gatepass</b> (or use <a href="/gatepass/new">Scan &amp; Gatepass</a>). Completion rule: gatepass must be <b>{{ complete_rule }}</b>.</div></div>
   <div class="actions">
     <form method="get" class="row" style="margin:0">
       <input type="hidden" name="tab" value="{{ tab }}">
@@ -13,10 +13,12 @@
 </div>
 <div class="tabs">
   {% for key, (label, sts) in tabs.items() %}
-    <a href="?tab={{ key }}{% if q %}&q={{ q }}{% endif %}&{{ f.query() }}" class="{% if tab == key %}on{% endif %}">{{ label }}<span class="count">{{ counts[key] }}</span></a>
+    <a href="?tab={{ key }}{% if q %}&q={{ q|urlencode }}{% endif %}&{{ f.query() }}" class="{% if tab == key %}on{% endif %}">{{ label }}<span class="count">{{ counts[key] }}</span></a>
   {% endfor %}
 </div>
-<form class="filters" method="get">
+{% set filtered = f.company_id or f.cfa_id or f.location_id or f.customer_id or f.date_from or f.date_to %}
+<button type="button" class="btn btn-sm filters-toggle" data-toggle="#pending-filters">☰ Filters{% if filtered %} (active){% endif %}</button>
+<form class="filters collapsible {{ '' if filtered else 'collapsed' }}" method="get" id="pending-filters">
   <input type="hidden" name="tab" value="{{ tab }}">
   <div class="f"><label>Company</label>{{ select('company_id', opts.companies, f.company_id) }}</div>
   <div class="f"><label>CFA</label>{{ select('cfa_id', opts.cfas, f.cfa_id) }}</div>
@@ -40,7 +42,7 @@
       {% for i in rows %}
         <tr>
           <td><input type="checkbox" name="ids" value="{{ i.id }}" aria-label="Select {{ i.invoice_no }}"></td>
-          <td class="nowrap"><b>{{ i.invoice_no }}</b><div class="small muted">{{ i.invoice_date|date }}</div>{% if i.dispatch_no %}<div class="small mono muted">{{ i.dispatch_no }}</div>{% endif %}</td>
+          <td class="nowrap"><b>{{ i.invoice_no }}</b><div class="small muted">{{ i.invoice_date|date }}</div>{% if i.dispatch_no %}<div class="small mono muted">{{ i.dispatch_no }}</div><div class="small {{ 'muted' if i.print_count else 'pos' }}">{{ 'printed ×%d'|format(i.print_count) if i.print_count else 'not printed yet' }}</div>{% endif %}</td>
           <td class="num {% if i.age_days > 3 %}pos{% endif %}">{{ i.age_days }}d</td>
           <td class="nowrap">{{ i.company.code }} · {{ i.cfa.code }}</td>
           <td style="min-width:150px">{{ i.customer.name }}</td>
@@ -62,10 +64,11 @@
   {% if can('dispatch.operate') and rows %}
   <div class="sticky-bar">
     <b><span id="bulk-count">0</span> selected</b>
-    <button class="btn btn-primary" type="submit" data-needs-selection>Bulk dispatch (verify + slip)…</button>
+    <button class="btn btn-primary" type="submit" formaction="/gatepass/prepare" data-needs-selection>Make one gatepass…</button>
+    <button class="btn" type="submit" data-needs-selection title="One slip per invoice (v1.2 style)">Bulk dispatch (one slip each)…</button>
     <button class="btn" type="submit" formmethod="post" formaction="/dispatch/bulk/print" formtarget="_blank" data-needs-selection name="mode" value="print">Print slips</button>
     <button class="btn" type="submit" formmethod="post" formaction="/dispatch/bulk/print" formtarget="_blank" data-needs-selection name="mode" value="pdf">Slips PDF</button>
-    {% if can('dispatch.complete') %}<button class="btn btn-ok" type="submit" formmethod="post" formaction="/dispatch/bulk/complete" data-needs-selection>Complete selected</button>{% endif %}
+    {% if can('dispatch.complete') %}<button class="btn btn-ok" type="submit" formmethod="post" formaction="/dispatch/bulk/complete" data-needs-selection data-confirm="Mark the selected invoices as DISPATCHED? This cannot be undone.">Complete selected</button>{% endif %}
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
     <input type="hidden" name="size" value="A5">
     <span class="muted small">Print / complete apply only to invoices whose slip is generated / printed.</span>

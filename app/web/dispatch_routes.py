@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import math
+from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, Response
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -16,7 +17,7 @@ from app.services.errors import BusinessError
 from app.services.pdf_service import dispatch_slips_pdf
 from app.services.reports import Filters, _apply_filters
 from app.services.scope import apply_invoice_scope
-from app.services.utils import local_now
+from app.services.utils import local_now, safe_int
 from app.web.invoices_routes import get_invoice
 from app.web.templating import active_lists, filter_options, flash, get_form, redirect, render, safe_path, templates
 
@@ -50,13 +51,16 @@ def pending(request: Request, db: Session = Depends(get_db), user: User = Depend
         counts[key] = db.scalar(select(func.count()).select_from(base.where(Invoice.status.in_(sts)).subquery()))
     stmt = base.where(Invoice.status.in_(TABS[tab][1]))
     total = counts[tab]
-    page = max(int(request.query_params.get("page", 1) or 1), 1)
+    page = safe_int(request.query_params.get("page"), 1, minimum=1)
     per = 100
-    rows = list(db.scalars(stmt.order_by(Invoice.invoice_date, Invoice.id).offset((page - 1) * per).limit(per)))
+    # Work the operator can do now first (oldest first); invoices blocked by rate / box exceptions go to the end.
+    blocked_last = case((Invoice.status.in_([S.RATE_MISSING, S.EXCEPTION]), 1), else_=0)
+    rows = list(db.scalars(stmt.order_by(blocked_last, Invoice.invoice_date, Invoice.id)
+                           .offset((page - 1) * per).limit(per)))
     return render(request, "dispatch/pending.html", {
         "title": "Pending Dispatch", "rows": rows, "tab": tab, "tabs": TABS, "counts": counts, "q": q, "f": f,
         "opts": filter_options(db, user), "total": total, "page": page, "pages": max(math.ceil(total / per), 1),
-        "qs": f.query() + f"&tab={tab}" + (f"&q={q}" if q else ""), **active_lists(db),
+        "qs": f.query() + f"&tab={tab}" + (f"&q={quote_plus(q)}" if q else ""), **active_lists(db),
         "complete_rule": cfg.get(db, "dispatch.complete_requires")})
 
 
@@ -66,7 +70,7 @@ def register(request: Request, db: Session = Depends(get_db), user: User = Depen
     stmt = apply_invoice_scope(select(Invoice), user).where(Invoice.dispatch_no.isnot(None))
     stmt = _apply_filters(stmt, f, Invoice.dispatch_date, [S.SLIP_GENERATED, S.SLIP_PRINTED, S.DISPATCHED])
     total = db.scalar(select(func.count()).select_from(stmt.subquery()))
-    page = max(int(request.query_params.get("page", 1) or 1), 1)
+    page = safe_int(request.query_params.get("page"), 1, minimum=1)
     per = 100
     rows = list(db.scalars(stmt.order_by(Invoice.dispatch_date.desc(), Invoice.dispatch_time.desc(), Invoice.id.desc())
                            .offset((page - 1) * per).limit(per)))
@@ -84,11 +88,23 @@ def entry(invoice_id: int, request: Request, db: Session = Depends(get_db),
     pending_ov = db.scalar(select(InvoiceOverride).where(InvoiceOverride.invoice_id == inv.id,
                                                          InvoiceOverride.status == OverrideStatus.PENDING))
     prints = list(db.scalars(select(SlipPrintLog).where(SlipPrintLog.invoice_id == inv.id).order_by(SlipPrintLog.id)))
+    acts = ds.actions_for(db, user, inv)
+    # The form is pre-filled with today's date / current time and those values are saved when the slip is
+    # generated, so "missing" date/time is not a real blocker - don't alarm the operator with it.
+    prefilled = {"Dispatch date missing"} if not inv.dispatch_date else set()
+    prefilled |= {"Dispatch time missing"} if not inv.dispatch_time else set()
+    acts.slip_blockers = [b for b in acts.slip_blockers if b not in prefilled]
     return render(request, "dispatch/entry.html", {
-        "title": f"Dispatch · {inv.invoice_no}", "inv": inv, "acts": ds.actions_for(db, user, inv),
+        "title": f"Dispatch · {inv.invoice_no}", "inv": inv, "acts": acts,
+        "data_warnings": ds.data_warnings(db, inv) if acts.can_edit else [],
         "default_date": d, "default_time": t, "pending_ov": pending_ov, "prints": prints,
         "slip_size": cfg.get(db, "dispatch.default_slip_size"), "rule": cfg.get(db, "dispatch.complete_requires"),
         "fields": OverrideField.LABELS, **active_lists(db)})
+
+
+def _warn(request: Request, db, inv) -> None:
+    for w in ds.data_warnings(db, inv):
+        flash(request, w, "warn")
 
 
 def _save_from_form(db, user, inv, form) -> None:
@@ -108,6 +124,7 @@ def save(invoice_id: int, request: Request, form=Depends(get_form), db: Session 
                               remarks=form.get("remarks"))
     db.commit()
     flash(request, "Draft saved." if changed else "No changes.", "success" if changed else "info")
+    _warn(request, db, inv)
     return redirect(f"/dispatch/{inv.id}")
 
 
@@ -119,6 +136,7 @@ def verify(invoice_id: int, request: Request, form=Depends(get_form), db: Sessio
     ds.verify(db, user, inv)
     db.commit()
     flash(request, f"Verified: {inv.boxes} boxes × ₹{inv.rate_per_box} = ₹{inv.freight_amount}", "success")
+    _warn(request, db, inv)
     return redirect(f"/dispatch/{inv.id}")
 
 
@@ -264,7 +282,8 @@ def bulk_apply(request: Request, form=Depends(get_form), db: Session = Depends(g
     flash(request, f"{len(ok)} of {len(results)} invoices ready with dispatch slips.", "success" if ok else "warn")
     return render(request, "dispatch/bulk_result.html", {"title": "Bulk dispatch result", "results": results,
                                                          "ok_ids": [r[0].id for r in ok],
-                                                         "slip_size": cfg.get(db, "dispatch.default_slip_size")})
+                                                         "slip_size": cfg.get(db, "dispatch.default_slip_size"),
+                                                         "rule": cfg.get(db, "dispatch.complete_requires")})
 
 
 @router.post("/dispatch/bulk/print")
@@ -292,17 +311,19 @@ def bulk_print(request: Request, form=Depends(get_form), db: Session = Depends(g
 @router.post("/dispatch/bulk/complete")
 def bulk_complete(request: Request, form=Depends(get_form), db: Session = Depends(get_db),
                         user: User = Depends(require("dispatch.complete"))):
-    done, blocked = 0, []
+    done, blocked = 0, {}
     for inv in _selected(db, user, form.getlist("ids")):
         try:
             with db.begin_nested():
                 ds.complete(db, user, inv)
             done += 1
         except BusinessError as e:
-            blocked.append(f"{inv.invoice_no}: {e.message.split(': ', 1)[-1]}")
+            blocked.setdefault(e.message.split(": ", 1)[-1], []).append(inv.invoice_no)
     db.commit()
     if done:
         flash(request, f"{done} dispatch(es) completed.", "success")
-    if blocked:
-        flash(request, "Blocked - " + " | ".join(blocked[:8]) + (" …" if len(blocked) > 8 else ""), "error")
-    return redirect("/dispatch/pending")
+    for reason, nos in blocked.items():  # one line per reason instead of repeating it for every invoice
+        flash(request, f"Not completed ({len(nos)}): {', '.join(nos[:10])}{' …' if len(nos) > 10 else ''} - {reason}",
+              "error")
+    # stay where the remaining work is: unprinted / uncompleted slips
+    return redirect("/dispatch/pending?tab=slip" if blocked else "/dispatch/pending")

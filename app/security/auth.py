@@ -4,18 +4,24 @@ from __future__ import annotations
 import hashlib
 import secrets
 import time
-from datetime import timedelta
+from datetime import timedelta, timezone
 
 import bcrypt
 import jwt
 from fastapi import Depends, Request
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.config import get_settings
-from app.db import get_db
+from app.db import get_db, is_busy_error, quick_write
 from app.models import User, UserSession, utcnow
 from app.services import context
+
+
+class PasswordChangeRequired(Exception):
+    pass
 
 
 class LoginRequired(Exception):
@@ -41,8 +47,17 @@ def verify_password(password: str, hashed: str) -> bool:
         return False
 
 
-def password_problems(password: str) -> list[str]:
+COMMON_PASSWORDS = {"password", "password1", "password123", "passw0rd", "12345678", "123456789", "1234567890",
+                    "qwerty123", "welcome1", "welcome123", "admin123", "admin@123", "demo@123", "abc12345",
+                    "iloveyou1", "india123", "india@123", "ctdms123", "letmein1", "changeme1", "test1234"}
+
+
+def password_problems(password: str, username: str | None = None) -> list[str]:
     problems = []
+    if password.lower() in COMMON_PASSWORDS:
+        problems.append("not a common / demo password")
+    if username and username.lower() in password.lower():
+        problems.append("must not contain the username")
     if len(password) < 8:
         problems.append("at least 8 characters")
     if not any(c.isdigit() for c in password):
@@ -59,22 +74,29 @@ def _hash_token(token: str) -> str:
 # --------------------------------------------------------------------------- login
 def authenticate(db: Session, username: str, password: str) -> tuple[User | None, str | None]:
     s = get_settings()
+    # Same wording for unknown users and wrong passwords (no username enumeration), and it tells honest users
+    # about the lockout rule before they hit it.
+    generic = (f"Invalid username or password. Note: {s.max_failed_logins} wrong attempts lock the account "
+               f"for {s.lockout_minutes} minutes.")
     user = db.scalar(select(User).where(User.username == username.strip().lower()))
     now = utcnow()
     if not user:
         verify_password(password, "$2b$12$" + "x" * 53)  # constant-ish time
-        return None, "Invalid username or password"
+        return None, generic
     if not user.is_active:
-        return None, "User is inactive"
+        verify_password(password, "$2b$12$" + "x" * 53)
+        return None, generic
     if user.locked_until and user.locked_until > now:
-        return None, f"Account locked after repeated failures. Try again after {s.lockout_minutes} minutes."
+        mins = max(1, int((user.locked_until - now).total_seconds() // 60) + 1)
+        return None, (f"Too many failed attempts - sign-in is blocked for about {mins} more minute(s). "
+                      "Ask an administrator if you need access sooner.")
     if not verify_password(password, user.password_hash):
         user.failed_logins = (user.failed_logins or 0) + 1
         if user.failed_logins >= s.max_failed_logins:
             user.locked_until = now + timedelta(minutes=s.lockout_minutes)
             user.failed_logins = 0
         db.commit()
-        return None, "Invalid username or password"
+        return None, generic
     user.failed_logins = 0
     user.locked_until = None
     user.last_login_at = now
@@ -105,6 +127,21 @@ def revoke_user_sessions(db: Session, user_id: int) -> None:
         sess.revoked_at = utcnow()
 
 
+def sign_out_everywhere(db: Session, user: User) -> None:
+    """End every browser session of the user AND make every API token issued so far invalid.
+
+    Used when an account is deactivated, gets a different role, or is recovered from the command line. The
+    token stamp is stored on the user, so an old token does not come back to life if the account is
+    re-activated later (QA-03).
+    """
+    revoke_user_sessions(db, user.id)
+    user.tokens_valid_after = utcnow()
+
+
+def _epoch(dt) -> float:
+    return dt.replace(tzinfo=timezone.utc).timestamp()
+
+
 def _load_user(db: Session, user_id: int) -> User | None:
     """Load the user with role and data-scope eagerly, so templates/handlers can use them even after the
     request's DB session is closed (e.g. while rendering an error page)."""
@@ -118,16 +155,33 @@ def session_user(db: Session, token: str) -> tuple[User | None, UserSession | No
         return None, None
     now = utcnow()
     if sess.last_seen_at and now - sess.last_seen_at > timedelta(minutes=s.session_idle_minutes):
-        sess.revoked_at = now
-        db.commit()
+        _touch(db, sess, revoked_at=now)
         return None, None
     user = _load_user(db, sess.user_id)
     if not user or not user.is_active:
         return None, None
     if not sess.last_seen_at or (now - sess.last_seen_at).total_seconds() > 60:
-        sess.last_seen_at = now
-        db.commit()
+        _touch(db, sess, last_seen_at=now)
     return user, sess
+
+
+def _touch(db: Session, sess: UserSession, **values) -> None:
+    """Session bookkeeping ("last seen" / idle sign-out) - best effort, never makes a page wait.
+
+    It runs in its own tiny transaction on a separate connection and waits at most 0.25 s for SQLite's write
+    lock; if someone is saving right then it is skipped and simply tried again on the next page (both writes
+    are harmless to repeat). Before, a page view could wait 30 s here and then fail.
+    """
+    db.commit()  # end this request's read transaction first (no lock held)
+    try:
+        with quick_write(db.get_bind()) as conn:
+            conn.execute(update(UserSession).where(UserSession.id == sess.id).values(**values))
+    except OperationalError as exc:
+        if not is_busy_error(exc):
+            raise
+        return
+    for k, v in values.items():
+        set_committed_value(sess, k, v)
 
 
 # --------------------------------------------------------------------------- JWT (REST API)
@@ -141,6 +195,7 @@ def create_access_token(user: User) -> tuple[str, int]:
         "iat": int(time.time()),
         "exp": int(time.time()) + exp_minutes * 60,
         "pwd": int(user.password_changed_at.timestamp()) if user.password_changed_at else 0,
+        "ts": _epoch(utcnow()),  # exact issue time, compared with user.tokens_valid_after
     }
     return jwt.encode(payload, s.secret_key, algorithm="HS256"), exp_minutes * 60
 
@@ -151,48 +206,71 @@ def token_user(db: Session, token: str) -> User | None:
         payload = jwt.decode(token, s.secret_key, algorithms=["HS256"])
     except jwt.PyJWTError:
         return None
-    user = _load_user(db, int(payload.get("sub", 0)))
+    try:
+        user = _load_user(db, int(payload.get("sub", 0)))
+    except (TypeError, ValueError):
+        return None
     if not user or not user.is_active:
         return None
     pwd = int(user.password_changed_at.timestamp()) if user.password_changed_at else 0
-    if payload.get("pwd", 0) != pwd:  # password changed -> old tokens invalid
+    if payload.get("pwd", 0) != pwd:  # password changed / reset / recovered -> old tokens invalid
         return None
+    if payload.get("role") != (user.role.code if user.role else None):  # role changed -> ask for a new token
+        return None
+    if user.tokens_valid_after and float(payload.get("ts") or 0) <= _epoch(user.tokens_valid_after):
+        return None  # issued before the account was deactivated / changed role / recovered
     return user
 
 
 # --------------------------------------------------------------------------- dependencies
 def client_ip(request: Request) -> str | None:
-    fwd = request.headers.get("x-forwarded-for")
-    if fwd:
-        return fwd.split(",")[0].strip()
+    """Client address for the audit trail.
+
+    X-Forwarded-For is NOT read here: anyone can send that header. Uvicorn/gunicorn already replace
+    request.client with the forwarded address, but only for proxies listed in FORWARDED_ALLOW_IPS.
+    """
     return request.client.host if request.client else None
 
 
 def current_user_optional(request: Request, db: Session = Depends(get_db)) -> User | None:
     if getattr(request.state, "user_loaded", False):
         return request.state.user
-    user = None
-    token = request.session.get("sid") if "session" in request.scope else None
-    if token:
-        user, sess = session_user(db, token)
-        if sess:
-            context.session_ref.set(f"S{sess.id}")
-        if not user:
-            request.session.pop("sid", None)
-    if not user:
-        auth = request.headers.get("authorization", "")
-        if auth.lower().startswith("bearer "):
-            user = token_user(db, auth[7:].strip())
+    user, via = None, None
+    auth = request.headers.get("authorization", "")
+    if auth[:7].lower() == "bearer ":
+        # An API client: the token alone decides who this is. An invalid token is NOT rescued by a browser
+        # cookie that happens to be sent along (answer: 401).
+        user = token_user(db, auth[7:].strip())
+        if user:
+            via = "token"
+            context.session_ref.set("JWT")
+    else:
+        token = request.session.get("sid") if "session" in request.scope else None
+        if token:
+            user, sess = session_user(db, token)
+            if sess:
+                context.session_ref.set(f"S{sess.id}")
             if user:
-                context.session_ref.set("JWT")
+                via = "session"
+            else:
+                request.session.pop("sid", None)
     request.state.user = user
+    # How THIS request was actually authenticated. The API's CSRF rule depends on it: a browser cookie needs the
+    # CSRF token, a valid Bearer token does not. Merely *sending* an Authorization header proves nothing.
+    request.state.auth_via = via
     request.state.user_loaded = True
     return user
 
 
-def current_user(user: User | None = Depends(current_user_optional)) -> User:
+PASSWORD_CHANGE_PATHS = ("/account/password", "/logout", "/login")
+
+
+def current_user(request: Request, user: User | None = Depends(current_user_optional)) -> User:
     if not user:
         raise LoginRequired()
+    if user.must_change_password and not request.url.path.startswith(PASSWORD_CHANGE_PATHS):
+        # First login / admin reset: nothing else is usable until the password is changed.
+        raise PasswordChangeRequired()
     return user
 
 
@@ -218,6 +296,12 @@ def require_any(*perms: str):
 
 
 # --------------------------------------------------------------------------- CSRF
+def same_token(expected, supplied) -> bool:
+    """Constant-time comparison that also copes with non-ASCII input (plain compare_digest raised TypeError
+    for it, which surfaced as HTTP 500 instead of 403)."""
+    return secrets.compare_digest(str(expected).encode("utf-8"), str(supplied).encode("utf-8"))
+
+
 def csrf_token(request: Request) -> str:
     tok = request.session.get("csrf")
     if not tok:
@@ -236,5 +320,5 @@ async def csrf_protect(request: Request) -> None:
         if "form" in ctype:
             form = await request.form()
             supplied = form.get("csrf_token")
-    if not expected or not supplied or not secrets.compare_digest(str(expected), str(supplied)):
+    if not expected or not supplied or not same_token(expected, supplied):
         raise PermissionDenied(message="Security token expired or invalid. Please reload the page and try again.")

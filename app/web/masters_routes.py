@@ -15,14 +15,14 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import (
     CFA, Company, Customer, ERPCodeMapping, ERPFieldMapping, ERPSystem, FreightRate, ImportTemplate, Invoice,
-    Location, Transporter, User,
+    Location, OutsideAuto, Transporter, User,
 )
 from app.security.auth import csrf_protect, require
 from app.services import audit
 from app.services.errors import BusinessError
 from app.services.import_service import TARGET_FIELDS, add_code_mapping
-from app.services.scope import apply_cfa_scope, apply_company_scope
-from app.services.utils import parse_decimal, parse_int
+from app.services.scope import apply_cfa_scope, apply_company_scope, can_see
+from app.services.utils import csv_safe, parse_decimal, parse_int, safe_int
 from app.web.templating import back_url, flash, get_form, redirect, render, safe_path
 
 router = APIRouter(dependencies=[Depends(csrf_protect)], include_in_schema=False)
@@ -74,14 +74,20 @@ MASTERS: dict[str, MasterDef] = {
         F("companies", "Company / Principal mapping", "multi", options="company", list=True),
         F("is_active", "Active", "bool", list=True),
     ], scope="cfa"),
-    "customers": MasterDef("customers", Customer, "Customer / Party Master", "Customer", [
+    "customers": MasterDef("customers", Customer, "Customer Master (stockists, retailers, hospitals)", "Customer", [
         F("code", "Customer code (central)", required=True, list=True, upper=True),
         F("name", "Customer / Party name", required=True, list=True),
+        F("party_type", "Customer type", "select", options="choice:STOCKIST,RETAILER,HOSPITAL", required=True,
+          list=True, help="Stockist / Retailer / Hospital - reports can be split by type"),
         F("billing_address", "Billing address", "textarea"), F("delivery_address", "Delivery address", "textarea"),
         F("city", "City", list=True), F("state", "State"), F("pincode", "PIN code"),
-        F("location_id", "Delivery location", "select", options="location", required=True, list=True),
-        F("contact_person", "Contact person"), F("contact_phone", "Contact number", list=True),
-        F("email", "Email", "email"), F("gstin", "GSTIN", upper=True), F("drug_license_no", "Drug licence no"),
+        F("location_id", "Delivery area / location", "select", options="location", required=True, list=True),
+        F("contact_person", "Contact person"), F("contact_phone", "Mobile number", list=True),
+        F("whatsapp", "WhatsApp number"),
+        F("email", "Email", "email"),
+        F("gstin", "GSTIN", upper=True, list=True,
+          help="Needed for e-invoice QR scanning: the buyer GSTIN on the QR finds this customer"),
+        F("drug_license_no", "Drug licence no"),
         F("companies", "Company mapping", "multi", options="company", list=True),
         F("cfas", "CFA mapping", "multi", options="cfa"),
         F("is_active", "Active", "bool", list=True),
@@ -100,11 +106,26 @@ MASTERS: dict[str, MasterDef] = {
         F("contact_person", "Contact person", list=True), F("mobile", "Mobile number", list=True),
         F("email", "Email", "email"), F("address", "Address", "textarea"), F("city", "City"), F("state", "State"),
         F("gstin", "GST number", upper=True, list=True), F("pan", "PAN", upper=True),
-        F("service_area", "Service area", list=True), F("payment_terms", "Payment terms"),
+        F("service_area", "Areas served", list=True, help="Rates per area: Masters › Transporter Rate Cards"),
+        F("payment_mode", "Mode of payment", "select", options="choice:TBB,CASH", required=True, list=True,
+          help="TBB = to be billed (periodic bill, reconciled) · CASH = paid at dispatch, no bill expected"),
+        F("direct_pickup_charge", "Direct pickup charge (extra, ₹)", "decimal",
+          help="Added when the transporter collects directly from our warehouse"),
+        F("direct_pickup_basis", "Direct pickup charged", "select", options="choice:PER_TRIP,PER_CASE"),
+        F("payment_terms", "Payment terms"),
         F("credit_days", "Credit days", "int"), F("bank_details", "Bank details", "textarea"),
         F("notes", "Other commercial details", "textarea"),
         F("is_active", "Active", "bool", list=True),
     ]),
+    "autos": MasterDef("autos", OutsideAuto, "Outside Autos", "Outside auto", [
+        F("code", "Code", required=True, list=True, upper=True),
+        F("name", "Name of person", required=True, list=True),
+        F("mobile", "Mobile number", list=True),
+        F("charge_basis", "Charge by", "select", options="choice:PER_TRIP,PER_CASE", required=True, list=True),
+        F("rate", "Rate (₹ per trip / per case)", "decimal", required=True, list=True),
+        F("notes", "Notes (vehicle, usual routes…)", "textarea"),
+        F("is_active", "Active", "bool", list=True),
+    ], search=["code", "name", "mobile"]),
 }
 
 
@@ -139,7 +160,9 @@ def _scoped(stmt, md: MasterDef, user: User):
 def erp_mappings(request: Request, db: Session = Depends(get_db), user: User = Depends(require("master.view"))):
     qp = request.query_params
     ent = qp.get("entity", "CUSTOMER")
-    erp_id = parse_int(qp.get("erp_id")) if qp.get("erp_id") else None
+    if ent not in ("CUSTOMER", "LOCATION", "COMPANY", "CFA", "TRANSPORTER"):
+        ent = "CUSTOMER"
+    erp_id = safe_int(qp.get("erp_id"))
     stmt = select(ERPCodeMapping).where(ERPCodeMapping.entity_type == ent)
     if erp_id:
         stmt = stmt.where(ERPCodeMapping.erp_system_id == erp_id)
@@ -229,10 +252,10 @@ def master_list(key: str, request: Request, db: Session = Depends(get_db), user:
         cols = [f for f in md.fields]
         w.writerow([f.label for f in cols])
         for r in rows:
-            w.writerow([_cell(r, f) for f in cols])
+            w.writerow([csv_safe(_cell(r, f)) for f in cols])
         return Response(buf.getvalue().encode("utf-8-sig"), media_type="text/csv",
                         headers={"Content-Disposition": f'attachment; filename="{key}.csv"'})
-    page = max(int(qp.get("page", 1) or 1), 1)
+    page = safe_int(qp.get("page"), 1, minimum=1)
     per = 50
     rows = list(db.scalars(stmt.order_by(md.model.code).offset((page - 1) * per).limit(per)))
     return render(request, "masters/list.html", {"title": md.title, "md": md, "rows": rows, "q": q, "active": act,
@@ -264,6 +287,9 @@ def master_new(key: str, request: Request, db: Session = Depends(get_db), user: 
     md = _get_def(key)
     obj = md.model()
     obj.is_active = True
+    for f in md.fields:  # show the default of fixed lists (customer type, payment mode, charge basis)
+        if f.kind == "select" and (f.options or "").startswith("choice:") and getattr(obj, f.name, None) is None:
+            setattr(obj, f.name, f.options[7:].split(",")[0])
     for k, v in request.query_params.items():  # prefill (e.g. from import correction)
         if hasattr(obj, k) and k not in ("id",):
             try:
@@ -279,7 +305,7 @@ def master_edit(key: str, obj_id: int, request: Request, db: Session = Depends(g
                 user: User = Depends(require("master.view"))):
     md = _get_def(key)
     obj = db.get(md.model, obj_id)
-    if not obj:
+    if not obj or (md.model is Company and not can_see(user, obj.id)) or (md.model is CFA and not can_see(user, None, obj.id)):
         raise HTTPException(404)
     extra = {}
     if key == "customers":
@@ -311,11 +337,15 @@ def _parse(db: Session, md: MasterDef, form) -> tuple[dict, dict]:
             values[f.name] = raw in ("1", "on", "true", "yes")
             continue
         raw = (raw or "").strip()
+        if not raw and f.kind == "select" and (f.options or "").startswith("choice:"):
+            raw = f.options[7:].split(",")[0]  # fixed lists default to their first choice
         if f.required and not raw:
             raise BusinessError(f"{f.label} is required", field=f.name)
         if not raw:
             values[f.name] = None
             continue
+        if f.kind == "select" and (f.options or "").startswith("choice:") and raw not in f.options[7:].split(","):
+            raise BusinessError(f"{f.label}: choose one of the listed values", field=f.name)
         try:
             if f.kind == "int" or (f.kind == "select" and f.options in ("erp", "location", "company", "cfa")):
                 values[f.name] = parse_int(raw)

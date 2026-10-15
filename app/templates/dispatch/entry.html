@@ -64,7 +64,7 @@
 
     <form method="post" action="/dispatch/{{ inv.id }}/save" class="card" id="dispatch-form">
       <input type="hidden" name="csrf_token" value="{{ csrf }}">
-      <div class="card-head"><h3>Dispatch details</h3>{% if not acts.can_edit and st not in ['DISPATCHED','CANCELLED'] %}<span class="badge b-SLIP_GENERATED">Locked after slip generation</span>{% endif %}</div>
+      <div class="card-head"><h3>Dispatch details</h3>{% if not acts.can_edit and st not in ['DISPATCHED','CANCELLED'] %}{% if can('dispatch.operate') %}<span class="badge b-SLIP_GENERATED">Locked after slip generation</span>{% else %}<span class="badge">Read-only for your role</span>{% endif %}{% endif %}</div>
       {% set ro = not acts.can_edit %}
       <div class="form-grid">
         <div class="w2"><label>Transporter <span class="req">*</span></label>
@@ -87,6 +87,9 @@
       </div>
       {% if acts.slip_blockers %}
         <ul class="blockers">{% for b in acts.slip_blockers %}<li>{{ b }}</li>{% endfor %}</ul>
+      {% endif %}
+      {% if data_warnings %}
+        <ul class="blockers soft">{% for w in data_warnings %}<li>{{ w }}</li>{% endfor %}</ul>
       {% endif %}
       {% endif %}
     </form>
@@ -112,6 +115,8 @@
         </form>
       {% elif st in ['PENDING','VERIFIED','RATE_MISSING','EXCEPTION'] %}
         <p class="muted">Generate the slip first. Print is enabled once the dispatch number is issued.</p>
+      {% elif inv.dispatch_no and st in ['SLIP_GENERATED','SLIP_PRINTED','DISPATCHED'] %}
+        <p class="muted">Slip <b class="mono">{{ inv.dispatch_no }}</b> issued{% if inv.print_count %} · printed {{ inv.print_count }}×{% else %} · <b>not printed yet</b>{% endif %}. Printing is done by the dispatch operator.</p>
       {% else %}
         <p class="muted">No active slip.</p>
       {% endif %}
@@ -128,7 +133,7 @@
       {% elif acts.can_complete %}
         <form method="post" action="/dispatch/{{ inv.id }}/complete">
           <input type="hidden" name="csrf_token" value="{{ csrf }}">
-          <button class="btn {{ 'btn-ok btn-lg' if not acts.complete_blockers else '' }}" type="submit" style="width:100%">✔ Complete Dispatch</button>
+          <button class="btn {{ 'btn-ok btn-lg' if not acts.complete_blockers else '' }}" type="submit" style="width:100%" data-confirm="Mark invoice {{ inv.invoice_no }} as DISPATCHED? This cannot be undone.">✔ Complete Dispatch</button>
         </form>
         {% if acts.complete_blockers %}<ul class="blockers">{% for b in acts.complete_blockers %}<li>{{ b }}</li>{% endfor %}</ul>{% endif %}
       {% else %}
@@ -143,14 +148,14 @@
         <form method="post" action="/dispatch/{{ inv.id }}/void" class="stack" style="margin-top:10px">
           <input type="hidden" name="csrf_token" value="{{ csrf }}">
           <div><label>Void slip - reason</label><input type="text" name="reason" id="void-reason" placeholder="e.g. Vehicle changed"><div class="field-hint">Unlocks details; a new dispatch number is issued on regeneration.</div></div>
-          <button class="btn btn-danger" type="submit" data-require-reason="#void-reason">Void slip</button>
+          <button class="btn btn-danger" type="submit" data-require-reason="#void-reason" data-confirm="Void dispatch slip {{ inv.dispatch_no }}? The printed slip becomes invalid and a new number will be issued.">Void slip</button>
         </form>
         {% endif %}
         {% if acts.can_cancel %}
         <form method="post" action="/dispatch/{{ inv.id }}/cancel" class="stack" style="margin-top:12px">
           <input type="hidden" name="csrf_token" value="{{ csrf }}">
           <div><label>Cancel dispatch - reason <span class="req">*</span></label><input type="text" name="reason" id="cancel-reason" placeholder="e.g. Invoice cancelled in ERP"><div class="field-hint">Mandatory. Recorded in the audit trail.</div></div>
-          <button class="btn btn-danger" type="submit" data-require-reason="#cancel-reason">Cancel dispatch</button>
+          <button class="btn btn-danger" type="submit" data-require-reason="#cancel-reason" data-confirm="Cancel invoice {{ inv.invoice_no }} for dispatch?">Cancel dispatch</button>
         </form>
         {% endif %}
         {% if acts.can_reinstate %}

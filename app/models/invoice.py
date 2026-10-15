@@ -87,10 +87,23 @@ class Invoice(Base, TimestampMixin):
     transporter_id: Mapped[int | None] = mapped_column(ForeignKey("transporters.id"), index=True)
     vehicle_no: Mapped[str | None] = mapped_column(String(20))
     lr_no: Mapped[str | None] = mapped_column(String(40), index=True)
+    lr_date: Mapped[date | None] = mapped_column(Date)
+    lr_updated_at: Mapped[datetime | None] = mapped_column(DateTime)
+    lr_updated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     dispatch_date: Mapped[date | None] = mapped_column(Date)
     dispatch_time: Mapped[time | None] = mapped_column(Time)
     remarks: Mapped[str | None] = mapped_column(Text)
     dispatch_no: Mapped[str | None] = mapped_column(String(40), index=True)
+    # current gatepass (plain column: dispatch_slips already references invoices, avoid a FK cycle)
+    dispatch_slip_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    dispatch_mode: Mapped[str | None] = mapped_column(String(15))
+    outside_auto_id: Mapped[int | None] = mapped_column(ForeignKey("outside_autos.id"))
+    extra_charge: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))  # share of pickup / auto charges
+
+    # Capture (how the invoice reached CTDMS) and the GST e-invoice reference
+    capture_mode: Mapped[str] = mapped_column(String(10), default="IMPORT")  # IMPORT / QR_SCAN / API / MANUAL
+    irn: Mapped[str | None] = mapped_column(String(70), index=True)
+    item_count: Mapped[int | None] = mapped_column(Integer)
 
     verified_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     verified_at: Mapped[datetime | None] = mapped_column(DateTime)
@@ -133,6 +146,18 @@ class Invoice(Base, TimestampMixin):
     cancelled_by = relationship("User", foreign_keys=[cancelled_by_id])
     imported_by = relationship("User", foreign_keys=[imported_by_id])
     import_batch = relationship("ImportBatch", foreign_keys=[import_batch_id])
+    lr_updated_by = relationship("User", foreign_keys=[lr_updated_by_id])
+    outside_auto = relationship("OutsideAuto")
+    dispatch_slip = relationship("DispatchSlip", primaryjoin="foreign(Invoice.dispatch_slip_id) == DispatchSlip.id",
+                                 viewonly=True)
+    items: Mapped[list["InvoiceItem"]] = relationship(back_populates="invoice", cascade="all, delete-orphan",
+                                                      order_by="InvoiceItem.line_no")
+
+    @property
+    def total_charge(self) -> Decimal | None:
+        if self.freight_amount is None and self.extra_charge is None:
+            return None
+        return (self.freight_amount or Decimal("0")) + (self.extra_charge or Decimal("0"))
 
     @property
     def central_id(self) -> str:
@@ -190,14 +215,71 @@ class InvoiceOverride(Base):
     decided_by = relationship("User", foreign_keys=[decided_by_id])
 
 
+class InvoiceItem(Base):
+    """SKU line of an invoice (from item-wise ERP exports) - what was dispatched, per company and SKU."""
+
+    __tablename__ = "invoice_items"
+    __table_args__ = (Index("ix_item_sku", "sku_code"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    invoice_id: Mapped[int] = mapped_column(ForeignKey("invoices.id", ondelete="CASCADE"), index=True)
+    line_no: Mapped[int] = mapped_column(Integer, default=1)
+    sku_code: Mapped[str | None] = mapped_column(String(60))
+    sku_name: Mapped[str | None] = mapped_column(String(200))
+    hsn: Mapped[str | None] = mapped_column(String(12))
+    batch_no: Mapped[str | None] = mapped_column(String(40))
+    qty: Mapped[Decimal | None] = mapped_column(Numeric(12, 3))
+    free_qty: Mapped[Decimal | None] = mapped_column(Numeric(12, 3))
+    value: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+
+    invoice: Mapped["Invoice"] = relationship(back_populates="items")
+
+
+class DispatchMode:
+    TRANSPORTER = "TRANSPORTER"    # booked with a transporter (we take the goods to them)
+    DIRECT = "DIRECT"              # transporter picks up directly from our warehouse (direct-pickup extra applies)
+    OUTSIDE_AUTO = "OUTSIDE_AUTO"  # hired auto delivers straight to the customer (local)
+    SELF = "SELF"                  # customer collects / own delivery - no freight
+    ALL = [TRANSPORTER, DIRECT, OUTSIDE_AUTO, SELF]
+    LABELS = {TRANSPORTER: "Transporter", DIRECT: "Transporter - direct pickup", OUTSIDE_AUTO: "Outside auto",
+              SELF: "Self pickup"}
+
+
+class PickupMode:
+    REGULAR = "REGULAR"            # our regular arrangement to the transporter's booking office
+    OUTSIDE_AUTO = "OUTSIDE_AUTO"  # an outside auto carries the goods to the transporter (auto charge added)
+    LABELS = {REGULAR: "Regular", OUTSIDE_AUTO: "Outside auto"}
+
+
 class DispatchSlip(Base):
-    """Immutable dispatch slip. The snapshot is what gets printed (incl. reprints)."""
+    """Dispatch slip / gatepass: one pickup (transporter, outside auto or self) carrying one or more invoices.
+
+    The snapshot is what gets printed (incl. reprints) and never changes. LR numbers are not part of it: they arrive
+    later from the transporter and are kept (audited) on the invoices.
+    """
 
     __tablename__ = "dispatch_slips"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     dispatch_no: Mapped[str] = mapped_column(String(40), unique=True, index=True)
-    invoice_id: Mapped[int] = mapped_column(ForeignKey("invoices.id", ondelete="CASCADE"), index=True)
+    invoice_id: Mapped[int | None] = mapped_column(ForeignKey("invoices.id", ondelete="CASCADE"), index=True)
+    cfa_id: Mapped[int | None] = mapped_column(ForeignKey("cfas.id"), index=True)
+    dispatch_mode: Mapped[str] = mapped_column(String(15), default=DispatchMode.TRANSPORTER)
+    pickup_mode: Mapped[str] = mapped_column(String(15), default=PickupMode.REGULAR)
+    transporter_id: Mapped[int | None] = mapped_column(ForeignKey("transporters.id"), index=True)
+    outside_auto_id: Mapped[int | None] = mapped_column(ForeignKey("outside_autos.id"))
+    dispatch_date: Mapped[date | None] = mapped_column(Date, index=True)
+    invoice_count: Mapped[int] = mapped_column(Integer, default=0)
+    total_cases: Mapped[int] = mapped_column(Integer, default=0)
+    freight_total: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    pickup_charge: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    auto_charge: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    total_charge: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    amount_paid: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    payment_status: Mapped[str] = mapped_column(String(10), default="TBB")  # TBB / PAID / PARTIAL / NIL
+    remarks: Mapped[str | None] = mapped_column(Text)
+    gate_out_at: Mapped[datetime | None] = mapped_column(DateTime)
+    gate_out_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     generated_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     generated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -207,9 +289,55 @@ class DispatchSlip(Base):
     voided_at: Mapped[datetime | None] = mapped_column(DateTime)
     void_reason: Mapped[str | None] = mapped_column(Text)
 
-    invoice = relationship("Invoice")
+    invoice = relationship("Invoice", foreign_keys=[invoice_id])
+    cfa = relationship("CFA")
+    transporter = relationship("Transporter")
+    outside_auto = relationship("OutsideAuto")
     generated_by = relationship("User", foreign_keys=[generated_by_id])
     voided_by = relationship("User", foreign_keys=[voided_by_id])
+    gate_out_by = relationship("User", foreign_keys=[gate_out_by_id])
+    lines: Mapped[list["DispatchSlipLine"]] = relationship(back_populates="slip", cascade="all, delete-orphan",
+                                                           order_by="DispatchSlipLine.id")
+
+    @property
+    def mode_label(self) -> str:
+        label = DispatchMode.LABELS.get(self.dispatch_mode, self.dispatch_mode)
+        if self.pickup_mode == PickupMode.OUTSIDE_AUTO and self.dispatch_mode == DispatchMode.TRANSPORTER:
+            label += " (via outside auto)"
+        return label
+
+    @property
+    def balance(self) -> Decimal:
+        return (self.total_charge or Decimal("0")) - (self.amount_paid or Decimal("0"))
+
+    @property
+    def state(self) -> str:
+        if self.is_void:
+            return "VOID"
+        if self.gate_out_at:
+            return "DISPATCHED"
+        return "SLIP_PRINTED" if self.print_count else "SLIP_GENERATED"
+
+
+class DispatchSlipLine(Base):
+    """One invoice on a gatepass, with the case count, rate and charge frozen when the gatepass was generated."""
+
+    __tablename__ = "dispatch_slip_lines"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    slip_id: Mapped[int] = mapped_column(ForeignKey("dispatch_slips.id", ondelete="CASCADE"), index=True)
+    invoice_id: Mapped[int] = mapped_column(ForeignKey("invoices.id", ondelete="CASCADE"), index=True)
+    customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id"))
+    location_id: Mapped[int | None] = mapped_column(ForeignKey("locations.id"))
+    cases: Mapped[int] = mapped_column(Integer, default=0)
+    rate_per_case: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    freight: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    extra_charge: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+
+    slip: Mapped[DispatchSlip] = relationship(back_populates="lines")
+    invoice = relationship("Invoice")
+    customer = relationship("Customer")
+    location = relationship("Location")
 
 
 class SlipPrintLog(Base):

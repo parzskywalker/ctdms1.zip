@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -28,6 +28,7 @@ class LineMatch:
     DUPLICATE_BILLING = "DUPLICATE_BILLING"
     OTHER_TRANSPORTER = "OTHER_TRANSPORTER"
     UNBILLED = "UNBILLED"  # linked dispatch with no billed amount entered yet
+    PAID_IN_CASH = "PAID_IN_CASH"  # consignment was already paid in cash at dispatch - paying the bill pays twice
 
 
 class TransporterBill(Base, TimestampMixin):
@@ -53,8 +54,17 @@ class TransporterBill(Base, TimestampMixin):
     paid_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     paid_at: Mapped[datetime | None] = mapped_column(DateTime)
     payment_ref: Mapped[str | None] = mapped_column(String(80))
+    # How the bill reached CTDMS: MANUAL (typed / linked), FILE (Excel/CSV statement), SCAN (photo / PDF read by AI)
+    source: Mapped[str] = mapped_column(String(10), default="MANUAL")
+    scan_files: Mapped[list] = mapped_column(JSON, default=list)
+    extraction: Mapped[dict] = mapped_column(JSON, default=dict)  # what the reader returned (kept for audit)
+    total_cases: Mapped[int | None] = mapped_column(Integer)      # as printed on the bill
+    rates_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    rates_reviewed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    rates_review_note: Mapped[str | None] = mapped_column(Text)
 
     transporter = relationship("Transporter")
+    rates_reviewed_by = relationship("User", foreign_keys=[rates_reviewed_by_id])
     company = relationship("Company")
     cfa = relationship("CFA")
     created_by = relationship("User", foreign_keys=[created_by_id])
@@ -85,6 +95,18 @@ class TransporterBillLine(Base):
     variance: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     match_status: Mapped[str] = mapped_column(String(20), default=LineMatch.NOT_FOUND)
     remarks: Mapped[str | None] = mapped_column(Text)
+    # v1.3: what the transporter printed, and what the cross-check found
+    lr_date: Mapped[date | None] = mapped_column(Date)
+    party_name: Mapped[str | None] = mapped_column(String(160))
+    station: Mapped[str | None] = mapped_column(String(120))
+    billed_rate: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    invoice_ids: Mapped[list] = mapped_column(JSON, default=list)  # all invoices of the consignment (same LR)
+    slip_id: Mapped[int | None] = mapped_column(ForeignKey("dispatch_slips.id"))
+    system_cases: Mapped[int | None] = mapped_column(Integer)
+    card_rate: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    issues: Mapped[list] = mapped_column(JSON, default=list)       # [{code, msg, severity}]
+    suggestions: Mapped[list] = mapped_column(JSON, default=list)  # candidate consignments when LR is unknown
 
     bill: Mapped[TransporterBill] = relationship(back_populates="lines")
     invoice = relationship("Invoice")
+    slip = relationship("DispatchSlip")

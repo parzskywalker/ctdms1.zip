@@ -2,11 +2,11 @@
 {% from "_macros.html" import badge, select, variance with context %}
 {% block content %}
 <div class="page-head">
-  <div><h1>Transporter Bill Reconciliation</h1><div class="sub">Actual transporter bills matched line-by-line (LR / invoice / dispatch no) against calculated system freight.</div></div>
+  <div><h1>Transporter bills</h1><div class="sub">Each bill is checked line by line (LR / bilty number, cases, rate, amount, station) against our gatepasses before anything is paid.</div></div>
   <div class="actions">
-    <a class="btn" href="/reports/freight-vs-actual?{{ f.query() }}">Freight vs actual report</a>
+    <a class="btn" href="/reports/freight-vs-actual?{{ f.query() }}">Freight vs actual</a>
     <a class="btn" href="/reports/freight-variance?{{ f.query() }}">Variance report</a>
-    {% if can('recon.edit') %}<a class="btn btn-primary" href="/recon/new">Enter / import bill</a>{% endif %}
+    {% if can('recon.edit') %}<a class="btn" href="/recon/new">Enter / import bill</a><a class="btn btn-primary" href="/recon/scan">Scan a bill</a>{% endif %}
   </div>
 </div>
 <form class="filters" method="get">
@@ -18,12 +18,17 @@
 </form>
 <div class="card flush">
   <div class="table-wrap"><table class="data">
-    <thead><tr><th>Bill No</th><th>Bill date</th><th>Transporter</th><th>Company</th><th>CFA</th><th>Period</th><th class="num">Lines</th><th class="num">System freight</th><th class="num">Actual bill</th><th class="num">Variance</th><th class="num">%</th><th>Status</th><th>Approved</th></tr></thead>
+    <thead><tr><th>Bill No</th><th>Bill date</th><th>Transporter</th><th>Source</th><th>Period</th><th class="num">Lines</th><th class="num">Flags</th><th class="num">Our freight</th><th class="num">Billed</th><th class="num">Variance</th><th>Status</th><th>Rates</th><th>Approved</th></tr></thead>
     <tbody>
     {% for b in bills %}
-      <tr><td><a href="/recon/{{ b.id }}"><b>{{ b.bill_no }}</b></a></td><td>{{ b.bill_date|date }}</td><td>{{ b.transporter.name }}</td><td>{{ b.company.code if b.company else 'All' }}</td><td>{{ b.cfa.code if b.cfa else 'All' }}</td>
-        <td class="small nowrap">{{ b.period_from|date }} – {{ b.period_to|date }}</td><td class="num">{{ b.lines|length }}</td><td class="num">{{ b.calculated_amount|money }}</td><td class="num">{{ b.bill_amount|money }}</td>
-        <td class="num">{{ variance(b.variance) }}</td><td class="num">{{ b.variance_pct|pct }}</td><td>{{ badge(b.status) }}</td><td class="small">{{ b.approved_by.full_name if b.approved_by else '' }}</td></tr>
+      {% set flags = b.lines|selectattr('issues')|list|length %}
+      <tr><td><a href="/recon/{{ b.id }}"><b>{{ b.bill_no }}</b></a></td><td>{{ b.bill_date|date }}</td><td>{{ b.transporter.name }}</td>
+        <td><span class="tag">{{ {'SCAN': 'scanned', 'FILE': 'file', 'MANUAL': 'typed'}.get(b.source, b.source) }}</span></td>
+        <td class="small nowrap">{{ b.period_from|date }} – {{ b.period_to|date }}</td><td class="num">{{ b.lines|length }}</td>
+        <td class="num">{% if flags %}<span class="pos">{{ flags }}</span>{% else %}0{% endif %}</td>
+        <td class="num">{{ b.calculated_amount|money }}</td><td class="num">{{ b.bill_amount|money }}</td>
+        <td class="num">{{ variance(b.variance) }}</td><td>{{ badge(b.status) }}</td>
+        <td class="small">{{ 'reviewed' if b.rates_reviewed_at else '—' }}</td><td class="small">{{ b.approved_by.full_name if b.approved_by else '' }}</td></tr>
     {% else %}<tr><td colspan="13" class="empty">No bills.</td></tr>{% endfor %}
     </tbody>
     {% if bills %}<tfoot><tr><td colspan="7">Total</td><td class="num">{{ tot.calc|money }}</td><td class="num">{{ tot.bill|money }}</td><td class="num">{{ variance(tot.var) }}</td><td colspan="3"></td></tr></tfoot>{% endif %}

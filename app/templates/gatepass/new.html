@@ -1,0 +1,298 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="crumbs"><a href="/gatepass">Gatepasses</a> › New</div>
+<div class="page-head">
+  <div><h1>New gatepass</h1>
+    <div class="sub">Scan the e-invoice QR (or type the invoice number), check the cases, choose who carries the goods, then generate and print. Nothing leaves the gate without a printed gatepass. LR and vehicle numbers are not needed now.</div></div>
+  <div class="actions"><a class="btn" href="/gatepass/gate">Gate check</a><a class="btn" href="/gatepass/lr-pending">LR pending</a></div>
+</div>
+{% if problems %}
+<div class="alert alert-error"><b>The gatepass was not generated:</b><ul>{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul></div>
+{% endif %}
+
+<form method="post" action="/gatepass/new" id="gp-form" data-allow-resubmit>
+<input type="hidden" name="csrf_token" value="{{ csrf }}">
+<div class="grid g-side gp-grid">
+  <div>
+    <div class="card">
+      <div class="row gp-scan">
+        {% if cfas|length > 1 %}
+        <div style="min-width:150px"><label class="small muted">CFA / warehouse</label>
+          <select name="cfa_id" id="gp-cfa" onchange="if (!document.querySelector('#gp-lines tbody tr')) location.search = this.value ? '?cfa_id=' + this.value : ''"><option value="">All (choose to filter)</option>{% for c in cfas %}<option value="{{ c.id }}" {% if c.id == cfa_id %}selected{% endif %}>{{ c.code }} · {{ c.name }}</option>{% endfor %}</select></div>
+        {% elif cfas %}<input type="hidden" name="cfa_id" id="gp-cfa" value="{{ cfas[0].id }}">{% endif %}
+        <div style="flex:1 1 320px"><label class="small muted" for="gp-scan">Scan e-invoice QR / invoice number</label>
+          <input id="gp-scan" type="text" autocomplete="off" autofocus placeholder="Point the scanner at the QR on the invoice, or type the invoice no and press Enter"></div>
+        <div style="width:90px"><label class="small muted" for="gp-scan-cases">Cases</label><input id="gp-scan-cases" type="number" min="1" inputmode="numeric" placeholder="opt."></div>
+        <div style="align-self:flex-end"><button class="btn btn-primary" type="button" id="gp-scan-btn">Add</button>
+          <button class="btn" type="button" id="gp-cam" hidden title="Use this device's camera">Camera</button></div>
+      </div>
+      <div id="gp-scan-msg" class="small" role="status" aria-live="polite" style="margin-top:8px"></div>
+      <video id="gp-video" playsinline muted hidden style="width:100%;max-height:260px;margin-top:8px;border-radius:6px;background:#000"></video>
+    </div>
+
+    <div class="card flush">
+      <div class="card-head"><h3>On this gatepass <span class="muted small" id="gp-count"></span></h3><span class="small muted">Cases can be corrected per invoice; a different count than the ERP needs a checker.</span></div>
+      <div class="table-wrap"><table class="data compact" id="gp-lines">
+        <thead><tr><th>Invoice</th><th>Customer</th><th>Area</th><th>Co.</th><th class="num">Value</th><th class="num" style="width:90px">Cases</th><th class="num">Rate/case</th><th class="num">Charge</th><th></th></tr></thead>
+        <tbody></tbody>
+        <tfoot><tr><td colspan="5"><b>Total</b></td><td class="num"><b id="t-cases">0</b></td><td></td><td class="num"><b id="t-freight">₹0.00</b></td><td></td></tr></tfoot>
+      </table></div>
+      <div class="empty" id="gp-empty">Scan or add invoices to start.</div>
+    </div>
+
+    <div class="card flush">
+      <div class="card-head"><h3>Waiting to be dispatched ({{ open_invs|length }})</h3>
+        <input type="search" id="gp-filter" placeholder="Filter by invoice, customer, area…" style="max-width:260px"></div>
+      <div class="table-wrap scroll-y"><table class="data compact" id="gp-open">
+        <thead><tr><th>Invoice</th><th>Date</th><th>Customer</th><th>Area</th><th>Co.</th><th class="num">Cases</th><th class="num">Value</th><th></th></tr></thead>
+        <tbody>
+        {% for i in open_invs %}
+          <tr data-id="{{ i.id }}" data-text="{{ (i.invoice_no ~ ' ' ~ i.customer ~ ' ' ~ i.location ~ ' ' ~ i.company)|lower }}">
+            <td class="nowrap"><b>{{ i.invoice_no }}</b>{% if i.capture == 'QR_SCAN' %} <span class="tag">QR</span>{% endif %}</td><td class="nowrap small">{{ i.date }}</td>
+            <td>{{ i.customer }} <span class="small muted">{{ i.type }}</span></td><td>{{ i.location }}</td><td>{{ i.company }}</td>
+            <td class="num">{{ i.cases if i.cases is not none else '—' }}</td><td class="num">{{ i.amount|money }}</td>
+            <td class="num">{% if i.blocked %}<span class="small pos" title="{{ i.blocked }}">blocked</span>{% else %}<button class="btn btn-sm" type="button" data-add="{{ i.id }}">Add</button>{% endif %}</td>
+          </tr>
+        {% else %}<tr><td colspan="8" class="empty">No invoice is waiting. Scan an e-invoice QR to capture a new one.</td></tr>{% endfor %}
+        </tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <div class="gp-side">
+    <div class="card stack">
+      <h3 style="margin:0">Who carries the goods</h3>
+      <div class="row">
+        <div style="flex:1"><label>Dispatch date</label><input type="date" name="dispatch_date" value="{{ form.get('dispatch_date') or today.isoformat() }}" max="{{ today.isoformat() }}"></div>
+        <div style="width:110px"><label>Time</label><input type="time" name="dispatch_time" value="{{ form.get('dispatch_time') or '' }}"></div>
+      </div>
+      <div class="gp-modes" role="radiogroup" aria-label="Mode of dispatch">
+        {% set cur_mode = form.get('mode') or 'TRANSPORTER' %}
+        {% for code, label in modes.items() %}
+        <label class="gp-mode"><input type="radio" name="mode" value="{{ code }}" {% if code == cur_mode %}checked{% endif %}><span>{{ label }}</span></label>
+        {% endfor %}
+      </div>
+      <div id="gp-tr-box">
+        <label for="gp-tr">Transporter</label>
+        <select name="transporter_id" id="gp-tr"><option value="">— select —</option>
+          {% for t in transporters %}<option value="{{ t.id }}" {% if form.get('transporter_id')|string == t.id|string %}selected{% endif %}>{{ t.name }}</option>{% endfor %}</select>
+        <div class="field-hint" id="gp-tr-hint"></div>
+        <label style="margin-top:8px">Goods reach the transporter by</label>
+        <div class="checks">
+          <label class="check"><input type="radio" name="pickup_mode" value="REGULAR" {% if form.get('pickup_mode') != 'OUTSIDE_AUTO' %}checked{% endif %}> Regular</label>
+          <label class="check"><input type="radio" name="pickup_mode" value="OUTSIDE_AUTO" {% if form.get('pickup_mode') == 'OUTSIDE_AUTO' %}checked{% endif %}> Outside auto</label>
+        </div>
+      </div>
+      <div id="gp-auto-box">
+        <label for="gp-auto">Outside auto</label>
+        <select name="outside_auto_id" id="gp-auto"><option value="">— select —</option>
+          {% for a in autos %}<option value="{{ a.id }}" {% if form.get('outside_auto_id')|string == a.id|string %}selected{% endif %}>{{ a.name }}{% if a.mobile %} · {{ a.mobile }}{% endif %} ({{ a.charge_label }})</option>{% endfor %}</select>
+        {% if not autos %}<div class="field-hint">No outside autos yet — add them under Masters › Outside Autos.</div>{% endif %}
+      </div>
+      <div><label for="gp-remarks">Remarks</label><input type="text" name="remarks" id="gp-remarks" value="{{ form.get('remarks') or '' }}" maxlength="300"></div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">Charges</h3>
+      <dl class="dl tight gp-totals">
+        <dt>Invoices</dt><dd id="s-inv">0</dd>
+        <dt>Cases</dt><dd id="s-cases">0</dd>
+        <dt>Freight</dt><dd id="s-freight">₹0.00</dd>
+        <dt>Direct pickup</dt><dd id="s-pickup">₹0.00</dd>
+        <dt>Outside auto</dt><dd id="s-auto">₹0.00</dd>
+        <dt><b>Total charged</b></dt><dd><b class="bigfig" id="s-total">₹0.00</b></dd>
+      </dl>
+      <div class="row" style="margin-top:10px">
+        <div style="flex:1"><label for="gp-paid">Amount paid now (cash)</label><input type="text" inputmode="decimal" name="amount_paid" id="gp-paid" value="{{ form.get('amount_paid') or '' }}"></div>
+        <input type="hidden" name="paid_edited" id="gp-paid-edited" value="{{ form.get('paid_edited') or '0' }}">
+      </div>
+      <div class="field-hint" id="s-balance"></div>
+      <div class="field-hint">Rates: {{ 'transporter rate card (per case, per area)' if freight_source == 'TRANSPORTER' else 'principal rate card (set at import)' }}. The server re-checks every rate when you generate.</div>
+      <div class="form-actions"><button class="btn btn-primary btn-lg" type="submit" id="gp-submit" disabled>Generate gatepass</button></div>
+      <div class="field-hint" id="gp-why"></div>
+    </div>
+  </div>
+</div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<style>
+  .gp-modes { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+  .gp-mode { display:flex; gap:6px; align-items:center; border:1px solid var(--line); border-radius:6px; padding:7px 8px; font-weight:600; font-size:13px; cursor:pointer; }
+  .gp-mode:has(input:checked) { border-color: var(--brand); background: var(--brand-soft); }
+  .gp-side .card { position: relative; }
+  @media (min-width: 1100px) { .gp-side { position: sticky; top: 64px; align-self: start; } }
+  #gp-lines input[type=number] { width:72px; text-align:right; min-height:28px; padding:3px 6px; }
+  .rate-missing { color: var(--err); font-weight:650; }
+  tr.flash td { animation: gpflash 1.2s ease-out; }
+  @keyframes gpflash { from { background: #fff4c2; } to { background: transparent; } }
+</style>
+<script>
+(function () {
+  const OPEN = {{ open_invs|jsdata|safe }};
+  const CHOSEN = {{ chosen|jsdata|safe }};
+  const CARDS = {{ cards|jsdata|safe }};
+  const AUTOS = {{ auto_info|jsdata|safe }};
+  const TRS = {{ tr_info|jsdata|safe }};
+  const SOURCE = {{ freight_source|jsdata|safe }};
+  const CASH_DEFAULT = {{ cash_default|jsdata|safe }};
+  const csrf = document.querySelector('input[name=csrf_token]').value;
+  const $ = (s, el = document) => el.querySelector(s);
+  const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
+  const fmt = (n) => '₹' + Number(n || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const lines = new Map();
+  const byId = new Map(OPEN.map((i) => [i.id, i]));
+  const msg = $('#gp-scan-msg');
+  const tbody = $('#gp-lines tbody');
+
+  function say(text, kind, link) {
+    msg.className = 'small ' + (kind === 'error' ? 'pos' : kind === 'ok' ? 'neg' : 'muted');
+    msg.innerHTML = esc(text) + (link ? ` <a href="${esc(link)}">Add it now</a>` : '');
+  }
+  function mode() { const r = $('input[name=mode]:checked'); return r ? r.value : 'TRANSPORTER'; }
+  function pickup() { const r = $('input[name=pickup_mode]:checked'); return r ? r.value : 'REGULAR'; }
+
+  function add(inv, cases) {
+    if (lines.has(inv.id)) { say(`Invoice ${inv.invoice_no} is already on this gatepass`, 'info'); flashRow(inv.id); return; }
+    if (inv.blocked) { say(`Invoice ${inv.invoice_no}: ${inv.blocked}`, 'error'); return; }
+    const cfa = $('#gp-cfa');
+    if (lines.size && [...lines.values()][0].inv.cfa_id !== inv.cfa_id) { say('All invoices on one gatepass must be from the same CFA / warehouse', 'error'); return; }
+    if (cfa && cfa.tagName === 'SELECT' && cfa.value && Number(cfa.value) !== inv.cfa_id) cfa.value = inv.cfa_id;
+    const tr = document.createElement('tr');
+    tr.dataset.id = inv.id;
+    const c = cases || inv.cases || '';
+    tr.innerHTML = `<td class="nowrap"><b>${esc(inv.invoice_no)}</b><input type="hidden" name="ids" value="${inv.id}"><div class="small muted">${esc(inv.date)}</div></td>
+      <td>${esc(inv.customer)} <span class="small muted">${esc(inv.type)}</span></td><td>${esc(inv.location)}</td><td>${esc(inv.company)}</td>
+      <td class="num">${fmt(inv.amount)}</td>
+      <td class="num"><input type="number" min="1" step="1" name="cases_${inv.id}" value="${esc(c)}" aria-label="Cases for ${esc(inv.invoice_no)}" required></td>
+      <td class="num" data-rate></td><td class="num" data-charge></td>
+      <td><button class="btn btn-sm btn-ghost" type="button" data-remove aria-label="Remove ${esc(inv.invoice_no)}">✕</button></td>`;
+    tbody.appendChild(tr);
+    lines.set(inv.id, {inv, tr});
+    const openRow = $(`#gp-open tr[data-id="${inv.id}"]`);
+    if (openRow) openRow.hidden = true;
+    tr.querySelector('input[type=number]').addEventListener('input', recalc);
+    tr.querySelector('[data-remove]').addEventListener('click', () => { tr.remove(); lines.delete(inv.id); if (openRow) openRow.hidden = false; recalc(); });
+    flashRow(inv.id);
+    recalc();
+  }
+  function flashRow(id) { const r = lines.get(id); if (r) { r.tr.classList.remove('flash'); void r.tr.offsetWidth; r.tr.classList.add('flash'); } }
+
+  function recalc() {
+    const m = mode(), tid = $('#gp-tr').value, aid = $('#gp-auto').value, pk = pickup();
+    $('#gp-tr-box').hidden = !(m === 'TRANSPORTER' || m === 'DIRECT');
+    $('#gp-auto-box').hidden = !(m === 'OUTSIDE_AUTO' || ((m === 'TRANSPORTER' || m === 'DIRECT') && pk === 'OUTSIDE_AUTO'));
+    const tri = TRS[tid];
+    $('#gp-tr-hint').textContent = tri ? (tri.pay === 'CASH' ? 'Paid in cash at dispatch' : 'TBB - billed later') + (tri.pickup ? ` · direct pickup ₹${tri.pickup} ${tri.pickup_basis === 'PER_CASE' ? 'per case' : 'per trip'}` : '') : '';
+    const auto = AUTOS[aid];
+    let cases = 0, freight = 0, missing = [];
+    const rows = [...lines.values()];
+    rows.forEach(({inv, tr}) => {
+      const c = parseInt(tr.querySelector('input[type=number]').value, 10) || 0;
+      cases += c;
+      let rate = null;
+      if (m === 'SELF') rate = 0;
+      else if (m === 'OUTSIDE_AUTO') rate = auto && auto.basis === 'PER_CASE' ? auto.rate : null;
+      else if (SOURCE === 'COMPANY') rate = inv.company_rate;
+      else if (tid) rate = (CARDS[tid] || {})[inv.location_id];
+      tr._rate = rate; tr._cases = c;
+      const needsCard = (m === 'TRANSPORTER' || m === 'DIRECT') && tid;
+      if (rate == null && needsCard) missing.push(inv);
+    });
+    rows.forEach(({tr}) => {
+      let charge;
+      if (m === 'OUTSIDE_AUTO' && auto && auto.basis === 'PER_TRIP') charge = cases ? auto.rate * tr._cases / cases : 0;
+      else charge = tr._rate == null ? null : tr._rate * tr._cases;
+      const rc = tr.querySelector('[data-rate]'), cc = tr.querySelector('[data-charge]');
+      if (charge == null) { rc.innerHTML = (m === 'TRANSPORTER' || m === 'DIRECT') && tid ? '<span class="rate-missing" title="No rate for this area on the rate card">no rate</span>' : '<span class="muted">—</span>'; cc.textContent = '—'; }
+      else { rc.textContent = m === 'OUTSIDE_AUTO' && auto && auto.basis === 'PER_TRIP' ? 'trip share' : fmt(tr._rate); cc.textContent = fmt(charge); freight += charge; }
+    });
+    let pickupCh = 0, autoCh = 0;
+    if (m === 'DIRECT' && tri && tri.pickup) pickupCh = tri.pickup_basis === 'PER_CASE' ? tri.pickup * cases : tri.pickup;
+    if ((m === 'TRANSPORTER' || m === 'DIRECT') && pk === 'OUTSIDE_AUTO' && auto) autoCh = auto.basis === 'PER_CASE' ? auto.rate * cases : auto.rate;
+    const total = freight + pickupCh + autoCh;
+    $('#t-cases').textContent = cases; $('#t-freight').textContent = fmt(freight);
+    $('#s-inv').textContent = rows.length; $('#s-cases').textContent = cases; $('#s-freight').textContent = fmt(freight);
+    $('#s-pickup').textContent = fmt(pickupCh); $('#s-auto').textContent = fmt(autoCh); $('#s-total').textContent = fmt(total);
+    $('#gp-count').textContent = rows.length ? `· ${rows.length} invoice${rows.length > 1 ? 's' : ''}, ${new Set(rows.map((r) => r.inv.customer_id)).size} customer(s)` : '';
+    $('#gp-empty').hidden = rows.length > 0;
+    const paid = $('#gp-paid');
+    if ($('#gp-paid-edited').value !== '1') {
+      let p = 0;
+      if (CASH_DEFAULT) { if (m === 'OUTSIDE_AUTO') p = total; else if ((m === 'TRANSPORTER' || m === 'DIRECT') && tri && tri.pay === 'CASH') p = total; else p = autoCh; }
+      paid.value = p ? p.toFixed(2) : '0';
+    }
+    const bal = total - (parseFloat(paid.value) || 0);
+    $('#s-balance').textContent = total ? (bal > 0.005 ? `${fmt(bal)} to be billed by the transporter (TBB)` : 'Fully paid at dispatch') : '';
+    const why = [];
+    if (!rows.length) why.push('add at least one invoice');
+    if ((m === 'TRANSPORTER' || m === 'DIRECT') && !tid) why.push('choose the transporter');
+    if ((m === 'OUTSIDE_AUTO' || ((m === 'TRANSPORTER' || m === 'DIRECT') && pk === 'OUTSIDE_AUTO')) && !aid) why.push('choose the outside auto');
+    if (rows.some(({tr}) => !tr._cases)) why.push('enter cases for every invoice');
+    if (missing.length) why.push(`no rate for ${[...new Set(missing.map((i) => i.location))].join(', ')} on this transporter's rate card`);
+    $('#gp-submit').disabled = why.length > 0;
+    $('#gp-why').textContent = why.length ? 'To generate: ' + why.join('; ') + '.' : '';
+  }
+
+  async function scan() {
+    const input = $('#gp-scan'), code = input.value.trim();
+    if (!code) return;
+    const local = OPEN.find((i) => i.invoice_no.toUpperCase() === code.toUpperCase());
+    const cases = $('#gp-scan-cases').value;
+    if (local) { add(local, parseInt(cases, 10) || null); input.value = ''; $('#gp-scan-cases').value = ''; say(`Invoice ${local.invoice_no} added`, 'ok'); input.focus(); return; }
+    say('Looking up…', 'info');
+    const body = new FormData();
+    body.append('code', code); body.append('cases', cases);
+    const cfa = $('#gp-cfa');
+    const cfaId = (cfa && cfa.value) || (lines.size ? [...lines.values()][0].inv.cfa_id : '');
+    body.append('cfa_id', cfaId);
+    try {
+      const r = await fetch('/gatepass/scan', {method: 'POST', headers: {'X-CSRF-Token': csrf}, body});
+      const j = await r.json();
+      if (!j.ok) { say(j.message, 'error', j.add_url); }
+      else { byId.set(j.invoice.id, j.invoice); add(j.invoice, parseInt(cases, 10) || null); say(j.message, 'ok'); input.value = ''; $('#gp-scan-cases').value = ''; }
+    } catch (e) { say('Could not reach the server - try again', 'error'); }
+    input.focus();
+  }
+  $('#gp-scan').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); scan(); } });
+  $('#gp-scan-cases').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); scan(); } });
+  $('#gp-scan-btn').addEventListener('click', scan);
+  $$('[data-add]').forEach((b) => b.addEventListener('click', () => add(byId.get(Number(b.dataset.add)))));
+  $('#gp-filter').addEventListener('input', (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    $$('#gp-open tbody tr[data-id]').forEach((tr) => { if (!lines.has(Number(tr.dataset.id))) tr.hidden = q && !tr.dataset.text.includes(q); });
+  });
+  $$('input[name=mode], input[name=pickup_mode]').forEach((r) => r.addEventListener('change', () => { $('#gp-paid-edited').value = '0'; recalc(); }));
+  ['#gp-tr', '#gp-auto'].forEach((s) => $(s).addEventListener('change', () => { $('#gp-paid-edited').value = '0'; recalc(); }));
+  $('#gp-paid').addEventListener('input', () => { $('#gp-paid-edited').value = '1'; recalc(); });
+  $('#gp-form').addEventListener('submit', (e) => {
+    if ($('#gp-submit').disabled) { e.preventDefault(); return; }
+    $('#gp-submit').disabled = true; $('#gp-submit').textContent = 'Generating…';
+  });
+  // phone / tablet camera (Chrome on Android, Safari 17+): BarcodeDetector reads the QR without any extra app
+  if ('BarcodeDetector' in window && navigator.mediaDevices) {
+    const camBtn = $('#gp-cam'); camBtn.hidden = false;
+    let stream = null;
+    camBtn.addEventListener('click', async () => {
+      const video = $('#gp-video');
+      if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; video.hidden = true; return; }
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: 'environment'}});
+        video.srcObject = stream; video.hidden = false; await video.play();
+        const det = new window.BarcodeDetector({formats: ['qr_code', 'code_128', 'code_39']});
+        const tick = async () => {
+          if (!stream) return;
+          try { const found = await det.detect(video); if (found.length) { $('#gp-scan').value = found[0].rawValue; stream.getTracks().forEach((t) => t.stop()); stream = null; video.hidden = true; scan(); return; } } catch (e) {}
+          requestAnimationFrame(tick);
+        };
+        tick();
+      } catch (e) { say('Camera not available on this device', 'error'); }
+    });
+  }
+  CHOSEN.forEach((i) => add(i, i.cases));
+  recalc();
+})();
+</script>
+{% endblock %}

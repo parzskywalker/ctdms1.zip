@@ -7,12 +7,12 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import (
     BillStatus, FreightRate, Invoice, InvoiceOverride, InvoiceStatus, OverrideField, OverrideStatus, RateStatus,
-    TransporterBill, User,
+    TransporterBill, TransporterRate, User,
 )
 from app.security.auth import csrf_protect, require, require_any
 from app.services import invoice_service
 from app.services.reports import Filters, rpt_exceptions, rpt_rate_missing
-from app.services.scope import apply_company_scope, apply_invoice_scope, can_see_invoice
+from app.services.scope import apply_invoice_scope, apply_strict_scope, can_see_invoice
 from app.web.templating import back_url, filter_options, flash, redirect, render
 
 router = APIRouter(dependencies=[Depends(csrf_protect)], include_in_schema=False)
@@ -37,17 +37,24 @@ def approvals(request: Request, db: Session = Depends(get_db),
         overrides = list(db.execute(stmt.order_by(InvoiceOverride.requested_at)))
     rates = []
     if user.can("rate.approve"):
-        stmt = apply_company_scope(select(FreightRate), user, FreightRate.company_id)
+        stmt = apply_strict_scope(select(FreightRate), user, FreightRate)
         rates = list(db.scalars(stmt.where(FreightRate.status == RateStatus.PENDING_APPROVAL).order_by(FreightRate.created_at)))
         prev = {r.id: db.get(FreightRate, r.previous_rate_id) if r.previous_rate_id else None for r in rates}
     else:
         prev = {}
+    trates = []
+    if user.can("rate.approve"):
+        trates = list(db.scalars(select(TransporterRate).where(TransporterRate.status == RateStatus.PENDING_APPROVAL)
+                                 .order_by(TransporterRate.created_at)))
     bills = []
     if user.can("recon.approve"):
-        bills = list(db.scalars(select(TransporterBill).where(TransporterBill.status.in_([BillStatus.MATCHED, BillStatus.VARIANCE]))
+        bills = list(db.scalars(apply_strict_scope(select(TransporterBill), user, TransporterBill)
+                                .where(TransporterBill.status.in_([BillStatus.MATCHED, BillStatus.VARIANCE]))
                                 .order_by(TransporterBill.bill_date)))
+    tprev = {r.id: db.get(TransporterRate, r.previous_rate_id) if r.previous_rate_id else None for r in trates}
     return render(request, "approvals.html", {"title": "Approvals", "overrides": overrides, "rates": rates,
-                                              "prev": prev, "bills": bills, "fields": OverrideField.LABELS})
+                                              "prev": prev, "bills": bills, "fields": OverrideField.LABELS,
+                                              "trates": trates, "tprev": tprev})
 
 
 @router.post("/overrides/{ov_id:int}/decide")

@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge, variance with context %}
+{% block content %}
+<div class="crumbs"><a href="/recon">Transporter bills</a> › <a href="/recon/{{ b.id }}">{{ b.bill_no }}</a> › Irregularity report</div>
+<div class="page-head">
+  <div><h1>Irregularity report</h1>
+    <div class="sub">{{ b.transporter.name }} · bill {{ b.bill_no }} dated {{ b.bill_date|date }} · period {{ b.period_from|date }} – {{ b.period_to|date }} · printed {{ printed_at.strftime('%d-%m-%Y %H:%M') }}</div></div>
+  <div class="actions"><button class="btn" type="button" onclick="window.print()">Print</button>{% if can('data.export') %}<a class="btn" href="?export=xlsx">Excel</a>{% endif %}</div>
+</div>
+<div class="kpis" style="grid-template-columns:repeat(5,minmax(0,1fr))">
+  <div class="kpi"><div class="lbl">Billed</div><div class="val">{{ b.bill_amount|money }}</div><div class="hint">{{ b.lines|length }} lines · {{ rep.billed_cases }} cases</div></div>
+  <div class="kpi"><div class="lbl">Our freight (valid lines)</div><div class="val">{{ b.calculated_amount|money }}</div></div>
+  <div class="kpi {% if b.variance > 0 %}alert{% endif %}"><div class="lbl">Difference</div><div class="val">{{ b.variance|money }}</div></div>
+  <div class="kpi {% if rep.overbilled %}alert{% endif %}"><div class="lbl">Over-billed on lines</div><div class="val">{{ rep.overbilled|money }}</div></div>
+  <div class="kpi {% if rep.blocked_amount %}alert{% endif %}"><div class="lbl">Not payable</div><div class="val">{{ rep.blocked_amount|money }}</div><div class="hint">not ours / twice / cash-paid</div></div>
+</div>
+{% if rep.header %}<div class="alert alert-error">{% for h in rep.header %}<div>{{ h.msg }}</div>{% endfor %}</div>{% endif %}
+<div class="card flush">
+  <div class="card-head"><h3>Lines with irregularities ({{ rep.problem_lines|length }})</h3></div>
+  <div class="table-wrap"><table class="data compact">
+    <thead><tr><th>LR</th><th>Date</th><th>Party / station</th><th class="num">Cases<br><span class="small muted">billed / ours</span></th><th class="num">Rate<br><span class="small muted">billed / card</span></th><th class="num">Amount<br><span class="small muted">billed / ours</span></th><th>Finding</th></tr></thead>
+    <tbody>
+    {% for ln in rep.problem_lines %}
+      <tr><td class="mono">{{ ln.lr_no or '—' }}</td><td class="nowrap">{{ ln.lr_date|date }}</td><td>{{ ln.party_name or '' }}<div class="small muted">{{ ln.station or '' }}</div></td>
+        <td class="num">{{ ln.billed_boxes if ln.billed_boxes is not none else '—' }} / {{ ln.system_cases if ln.system_cases is not none else '—' }}</td>
+        <td class="num">{{ ln.billed_rate|rate }} / {{ ln.card_rate|rate }}</td>
+        <td class="num">{{ ln.billed_amount|money }} / {{ ln.calculated_amount|money }}</td>
+        <td>{{ badge(ln.match_status, ln.match_status.replace('_',' ').title()) }}{% for i in ln.issues %}{% if i.severity != 'info' %}<div class="small">• {{ i.msg }}</div>{% endif %}{% endfor %}</td></tr>
+    {% else %}<tr><td colspan="7" class="empty">No irregularities — every line matches our gatepasses and rate card.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% if rep.unbilled %}
+<div class="card flush">
+  <div class="card-head"><h3>Our consignments in the period not on this bill ({{ rep.unbilled|length }})</h3></div>
+  <div class="table-wrap"><table class="data compact">
+    <thead><tr><th>Gatepass</th><th>Date</th><th>Customer</th><th>Area</th><th>LR</th><th class="num">Cases</th><th class="num">Our freight</th></tr></thead>
+    <tbody>{% for u in rep.unbilled %}<tr><td class="mono">{{ u.dispatch_no }}</td><td>{{ u.date|date }}</td><td>{{ u.customer }}</td><td>{{ u.location }}</td><td class="mono">{{ u.lr_no or '—' }}</td><td class="num">{{ u.cases }}</td><td class="num">{{ u.freight|money }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% endif %}
+<style>@media print { .side, .topbar, .actions, .crumbs { display: none !important; } .app { display: block; } }</style>
+{% endblock %}

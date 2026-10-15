@@ -1,66 +1,163 @@
 {% extends "base.html" %}
 {% from "_macros.html" import badge, variance with context %}
 {% block content %}
-<div class="crumbs"><a href="/recon">Reconciliation</a> › {{ b.bill_no }}</div>
+{% set can_edit = editable and can('recon.edit') %}
+<div class="crumbs"><a href="/recon">Transporter bills</a> › {{ b.bill_no }}</div>
 <div class="page-head">
   <div><h1>Bill {{ b.bill_no }} · {{ b.transporter.name }} {{ badge(b.status) }}</h1>
-    <div class="sub">Bill date {{ b.bill_date|date }} · period {{ b.period_from|date }} – {{ b.period_to|date }} · {{ b.company.name if b.company else 'all companies' }} · {{ b.cfa.name if b.cfa else 'all CFAs' }} · entered by {{ b.created_by.full_name if b.created_by else '' }}</div></div>
+    <div class="sub">{{ {'SCAN': 'Scanned', 'FILE': 'Imported statement', 'MANUAL': 'Typed / linked'}.get(b.source, b.source) }} · bill date {{ b.bill_date|date }} · period {{ b.period_from|date }} – {{ b.period_to|date }} · {{ b.company.name if b.company else 'all companies' }} · {{ b.cfa.name if b.cfa else 'all CFAs' }} · entered by {{ b.created_by.full_name if b.created_by else '' }}</div></div>
+  <div class="actions"><a class="btn" href="/recon/{{ b.id }}/report">Irregularity report</a>{% if can('data.export') %}<a class="btn" href="/recon/{{ b.id }}/report?export=xlsx">Excel</a>{% endif %}</div>
 </div>
-<div class="kpis" style="grid-template-columns:repeat(5,minmax(0,1fr))">
-  <div class="kpi"><div class="lbl">System freight</div><div class="val">{{ b.calculated_amount|money }}</div><div class="hint">{{ b.lines|selectattr('invoice_id')|list|length }} matched invoices</div></div>
-  <div class="kpi"><div class="lbl">Actual bill amount</div><div class="val">{{ b.bill_amount|money }}</div><div class="hint">lines total {{ lines_total|money }}</div></div>
-  <div class="kpi {% if b.variance > 0 %}alert{% elif b.variance < 0 %}good{% endif %}"><div class="lbl">Variance</div><div class="val">{{ b.variance|money }}</div><div class="hint">{{ b.variance_pct|pct }} of system freight</div></div>
-  <div class="kpi"><div class="lbl">Tolerance</div><div class="val">{{ tol_amt|money }}</div><div class="hint">per line · {{ tol_pct }}% per bill</div></div>
-  <div class="kpi"><div class="lbl">Status</div><div class="val">{{ b.status }}</div><div class="hint">{% if b.approved_by %}approved by {{ b.approved_by.full_name }}{% endif %}{% if b.payment_ref %} · paid {{ b.payment_ref }}{% endif %}</div></div>
+<div class="kpis" style="grid-template-columns:repeat(6,minmax(0,1fr))">
+  <div class="kpi"><div class="lbl">Our freight</div><div class="val">{{ b.calculated_amount|money }}</div><div class="hint">{{ b.lines|selectattr('invoice_id')|list|length }} of {{ b.lines|length }} lines matched</div></div>
+  <div class="kpi"><div class="lbl">Bill amount</div><div class="val">{{ b.bill_amount|money }}</div><div class="hint">lines total {{ lines_total|money }}</div></div>
+  <div class="kpi {% if b.variance > 0 %}alert{% elif b.variance < 0 %}good{% endif %}"><div class="lbl">Variance</div><div class="val">{{ b.variance|money }}</div><div class="hint">{{ b.variance_pct|pct }} of our freight</div></div>
+  <div class="kpi {% if rep.problem_lines %}alert{% else %}good{% endif %}"><div class="lbl">Lines with flags</div><div class="val">{{ rep.problem_lines|length }}</div><div class="hint">{% if rep.blocked_amount %}{{ rep.blocked_amount|money }} cannot be paid{% else %}nothing blocked{% endif %}</div></div>
+  <div class="kpi {% if rep.unbilled %}warn{% endif %}"><div class="lbl">Not on this bill</div><div class="val">{{ rep.unbilled|length }}</div><div class="hint">our consignments in the period</div></div>
+  <div class="kpi"><div class="lbl">Rates</div><div class="val" style="font-size:16px">{{ 'Reviewed' if b.rates_reviewed_at else 'Not reviewed' }}</div><div class="hint">{{ b.rates_review_note or '' }}</div></div>
 </div>
 
-{% if editable and can('recon.edit') %}
-<div class="grid g3">
-  <form method="post" action="/recon/{{ b.id }}/link" class="card">
-    <input type="hidden" name="csrf_token" value="{{ csrf }}">
-    <h3>Link dispatches</h3><p class="small muted">Adds every DISPATCHED invoice of {{ b.transporter.name }} in the billing period not yet billed.</p>
-    <button class="btn" type="submit" {% if not b.period_from %}disabled{% endif %}>Link period dispatches</button>
-  </form>
-  <form method="post" action="/recon/{{ b.id }}/import" enctype="multipart/form-data" class="card">
-    <input type="hidden" name="csrf_token" value="{{ csrf }}">
-    <h3>Import transporter statement</h3><p class="small muted">Excel/CSV with LR No / Invoice No, Boxes, Amount. <a href="/imports/sample/transporter_bill_sample.csv">sample</a></p>
-    <div class="row"><input type="file" name="file" accept=".csv,.xlsx,.xls" required><button class="btn" type="submit">Import &amp; match</button></div>
-  </form>
-  <form method="post" action="/recon/{{ b.id }}/allocate" class="card">
-    <input type="hidden" name="csrf_token" value="{{ csrf }}">
-    <h3>Bill is a lump sum?</h3><p class="small muted">Spread {{ b.bill_amount|money }} across lines in proportion to system freight.</p>
-    <button class="btn" type="submit">Allocate bill amount</button>
-  </form>
+{% if rep.header or rep.counts %}
+<div class="alert {{ 'alert-error' if blocking or rep.header else 'alert-warn' }}">
+  <b>Cross-check:</b>
+  {% for h in rep.header %}<div>{{ h.msg }}</div>{% endfor %}
+  {% if rep.counts %}<div>{% for code, n in rep.counts|dictsort %}<span class="tag" style="margin-right:6px">{{ rep.labels.get(code, code) }}: {{ n }}</span>{% endfor %}</div>{% endif %}
+  {% if blocking %}<div class="small" style="margin-top:4px">{{ blocking|length }} line(s) cannot be approved as they are (not ours, billed twice, already paid in cash, not dispatched or another transporter's). Correct, link or delete them.</div>{% endif %}
 </div>
 {% endif %}
 
-<form method="post" action="/recon/{{ b.id }}/amounts" class="card flush">
-  <input type="hidden" name="csrf_token" value="{{ csrf }}">
-  <div class="card-head"><h3>Bill lines ({{ b.lines|length }})</h3>
-    {% if editable and can('recon.edit') %}<div class="row"><label class="small" style="margin:0">Bill amount</label><input type="text" name="bill_amount" value="{{ b.bill_amount }}" style="width:130px"><button class="btn btn-primary btn-sm" type="submit">Save amounts &amp; re-match</button></div>{% endif %}</div>
+{% if can_edit %}
+<details class="card" {% if not b.lines %}open{% endif %}>
+  <summary><b>Bill details, statement file, linking</b></summary>
+  <div class="grid g3" style="margin-top:12px">
+    <form method="post" action="/recon/{{ b.id }}/header" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <div class="row"><div style="flex:1"><label>Bill no</label><input type="text" name="bill_no" value="{{ b.bill_no }}" data-upper></div><div style="flex:1"><label>Bill date</label><input type="date" name="bill_date" value="{{ b.bill_date.isoformat() }}"></div></div>
+      <div class="row"><div style="flex:1"><label>Period from</label><input type="date" name="period_from" value="{{ b.period_from.isoformat() if b.period_from else '' }}"></div><div style="flex:1"><label>to</label><input type="date" name="period_to" value="{{ b.period_to.isoformat() if b.period_to else '' }}"></div></div>
+      <div><label>Total cases printed on the bill</label><input type="number" name="total_cases" value="{{ b.total_cases if b.total_cases is not none else '' }}"></div>
+      <button class="btn" type="submit">Save bill details</button>
+    </form>
+    <form method="post" action="/recon/{{ b.id }}/import" enctype="multipart/form-data" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <b>Import the transporter's Excel / CSV statement</b><p class="small muted" style="margin:0">Columns like LR / Bilty No, Date, Party, Station, Cases (Nag / Dag / Pkgs), Rate, Amount. <a href="/imports/sample/transporter_bill_sample.csv">sample</a></p>
+      <input type="file" name="file" accept=".csv,.xlsx,.xls" required><button class="btn" type="submit">Import &amp; check</button>
+    </form>
+    <div class="stack">
+      <form method="post" action="/recon/{{ b.id }}/link"><input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <b>No statement?</b><p class="small muted" style="margin:4px 0">Add every consignment we sent with {{ b.transporter.name }} in the period that is not billed yet.</p>
+        <button class="btn" type="submit" {% if not b.period_from %}disabled title="Set the period first"{% endif %}>Link period dispatches</button></form>
+      <form method="post" action="/recon/{{ b.id }}/allocate"><input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <p class="small muted" style="margin:4px 0">Bill only shows a total? Spread {{ b.bill_amount|money }} over the lines in proportion to our freight.</p>
+        <button class="btn" type="submit">Allocate bill amount</button></form>
+    </div>
+  </div>
+</details>
+{% endif %}
+
+<div class="{{ 'grid scan-grid' if b.scan_files else '' }}" id="lines">
+  {% if b.scan_files %}
+  <div class="card scan-photos">
+    <div class="card-head"><h3>Bill as received</h3><span class="small muted">{{ b.scan_files|length }} page(s)</span></div>
+    {% for f in b.scan_files %}
+      {% if f.type == 'application/pdf' %}<p><a class="btn" href="/recon/{{ b.id }}/file/{{ loop.index0 }}" target="_blank">Open PDF page {{ loop.index }}</a></p>
+      {% else %}<a href="/recon/{{ b.id }}/file/{{ loop.index0 }}" target="_blank"><img src="/recon/{{ b.id }}/file/{{ loop.index0 }}" alt="Bill page {{ loop.index }}" loading="lazy"></a>{% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <form method="post" action="/recon/{{ b.id }}/lines" class="card flush">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <div class="card-head"><h3>Bill lines ({{ b.lines|length }})</h3>
+      {% if can_edit %}<div class="row"><label class="small" style="margin:0">Bill total</label><input type="text" name="bill_amount" value="{{ b.bill_amount }}" style="width:120px"><button class="btn btn-primary btn-sm" type="submit">Save &amp; re-check</button></div>{% endif %}</div>
+    <div class="table-wrap"><table class="data compact bill-lines">
+      <thead><tr><th>LR / bilty</th><th>Date</th><th>Party</th><th>Station</th><th class="num">Cases<br><span class="muted small">billed / ours</span></th><th class="num">Rate<br><span class="muted small">billed / card</span></th><th class="num">Amount<br><span class="muted small">billed / ours</span></th><th>Result</th>{% if can_edit %}<th></th>{% endif %}</tr></thead>
+      <tbody>
+      {% for ln in b.lines %}
+        {% set i = loop.index0 %}
+        <tr class="{{ 'row-bad' if ln.match_status in ['NOT_FOUND','DUPLICATE_BILLING','PAID_IN_CASH','NOT_DISPATCHED','OTHER_TRANSPORTER'] else ('row-warn' if ln.issues else '') }}">
+          {% if can_edit %}
+          <td><input type="hidden" name="ln_{{ i }}_id" value="{{ ln.id }}"><input type="text" name="ln_{{ i }}_lr_no" value="{{ ln.lr_no or '' }}" data-upper class="w-lr"></td>
+          <td><input type="date" name="ln_{{ i }}_lr_date" value="{{ ln.lr_date.isoformat() if ln.lr_date else '' }}" class="w-date"></td>
+          <td><input type="text" name="ln_{{ i }}_party_name" value="{{ ln.party_name or '' }}" class="w-party"></td>
+          <td><input type="text" name="ln_{{ i }}_station" value="{{ ln.station or '' }}" class="w-st"></td>
+          <td class="num nowrap"><input type="text" inputmode="numeric" name="ln_{{ i }}_billed_boxes" value="{{ ln.billed_boxes if ln.billed_boxes is not none else '' }}" class="w-n"> <span class="muted small">/ {{ ln.system_cases if ln.system_cases is not none else '—' }}</span></td>
+          <td class="num nowrap"><input type="text" inputmode="decimal" name="ln_{{ i }}_billed_rate" value="{{ ln.billed_rate if ln.billed_rate is not none else '' }}" class="w-n"> <span class="muted small">/ {{ ln.card_rate if ln.card_rate is not none else '—' }}</span></td>
+          <td class="num nowrap"><input type="text" inputmode="decimal" name="ln_{{ i }}_billed_amount" value="{{ ln.billed_amount if ln.billed_amount is not none else '' }}" class="w-amt"><div class="muted small">{{ ln.calculated_amount|money }} {{ variance(ln.variance) }}</div></td>
+          {% else %}
+          <td class="mono">{{ ln.lr_no or '' }}</td><td class="nowrap">{{ ln.lr_date|date }}</td><td>{{ ln.party_name or '' }}</td><td>{{ ln.station or '' }}</td>
+          <td class="num">{{ ln.billed_boxes if ln.billed_boxes is not none else '—' }} <span class="muted small">/ {{ ln.system_cases if ln.system_cases is not none else '—' }}</span></td>
+          <td class="num">{{ ln.billed_rate|rate }} <span class="muted small">/ {{ ln.card_rate|rate }}</span></td>
+          <td class="num">{{ ln.billed_amount|money }}<div class="muted small">{{ ln.calculated_amount|money }} {{ variance(ln.variance) }}</div></td>
+          {% endif %}
+          <td style="min-width:220px">{{ badge(ln.match_status, ln.match_status.replace('_',' ').title()) }}
+            {% if ln.invoice_ids %}<div class="small">{% if ln.invoice_ids|length == 1 %}<a href="/invoices/{{ ln.invoice_ids[0] }}">{{ ln.invoice_no }}</a>{% else %}{{ ln.invoice_no }}{% endif %}{% if ln.slip_id %} · <a class="mono" href="/gatepass/{{ ln.slip_id }}">{{ ln.dispatch_no }}</a>{% endif %}</div>{% endif %}
+            {% for iss in ln.issues or [] %}<div class="small iss-{{ iss.severity }}">• {{ iss.msg }}</div>{% endfor %}
+            {% if ln.suggestions and can_edit %}
+              <div class="small" style="margin-top:4px"><b>Probably:</b>
+              {% for s in ln.suggestions %}<div class="row" style="gap:6px;margin-top:2px"><span>{{ s.customer }} · {{ s.location }} · {{ s.cases }} cases · {{ s.date|date }} · {{ s.dispatch_no }}</span>
+                <button class="btn btn-sm" type="submit" formaction="/recon/{{ b.id }}/lines/{{ ln.id }}/link/{{ loop.index0 }}" formnovalidate>This one</button></div>{% endfor %}</div>
+            {% endif %}
+            {% if ln.remarks %}<div class="small muted">{{ ln.remarks }}</div>{% endif %}
+          </td>
+          {% if can_edit %}<td><label class="check small" title="Remove this line"><input type="checkbox" name="ln_{{ i }}_delete" value="1"> del</label></td>{% endif %}
+        </tr>
+      {% endfor %}
+      {% for k in range(spare_rows) %}
+        {% set i = b.lines|length + k %}
+        <tr class="spare"><td><input type="text" name="ln_{{ i }}_lr_no" data-upper class="w-lr" placeholder="new line"></td><td><input type="date" name="ln_{{ i }}_lr_date" class="w-date"></td><td><input type="text" name="ln_{{ i }}_party_name" class="w-party"></td><td><input type="text" name="ln_{{ i }}_station" class="w-st"></td>
+          <td class="num"><input type="text" inputmode="numeric" name="ln_{{ i }}_billed_boxes" class="w-n"></td><td class="num"><input type="text" inputmode="decimal" name="ln_{{ i }}_billed_rate" class="w-n"></td><td class="num"><input type="text" inputmode="decimal" name="ln_{{ i }}_billed_amount" class="w-amt"></td><td colspan="2" class="small muted">Type a line from the bill; Save adds more empty rows.</td></tr>
+      {% endfor %}
+      {% if not b.lines and not spare_rows %}<tr><td colspan="9" class="empty">No lines.</td></tr>{% endif %}
+      </tbody>
+    </table></div>
+    {% if can_edit %}<div class="sticky-bar"><button class="btn btn-primary" type="submit">Save lines &amp; re-check</button><span class="small muted">Every change is audited. The person who edits a bill cannot approve it.</span></div>{% endif %}
+  </form>
+</div>
+
+{% if rep.unbilled %}
+<details class="card flush">
+  <summary class="card-head" style="padding:12px 16px"><h3 style="display:inline">Our consignments in the period that are not on this bill ({{ rep.unbilled|length }})</h3></summary>
   <div class="table-wrap"><table class="data compact">
-    <thead><tr><th>LR No</th><th>Invoice</th><th>Dispatch No</th><th class="num">Sys boxes</th><th class="num">Billed boxes</th><th class="num">System freight</th><th class="num" style="width:140px">Billed amount</th><th class="num">Variance</th><th>Match</th><th>Remarks</th><th></th></tr></thead>
+    <thead><tr><th>Gatepass</th><th>Date</th><th>Customer</th><th>Area</th><th>Invoices</th><th>LR</th><th class="num">Cases</th><th class="num">Our freight</th></tr></thead>
+    <tbody>{% for u in rep.unbilled %}<tr><td class="mono">{{ u.dispatch_no }}</td><td>{{ u.date|date }}</td><td>{{ u.customer }}</td><td>{{ u.location }}</td><td class="small">{{ u.invoices }}</td><td class="mono">{{ u.lr_no or '—' }}</td><td class="num">{{ u.cases }}</td><td class="num">{{ u.freight|money }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <p class="small muted" style="padding:0 16px 12px">Usually billed next time — or missing from the transporter's records. Nothing to pay for them on this bill.</p>
+</details>
+{% endif %}
+
+{% if review %}
+<form method="post" action="/recon/{{ b.id }}/rates" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <div class="card-head"><h3>Has {{ b.transporter.name }} changed any rates?</h3>{% if b.rates_reviewed_at %}<span class="small muted">Reviewed by {{ b.rates_reviewed_by.full_name if b.rates_reviewed_by else '' }} {{ b.rates_reviewed_at|dt }} — {{ b.rates_review_note }}</span>{% endif %}</div>
+  <p class="small muted" style="margin-top:0">Rate per case actually charged on this bill vs our rate card. Tick an area to update the rate card (a rate approver confirms it; old bills and gatepasses keep their rates).</p>
+  <div class="table-wrap"><table class="data compact">
+    <thead><tr><th>Area</th><th class="num">Lines</th><th class="num">Rate card</th><th>Charged on this bill</th><th>Update rate card</th></tr></thead>
     <tbody>
-    {% for ln in b.lines %}
-      <tr><td class="mono">{{ ln.lr_no or '' }}</td><td>{% if ln.invoice_id %}<a href="/invoices/{{ ln.invoice_id }}">{{ ln.invoice_no }}</a>{% else %}{{ ln.invoice_no or '' }}{% endif %}</td><td class="mono small">{{ ln.dispatch_no or '' }}</td>
-        <td class="num">{{ ln.invoice.boxes if ln.invoice else '—' }}</td><td class="num {% if ln.invoice and ln.billed_boxes and ln.billed_boxes != ln.invoice.boxes %}pos{% endif %}">{{ ln.billed_boxes or '' }}</td>
-        <td class="num">{{ ln.calculated_amount|money }}</td>
-        <td class="num">{% if editable and can('recon.edit') %}<input type="text" name="amt_{{ ln.id }}" value="{{ ln.billed_amount if ln.billed_amount is not none else '' }}" style="text-align:right;min-height:28px;padding:3px 6px">{% else %}{{ ln.billed_amount|money }}{% endif %}</td>
-        <td class="num">{{ variance(ln.variance) }}</td><td>{{ badge(ln.match_status, ln.match_status.replace('_',' ').title()) }}</td><td class="small">{{ ln.remarks or '' }}</td>
-        <td>{% if editable and can('recon.edit') %}<button class="btn btn-sm btn-ghost" type="submit" formaction="/recon/{{ b.id }}/lines/{{ ln.id }}/delete">✕</button>{% endif %}</td></tr>
-    {% else %}<tr><td colspan="11" class="empty">No lines yet — link dispatches or import the transporter statement.</td></tr>{% endfor %}
+    {% for r in review %}
+      <tr class="{{ 'row-warn' if r.differs else '' }}"><td><b>{{ r.location.name }}</b></td><td class="num">{{ r.lines }}</td><td class="num">{{ r.card|rate }}</td>
+        <td>{% for rate, n in r.charged.most_common() %}<span class="tag">{{ rate|rate }} × {{ n }}</span> {% else %}<span class="muted small">no rate / amount on the bill</span>{% endfor %}</td>
+        <td>{% if r.pending %}<span class="badge b-PENDING_APPROVAL">{{ r.pending.rate_per_case|rate }} awaiting approval</span>
+            {% elif can_edit or can('rate.create') %}<div class="row" style="gap:6px;flex-wrap:nowrap"><label class="check"><input type="checkbox" name="accept_{{ r.location.id }}" value="1" {% if r.differs and not b.rates_reviewed_at %}checked{% endif %}> new</label>
+              <input type="text" inputmode="decimal" name="newrate_{{ r.location.id }}" value="{{ r.most if r.most is not none else '' }}" style="width:80px;min-height:28px;padding:3px 6px">
+              <input type="date" name="from_{{ r.location.id }}" value="{{ b.period_from.isoformat() if b.period_from else b.bill_date.isoformat() }}" style="width:130px;min-height:28px;padding:3px 4px"></div>{% endif %}</td></tr>
+    {% endfor %}
     </tbody>
   </table></div>
+  {% if can_edit or can('rate.create') %}
+  <div class="form-actions"><input type="text" name="note" placeholder="Note (e.g. diesel hike letter dated…)" style="max-width:360px"><button class="btn btn-primary" type="submit">Save rate review</button><span class="small muted">Nothing ticked = "no rate changes".</span></div>
+  {% endif %}
 </form>
+{% endif %}
 
 <div class="grid g3">
   {% if b.status in ['MATCHED','VARIANCE'] and can('recon.approve') %}
   <form method="post" action="/recon/{{ b.id }}/approve" class="card stack">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
     <h3>Approve bill</h3>
+    {% if not b.rates_reviewed_at %}<div class="alert alert-warn small" style="margin:0">Rates not reviewed yet — answer "Has the transporter changed any rates?" above first.</div>{% endif %}
     <input type="text" name="remarks" placeholder="{{ 'Explain the variance (required)' if b.status == 'VARIANCE' else 'Remarks (optional)' }}">
-    <button class="btn btn-ok" type="submit">Approve for payment</button>
-    <div class="field-hint">Maker-checker: the person who entered the bill cannot approve it.</div>
+    <button class="btn btn-ok" type="submit" {% if blocking or not b.rates_reviewed_at %}disabled{% endif %} data-confirm="Approve bill {{ b.bill_no }} for payment of {{ b.bill_amount|money }}?">Approve for payment</button>
+    <div class="field-hint">Maker-checker: the person who entered or edited the bill cannot approve it.</div>
   </form>
   {% endif %}
   {% if b.status == 'APPROVED' and can('recon.pay') %}
@@ -68,7 +165,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
     <h3>Mark paid</h3>
     <input type="text" name="payment_ref" placeholder="UTR / cheque no" required>
-    <button class="btn btn-primary" type="submit">Mark paid</button>
+    <button class="btn btn-primary" type="submit" data-confirm="Mark bill {{ b.bill_no }} as PAID? This closes the bill.">Mark paid</button>
   </form>
   {% endif %}
   {% if b.status not in ['PAID','REJECTED'] and can('recon.approve') %}
@@ -76,8 +173,20 @@
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
     <h3>Reject bill</h3>
     <input type="text" name="reason" id="rej-reason" placeholder="Reason">
-    <button class="btn btn-danger" type="submit" data-require-reason="#rej-reason">Reject</button>
+    <button class="btn btn-danger" type="submit" data-require-reason="#rej-reason" data-confirm="Reject bill {{ b.bill_no }}?">Reject</button>
   </form>
   {% endif %}
 </div>
+<style>
+  .scan-grid { grid-template-columns: minmax(0, 0.55fr) minmax(0, 2fr); align-items: start; }
+  .scan-photos img { width: 100%; border: 1px solid var(--line); border-radius: 6px; margin-bottom: 8px; }
+  @media (min-width: 1100px) { .scan-photos { position: sticky; top: 64px; max-height: calc(100vh - 80px); overflow: auto; } }
+  @media (max-width: 1099px) { .scan-grid { grid-template-columns: 1fr; } }
+  .bill-lines input { min-height: 28px; padding: 3px 6px; font-size: 12.5px; }
+  .bill-lines .w-lr { width: 76px; } .bill-lines .w-date { width: 118px; } .bill-lines .w-party { width: 120px; }
+  .bill-lines .w-st { width: 78px; } .bill-lines .w-n { width: 50px; text-align: right; } .bill-lines .w-amt { width: 76px; text-align: right; }
+  .bill-lines td, .bill-lines th { padding-left: 4px; padding-right: 4px; }
+  tr.row-bad td { background: #fff3f2; } tr.row-warn td { background: #fffaf0; }
+  .iss-high { color: var(--err); } .iss-warn { color: var(--warn); } .iss-info { color: var(--muted); }
+</style>
 {% endblock %}

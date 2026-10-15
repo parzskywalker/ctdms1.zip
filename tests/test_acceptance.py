@@ -81,7 +81,7 @@ def test_09_missing_rate_exception_blocks_dispatch(api):
 
 # 10 -------------------------------------------------------------------------------------------------
 def test_10_pending_dispatch_queue(api, web):
-    rows = api("operator.raipur").get("/api/v1/dispatch/pending").json()
+    rows = api("operator.raipur").get("/api/v1/dispatch/pending").json()["items"]
     assert rows and all(r["status"] in InvoiceStatus.OPEN for r in rows)
     assert all(r["cfa"]["code"] == "RPR" for r in rows)  # operator only sees own CFA
     page = web("operator.raipur").get("/dispatch/pending")

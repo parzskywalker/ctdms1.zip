@@ -1,4 +1,4 @@
 company_code,cfa_code,invoice_no,invoice_date,customer_code,customer_name,location,sales_value,boxes,source_invoice_id,remarks
-COA,RPR,STD-260926-001,26-09-2026,C-ABC01,ABC Pharma,Bilaspur,115000.00,36,,
-COB,RPR,STD-260926-002,26-09-2026,C-PQR01,PQR Distributors,Nagpur,88400.00,24,,
-COC,RPR,STD-260926-003,26-09-2026,C-SUN01,Sunrise Agencies,Korba,41250.00,15,,No Company C Korba rate -> RATE MISSING
+COA,RPR,STD-261015-001,15-10-2026,C-ABC01,ABC Pharma,Bilaspur,115000.00,36,,
+COB,RPR,STD-261015-002,15-10-2026,C-PQR01,PQR Distributors,Nagpur,88400.00,24,,
+COC,RPR,STD-261015-003,15-10-2026,C-SUN01,Sunrise Agencies,Korba,41250.00,15,,No Company C Korba rate -> RATE MISSING

@@ -64,7 +64,7 @@
         <input type="hidden" name="csrf_token" value="{{ csrf }}">
         <div><label>Effective to</label><input type="date" name="effective_to" required value="{{ (r.effective_to or today).isoformat() }}"></div>
         <div><label>Reason</label><input type="text" name="reason" required minlength="3"></div>
-        <button class="btn btn-danger" type="submit">Close rate</button>
+        <button class="btn btn-danger" type="submit" data-confirm="Close this freight rate? New invoices will no longer use it.">Close rate</button>
       </form>
     </div>
     {% endif %}

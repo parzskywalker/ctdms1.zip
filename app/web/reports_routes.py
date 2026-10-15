@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.db import get_db, write_block
 from app.models import BillStatus, OverrideStatus, RateStatus, User
 from app.security.auth import PermissionDenied, csrf_protect, require
 from app.services import audit
@@ -12,7 +12,7 @@ from app.services import settings_service as cfg
 from app.services.dashboard import LEVELS, drill, drill_totals
 from app.services.exporters import to_csv, to_pdf, to_xlsx
 from app.services.reports import REPORT_GROUPS, REPORTS, Filters
-from app.services.utils import local_now
+from app.services.utils import local_now, safe_int
 from app.web.templating import filter_options, render
 
 router = APIRouter(dependencies=[Depends(csrf_protect)], include_in_schema=False)
@@ -62,9 +62,9 @@ def mis_data(request: Request, db: Session = Depends(get_db), user: User = Depen
     f = Filters.from_params(qp, default_range="fy")
     parents = {}
     for lvl in LEVELS[:-1]:
-        v = qp.get(f"p_{lvl}")
-        if v and v.isdigit():
-            parents[lvl] = int(v)
+        v = safe_int(qp.get(f"p_{lvl}"), minimum=1)
+        if v:
+            parents[lvl] = v
     return JSONResponse({"level": level, "rows": drill(db, user, f, level, parents)})
 
 
@@ -90,18 +90,21 @@ def export(code: str, request: Request, fmt: str = "xlsx", db: Session = Depends
         raise PermissionDenied("data.export")
     f = Filters.from_params(request.query_params, default_range=rd.default_range)
     res = rd.run(db, user, f)
-    subtitle = f"{cfg.get(db, 'org.name')} · {f.describe()} ({res.date_basis or 'date'}) · generated " \
+    org = cfg.get(db, "org.name")
+    subtitle = f"{org} · {f.describe()} ({res.date_basis or 'date'}) · generated " \
                f"{local_now():%d-%m-%Y %H:%M} by {user.full_name}"
     stamp = local_now().strftime("%Y%m%d-%H%M")
-    audit.log(db, user, "REPORT_EXPORTED", "REPORTS", ref=code, details={"format": fmt, "rows": len(res.rows),
-                                                                         "filters": f.query()})
-    db.commit()
     if fmt == "csv":
-        return Response(to_csv(res), media_type="text/csv; charset=utf-8",
-                        headers={"Content-Disposition": f'attachment; filename="{code}-{stamp}.csv"'})
-    if fmt == "pdf":
-        return Response(to_pdf(res, rd.title, subtitle, cfg.get(db, "org.name")), media_type="application/pdf",
-                        headers={"Content-Disposition": f'inline; filename="{code}-{stamp}.pdf"'})
-    return Response(to_xlsx(res, rd.title, subtitle),
-                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    headers={"Content-Disposition": f'attachment; filename="{code}-{stamp}.xlsx"'})
+        body, media, disp = to_csv(res), "text/csv; charset=utf-8", f'attachment; filename="{code}-{stamp}.csv"'
+    elif fmt == "pdf":
+        body, media, disp = to_pdf(res, rd.title, subtitle, org), "application/pdf", \
+            f'inline; filename="{code}-{stamp}.pdf"'
+    else:
+        body, media = to_xlsx(res, rd.title, subtitle), \
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        disp = f'attachment; filename="{code}-{stamp}.xlsx"'
+    # Data read and file built without holding the database write lock; only this audit entry takes it, briefly.
+    with write_block(db):
+        audit.log(db, user, "REPORT_EXPORTED", "REPORTS", ref=code, details={"format": fmt, "rows": len(res.rows),
+                                                                             "filters": f.query()})
+    return Response(body, media_type=media, headers={"Content-Disposition": disp})

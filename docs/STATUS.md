@@ -12,10 +12,31 @@
 | 6 ERP framework | Adapter interface + registry; MARG, SAP OData, SAP IDoc, CBO, Intrect, generic REST, DB and watched-folder adapters; per-ERP field mapping and code mapping; push API with API keys; dispatch write-back API; sync scheduler; demo adapter |
 | Other | REST API (OpenAPI at `/api/docs`), CLI (migrate, seed, admin, sync, backup, check), Docker Compose with backups and HTTPS, 26 automated tests passing on SQLite and PostgreSQL, full data export (ZIP) |
 
+## v1.3 (management feedback) — delivered
+
+E-invoice QR capture, drop-folder auto import with layout recognition, item-wise (SKU) import, multi-invoice
+gatepasses with Transporter / Direct pickup / Outside auto / Self modes, LR entered later, gate check, transporter
+rate cards, outside-auto master, customer types, scanned transporter bills with AI reading, consignment-level
+cross-check with irregularity report and rate review, seven new reports. See `CHANGELOG.md`.
+
+### v1.3 assumptions (please confirm)
+
+* **Modes**: *Transporter* = we hand the goods to the transporter (regular, or via an outside auto whose charge is
+  added); *Direct* = the transporter collects at our warehouse (its direct-pickup extra applies); *Outside auto* =
+  an auto delivers straight to the customer; *Self* = the customer collects (no charge).
+* **One gatepass per pickup**, all invoices from one CFA; it may carry several customers. One LR per consignee.
+* Freight per case comes from the **transporter's** rate card for the invoice's area on the dispatch date
+  (`freight.source = TRANSPORTER`); the principal rate card stays available (`COMPANY`).
+* CASH transporters and outside autos are recorded as **paid at dispatch** (editable on the gatepass); a bill
+  line for a consignment already paid in cash is blocked.
+* The e-invoice QR signature is not verified (needs the IRP public key); the payload is trusted like the paper.
+* Bill photos are sent to the Anthropic API only when `CTDMS_ANTHROPIC_API_KEY` is set; extracted lines are always
+  checked by a person before they count.
+
 ## Assumptions made (change via settings / masters where noted)
 
-1. One invoice = one dispatch = one dispatch slip. Several invoices on one truck are handled by bulk dispatch
-   (one slip per invoice, same vehicle). A consolidated trip-sheet is a possible extension.
+1. *(v1.0–v1.2)* One invoice = one dispatch = one dispatch slip. **Superseded in v1.3**: a gatepass carries many
+   invoices; the one-invoice screens still work and create a one-line gatepass.
 2. Invoice uniqueness = company + CFA + financial year (April–March) + invoice number.
 3. The rate is chosen by **invoice date** (not dispatch date).
 4. Customer-specific rates must name the CFA; a "default" rate is only used if explicitly created.

@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge with context %}
+{% block content %}
+<div class="crumbs"><a href="/gatepass">Gatepasses</a> › {{ slip.dispatch_no }}</div>
+<div class="page-head">
+  <div><h1>Gatepass <span class="mono">{{ slip.dispatch_no }}</span> {{ badge(slip.state, {'VOID': 'Void', 'DISPATCHED': 'Gone out', 'SLIP_PRINTED': 'Printed', 'SLIP_GENERATED': 'Not printed yet'}[slip.state]) }}</h1>
+    <div class="sub">{{ slip.dispatch_date|date }} · {{ slip.cfa.name if slip.cfa else '' }} · {{ slip.mode_label }}{% if slip.transporter %} · {{ slip.transporter.name }}{% endif %}{% if slip.outside_auto %} · auto: {{ slip.outside_auto.name }}{% endif %} · made by {{ slip.generated_by.full_name if slip.generated_by else '' }} {{ slip.generated_at|dt }}</div></div>
+  <div class="actions">
+    {% if not slip.is_void %}
+    <form method="post" action="/gatepass/{{ slip.id }}/print" target="_blank" class="row" data-refresh-after style="margin:0">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <select name="size" style="width:auto"><option value="A5" {% if slip_size == 'A5' %}selected{% endif %}>A5</option><option value="A4" {% if slip_size == 'A4' %}selected{% endif %}>A4</option></select>
+      {% if slip.print_count %}<input type="text" name="reason" placeholder="Reprint reason" required minlength="5" style="width:180px">{% endif %}
+      <button class="btn {{ 'btn-primary' if not slip.print_count else '' }}" type="submit" name="mode" value="print" {% if slip.print_count and not can('dispatch.reprint') %}disabled{% endif %}>{{ 'Print gatepass' if not slip.print_count else 'Reprint' }}</button>
+      <button class="btn" type="submit" name="mode" value="pdf" {% if slip.print_count and not can('dispatch.reprint') %}disabled{% endif %}>PDF</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+{% if slip.is_void %}<div class="alert alert-error">VOID — {{ slip.void_reason }} ({{ slip.voided_by.full_name if slip.voided_by else '' }}, {{ slip.voided_at|dt }}). The goods must not leave on this gatepass.</div>{% endif %}
+
+<div class="kpis" style="grid-template-columns:repeat(6,minmax(0,1fr))">
+  <div class="kpi"><div class="lbl">Invoices</div><div class="val">{{ slip.invoice_count }}</div><div class="hint">{{ groups|length }} customer(s)</div></div>
+  <div class="kpi"><div class="lbl">Cases</div><div class="val">{{ slip.total_cases }}</div></div>
+  <div class="kpi"><div class="lbl">Freight</div><div class="val">{{ slip.freight_total|money }}</div><div class="hint">{% if slip.pickup_charge %}+ pickup {{ slip.pickup_charge|money }}{% endif %}{% if slip.auto_charge %} + auto {{ slip.auto_charge|money }}{% endif %}</div></div>
+  <div class="kpi"><div class="lbl">Total charged</div><div class="val">{{ slip.total_charge|money }}</div></div>
+  <div class="kpi {% if slip.balance > 0 %}warn{% else %}good{% endif %}"><div class="lbl">Paid at dispatch</div><div class="val">{{ slip.amount_paid|money }}</div><div class="hint">{% if slip.balance > 0 %}{{ slip.balance|money }} to be billed{% else %}nothing to bill{% endif %}</div></div>
+  <div class="kpi {% if slip.gate_out_at %}good{% endif %}"><div class="lbl">Gate-out</div><div class="val" style="font-size:16px">{{ slip.gate_out_at|dt if slip.gate_out_at else 'Not yet' }}</div><div class="hint">{{ slip.gate_out_by.full_name if slip.gate_out_by else ('printed ×%d'|format(slip.print_count) if slip.print_count else 'not printed') }}</div></div>
+</div>
+
+<div class="grid g-side">
+  <form method="post" action="/gatepass/{{ slip.id }}/lr" class="card flush">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <div class="card-head"><h3>Consignments</h3><span class="small muted">Enter the LR / bilty number when the transporter gives it (one per customer). It can be corrected until their bill is approved.</span></div>
+    <div class="table-wrap"><table class="data compact">
+      <thead><tr><th>Customer · area</th><th>Invoices</th><th class="num">Cases</th><th class="num">Rate</th><th class="num">Charge</th><th style="width:230px">LR no / date</th></tr></thead>
+      <tbody>
+      {% for g in groups %}
+        {% set locked = g.locked %}
+        <tr>
+          <td><b>{{ g.customer.name }}</b> <span class="small muted">{{ g.customer.type_label }}</span><div class="small muted">{{ g.location.name }}{% if g.customer.contact_phone %} · {{ g.customer.contact_phone }}{% endif %}</div></td>
+          <td class="small">{% for inv, ln in g.invs %}<div><a href="/invoices/{{ inv.id }}">{{ inv.invoice_no }}</a> <span class="muted">{{ inv.company.code }} · {{ inv.sales_value|money }}</span> {% if inv.status in ('CANCELLED','DISPATCHED') %}{{ badge(inv.status) }}{% endif %}</div>{% endfor %}</td>
+          <td class="num">{% for inv, ln in g.invs %}<div>{{ ln.cases if ln else inv.boxes }}</div>{% endfor %}</td>
+          <td class="num">{% for inv, ln in g.invs %}<div>{{ (ln.rate_per_case if ln else inv.rate_per_box)|rate }}</div>{% endfor %}</td>
+          <td class="num">{% for inv, ln in g.invs %}<div>{{ ((ln.freight + ln.extra_charge) if ln else inv.freight_amount)|money }}</div>{% endfor %}</td>
+          <td>{% set first = g.invs[0][0] %}
+            {% if slip.transporter_id and not slip.is_void and can('dispatch.operate') and not locked %}
+              <div class="row" style="gap:4px;flex-wrap:nowrap"><input type="text" name="lr_{{ g.customer.id }}" value="{{ first.lr_no or '' }}" placeholder="LR no" data-upper style="min-height:28px;padding:3px 6px;width:110px"><input type="date" name="lrdate_{{ g.customer.id }}" value="{{ first.lr_date.isoformat() if first.lr_date else '' }}" style="min-height:28px;padding:3px 4px;width:118px"></div>
+              {% if first.lr_updated_by %}<div class="small muted">by {{ first.lr_updated_by.full_name }} {{ first.lr_updated_at|dt }}</div>{% endif %}
+            {% else %}<span class="mono">{{ first.lr_no or '—' }}</span>{% if first.lr_date %} <span class="small muted">{{ first.lr_date|date }}</span>{% endif %}{% if locked %}<div class="small muted">locked: {{ locked }}</div>{% endif %}{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% if slip.transporter_id and not slip.is_void and can('dispatch.operate') %}
+    <div class="sticky-bar"><input type="text" name="reason" placeholder="Reason (needed when changing an existing LR)" style="max-width:340px"><button class="btn btn-primary" type="submit">Save LR numbers</button></div>
+    {% endif %}
+  </form>
+
+  <div>
+    {% if not slip.is_void and not slip.gate_out_at and can('dispatch.complete') %}
+    <form method="post" action="/gatepass/{{ slip.id }}/gate-out" class="card stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <h3 style="margin:0">Gate-out</h3>
+      <p class="small muted" style="margin:0">Confirms that the goods physically left with this gatepass. All {{ slip.invoice_count }} invoice(s) become DISPATCHED. Rule: gatepass must be <b>{{ rule }}</b>.</p>
+      {% if complete_blockers %}<ul class="blockers">{% for b in complete_blockers %}<li>{{ b }}</li>{% endfor %}</ul>{% endif %}
+      <button class="btn btn-ok" type="submit" {% if complete_blockers %}disabled{% endif %} data-confirm="Record gate-out of {{ slip.dispatch_no }} ({{ slip.total_cases }} cases)?">Record gate-out</button>
+    </form>
+    {% endif %}
+    <div class="card">
+      <h3 style="margin-top:0">Carrier</h3>
+      <dl class="dl tight">
+        <dt>Mode</dt><dd>{{ slip.mode_label }}</dd>
+        {% if slip.transporter %}<dt>Transporter</dt><dd>{{ slip.transporter.name }}<div class="small muted">{{ slip.transporter.contact_person or '' }} {{ slip.transporter.mobile or '' }} · {{ slip.transporter.payment_label }}</div></dd>{% endif %}
+        {% if slip.outside_auto %}<dt>Outside auto</dt><dd>{{ slip.outside_auto.name }} {{ slip.outside_auto.mobile or '' }}<div class="small muted">{{ slip.outside_auto.charge_label }}</div></dd>{% endif %}
+        <dt>Payment</dt><dd>{{ slip.payment_status }}</dd>
+        {% if slip.remarks %}<dt>Remarks</dt><dd>{{ slip.remarks }}</dd>{% endif %}
+      </dl>
+    </div>
+    {% if alerts %}
+    <div class="card">
+      <h3 style="margin-top:0">Customer alerts</h3>
+      <ul class="timeline">{% for n in alerts %}<li><b>{{ n.event_label }}</b> → {{ n.customer.name if n.customer else '' }} · {{ n.status|title }}{% if n.sent_at %} {{ n.sent_at|dt }}{% endif %}{% if n.last_error %}<div class="small pos">{{ n.last_error[:80] }}</div>{% endif %}</li>{% endfor %}</ul>
+      <a class="small" href="/notifications">All notifications</a>
+    </div>
+    {% endif %}
+    <div class="card">
+      <h3 style="margin-top:0">Prints</h3>
+      {% if print_events %}<ul class="timeline">{% for p in print_events %}<li><b>{{ 'Reprint' if p.is_reprint else 'Original' }}</b> #{{ p.print_no }} · {{ p.output }} · {{ p.printed_by.full_name if p.printed_by else '' }} {{ p.printed_at|dt }}{% if p.reason %}<div class="small muted">{{ p.reason }}</div>{% endif %}</li>{% endfor %}</ul>
+      {% else %}<p class="small muted">Not printed yet. Print it before the goods go to the gate.</p>{% endif %}
+    </div>
+    {% if not slip.is_void and not slip.gate_out_at and can('dispatch.void_slip') %}
+    <form method="post" action="/gatepass/{{ slip.id }}/void" class="card stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <h3 style="margin:0">Void gatepass</h3>
+      <input type="text" name="reason" id="void-reason" placeholder="Reason (wrong invoices, change of transporter…)">
+      <div class="field-hint">Invoices go back to the dispatch queue; a new gatepass gets a new number.</div>
+      <button class="btn btn-danger" type="submit" data-require-reason="#void-reason" data-confirm="Void gatepass {{ slip.dispatch_no }}?">Void</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

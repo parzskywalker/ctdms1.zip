@@ -22,8 +22,8 @@ from sqlalchemy.orm import Session
 
 from app.config import BASE_DIR, get_settings
 from app.models import (
-    CFA, Company, Customer, ERPCodeMapping, ERPSystem, ImportTemplate, Invoice, InvoiceStatus,
-    Location, Role, Transporter, User,
+    CFA, Company, Customer, DispatchMode, DispatchSlip, ERPCodeMapping, ERPSystem, ImportTemplate, Invoice,
+    InvoiceStatus, Location, OutsideAuto, PickupMode, Role, Transporter, User,
 )
 from app.models.base import set_fake_now
 from app.security.auth import hash_password
@@ -84,6 +84,12 @@ LOCATIONS = [  # code, name, state, pincode, route, zone, km (from Raipur)
     ("NGP", "Nagpur", "Maharashtra", "440001", "R-MH", "Maharashtra", 290),
     ("RJN", "Rajnandgaon", "Chhattisgarh", "491441", "R-WEST", "West", 70),
     ("RGH", "Raigarh", "Chhattisgarh", "496001", "R-EAST", "East", 250),
+    # v1.3: areas served by the real transporters on the sample bills
+    ("JNJ", "Janjgir", "Chhattisgarh", "495668", "R-EAST", "East", 170),
+    ("KWD", "Kawardha", "Chhattisgarh", "491995", "R-WEST", "West", 120),
+    ("MDGR", "Manendragarh", "Chhattisgarh", "497442", "R-NORTH", "North", 390),
+    ("BKPR", "Baikunthpur", "Chhattisgarh", "497335", "R-NORTH", "North", 340),
+    ("AMB", "Ambikapur", "Chhattisgarh", "497001", "R-NORTH", "North", 330),
 ]
 
 COMPANIES = [  # code, name, erp, type, cfas
@@ -115,21 +121,78 @@ CUSTOMERS = [
      {"SAP": "101067", "MARG": "CCC009", "CBO": "CITYC01", "INTRECT": "P-0044"}),
     ("C-VDP01", "Vardaan Pharma", "BSP", "Ramesh Kashyap", "9826010101", ["COA", "COB", "OWN"],
      {"SAP": "101178", "MARG": "VDP010", "INTRECT": "P-0052"}),
+    # v1.3: customers on the real transporter bills (stockists, retailers) and hospitals
+    ("C-UTP01", "Uttam Pharma", "BKPR", "Uttam Gupta", "9826120001", ["COA", "COB", "COC", "OWN"],
+     {"SAP": "101201", "MARG": "UTP011", "CBO": "UTTAM01", "INTRECT": "P-0061"}),
+    ("C-SMD01", "Singh Medicose", "MDGR", "Gurpreet Singh", "9826120002", ["COA", "COB", "OWN"],
+     {"SAP": "101202", "MARG": "SMD012", "INTRECT": "P-0062"}),
+    ("C-SAI01", "Sai Traders", "MDGR", "Sai Prasad", "9826120003", ["COA", "COB"],
+     {"SAP": "101203", "MARG": "SAI013"}),
+    ("C-SBV01", "Sambhav Medicals", "KWD", "Rahul Jain", "9826120004", ["COA", "COB", "COC", "OWN"],
+     {"SAP": "101204", "MARG": "SBV014", "CBO": "SAMBH01", "INTRECT": "P-0064"}),
+    ("C-MDV01", "Shri Mahadev Pharma", "KWD", "Mahadev Sahu", "9826120005", ["COA", "COC"],
+     {"SAP": "101205", "CBO": "MAHAD01"}),
+    ("C-DHR01", "District Hospital Raigarh", "RGH", "Store Officer", "9826120006", ["COA", "COB", "COC"],
+     {"SAP": "101206", "MARG": "DHR016", "CBO": "DHRGH01"}),
+    ("C-JNH01", "Janjgir Nursing Home", "JNJ", "Dr. A. Kashyap", "9826120007", ["COA", "COB", "COC"],
+     {"SAP": "101207", "MARG": "JNH017", "CBO": "JNJNH01"}),
+    ("C-AIM01", "AIIMS Raipur Pharmacy", "RPR", "Purchase Cell", "9826120008", ["COA", "COB", "COC", "OWN"],
+     {"SAP": "101208", "MARG": "AIM018", "CBO": "AIIMS01", "INTRECT": "P-0068"}),
+    ("C-SSM01", "Shri Sai Medicose", "AMB", "Sanjay Agrawal", "9826120009", ["COA", "COB", "OWN"],
+     {"SAP": "101209", "MARG": "SSM019", "INTRECT": "P-0069"}),
+    ("C-HRM01", "Hiramani Medical Agencies", "BSP", "Hiramani Sahu", "9826120010", ["COA", "COB", "COC", "OWN"],
+     {"SAP": "101210", "MARG": "HRM020", "CBO": "HIRAM01", "INTRECT": "P-0070"}),
 ]
+CUSTOMER_TYPES = {  # everything else is a stockist
+    "C-XYZ01": "RETAILER", "C-MET01": "RETAILER", "C-SGM01": "RETAILER", "C-JMH01": "RETAILER",
+    "C-CCC01": "RETAILER", "C-SMD01": "RETAILER", "C-MDV01": "RETAILER", "C-SSM01": "RETAILER",
+    "C-HRM01": "RETAILER", "C-DHR01": "HOSPITAL", "C-JNH01": "HOSPITAL", "C-AIM01": "HOSPITAL",
+}
+COMPANY_GSTIN = {"COA": "22AAACA1234A1Z5", "COB": "22AABCB5678B1Z3", "COC": "22AAACC9012C1Z1",
+                 "OWN": "22AAJCT1963H1ZC"}
 
-TRANSPORTERS = [  # code, name, contact, mobile, gstin, area, vehicles, lr prefix
+TRANSPORTERS = [  # code, name, contact, mobile, gstin, area, vehicles, lr prefix, payment mode, direct pickup
     ("CGR", "Chhattisgarh Roadlines", "Harish Yadav", "9425201234", "22AABCC1234F1Z5", "Bilaspur, Korba, Raigarh",
-     ["CG10AB2211", "CG10AB2212", "CG12C7788"], "CGR"),
+     ["CG10AB2211", "CG10AB2212", "CG12C7788"], "CGR", "TBB", None),
     ("SCM", "Speed Cargo Movers", "Imran Khan", "9425205678", "22AADCS5678G1Z2", "Raipur local, Bhilai, Durg",
-     ["CG04LM4455", "CG04LM4456"], "SCM"),
+     ["CG04LM4455", "CG04LM4456"], "SCM", "TBB", None),
     ("SBT", "Shree Balaji Transport", "Mahesh Sahu", "9425209012", "22AAFFS9012H1Z9", "Durg, Bhilai, Rajnandgaon",
-     ["CG07BT1010", "CG07BT2020"], "SBT"),
+     ["CG07BT1010", "CG07BT2020"], "SBT", "TBB", None),
     ("VDL", "Vidarbha Logistics", "Prakash Wankhede", "9422103456", "27AAGCV3456J1Z1", "Nagpur, Maharashtra",
-     ["MH31FK9090", "MH40AS1212"], "VDL"),
+     ["MH31FK9090", "MH40AS1212"], "VDL", "TBB", None),
+    # the six transporters whose bills management shared (v1.3)
+    ("PGC", "Prakash Goods Carrier", "Prakash Agrawal", "9425211001", "22ABYPV9378F1ZP", "Manendragarh, Baikunthpur",
+     [], "", "TBB", None),
+    ("BJR", "Bhaiji Roadlines", "Bhaiji", "9425211002", None, "Ambikapur", [], "", "TBB", None),
+    ("OSHO", "Osho Express", "Office Raipur", "9993233974", None, "Bilaspur (daily service)", [], "", "TBB", None),
+    ("ORL", "Orient Logistics Service", "Office Bhaisthan", "9425211004", "22ACIPA4333N1ZU", "Janjgir, Raigarh",
+     [], "", "TBB", None),
+    ("PRK", "Parakh Transport", "Parakh", "9425295353", None, "Durg, Bhilai, Rajnandgaon", [], "", "TBB",
+     ("150.00", "PER_TRIP")),
+    ("JBG", "Jai Bhole Garage (Goods Transport)", "Manager", "7024032306", None, "Kawardha, Pondi, Bodla", [], "",
+     "CASH", None),
 ]
 
-TRANSPORTER_BY_LOCATION = {"RPR": "SCM", "BHL": "SBT", "DRG": "SBT", "RJN": "SBT", "BSP": "CGR", "KRB": "CGR",
-                           "RGH": "CGR", "NGP": "VDL"}
+# carrier per delivery area; "AUTO" = local outside auto, "SELF" = customer collects
+TRANSPORTER_BY_LOCATION = {"RPR": "AUTO", "BHL": "PRK", "DRG": "PRK", "RJN": "PRK", "BSP": "OSHO", "KRB": "CGR",
+                           "RGH": "ORL", "NGP": "VDL", "JNJ": "ORL", "KWD": "JBG", "MDGR": "PGC", "BKPR": "PGC",
+                           "AMB": "BJR"}
+
+# transporter rate cards: rate per case per area (the bills show ₹35 Parakh, ₹38/₹50 Orient, ₹40 Jai Bhole ...)
+TRANSPORTER_RATES = {
+    "CGR": {"BSP": "30.00", "KRB": "45.00", "RGH": "42.00"},
+    "SCM": {"RPR": "15.00", "BHL": "25.00", "DRG": "25.00"},
+    "SBT": {"DRG": "30.00", "BHL": "28.00", "RJN": "35.00", "RPR": "20.00"},
+    "VDL": {"NGP": "60.00"},
+    "PGC": {"MDGR": "50.00", "BKPR": "48.00"},
+    "BJR": {"AMB": "100.00"},
+    "OSHO": {"BSP": "25.00"},
+    "ORL": {"JNJ": "50.00", "RGH": "38.00"},
+    "PRK": {"DRG": "35.00", "BHL": "35.00", "RJN": "35.00"},
+    "JBG": {"KWD": "40.00"},
+}
+AUTOS = [("AUTO-RAM", "Ramesh Yadav (auto)", "9826230011", "PER_TRIP", "250.00", "Raipur local deliveries"),
+         ("AUTO-SONU", "Sonu Tempo", "9826230012", "PER_CASE", "12.00", "To transporter booking offices")]
 
 # (company, cfa, location, rate) - standard CFA-location rates, effective from FY start
 RATES = [
@@ -227,20 +290,23 @@ def seed_masters(db: Session, today: date) -> Ctx:
     for code, name, erp, rtype, cfa_codes in COMPANIES:
         co = Company(code=code, name=name, erp_system=erps[erp], relationship_type=rtype,
                      contact_person="Distribution Manager", contact_phone="022-6" + str(RND.randint(1000000, 9999999)),
-                     email=f"logistics@{code.lower()}.example.com", cfas=[cfas[c] for c in cfa_codes])
+                     email=f"logistics@{code.lower()}.example.com", cfas=[cfas[c] for c in cfa_codes],
+                     gstin=COMPANY_GSTIN.get(code))
         db.add(co)
         companies[code] = co
     db.flush()
     customers = {}
-    for code, name, loc, person, phone, cos, erp_codes in CUSTOMERS:
+    for n, (code, name, loc, person, phone, cos, erp_codes) in enumerate(CUSTOMERS):
         lo = locations[loc]
+        letters = "".join(ch for ch in name.upper() if ch.isalpha())[:3].ljust(3, "X")
+        gstin = (f"{'22' if lo.state == 'Chhattisgarh' else '27'}AA{letters}{4100 + n * 37:04d}"
+                 f"{chr(65 + n % 26)}1Z{(n * 7) % 10}")
         cu = Customer(code=code, name=name, location=lo, city=lo.name, state=lo.state, pincode=lo.pincode,
+                      party_type=CUSTOMER_TYPES.get(code, "STOCKIST"), whatsapp=phone,
                       billing_address=f"{RND.randint(1, 250)}, Main Market, {lo.name}",
                       delivery_address=f"Godown {RND.randint(1, 30)}, Transport Nagar, {lo.name}",
                       contact_person=person, contact_phone=phone, email=f"orders@{name.split()[0].lower()}.example.in",
-                      gstin=f"22AAB{RND.randint(1000, 9999)}C1Z{RND.randint(1, 9)}" if lo.state == "Chhattisgarh" else
-                      f"27AAC{RND.randint(1000, 9999)}D1Z{RND.randint(1, 9)}",
-                      drug_license_no=f"CG-DL-{RND.randint(10000, 99999)}",
+                      gstin=gstin, drug_license_no=f"CG-DL-{RND.randint(10000, 99999)}",
                       companies=[companies[c] for c in cos], cfas=list(cfas.values()))
         db.add(cu)
         customers[code] = cu
@@ -261,14 +327,20 @@ def seed_masters(db: Session, today: date) -> Ctx:
     db.add(ERPCodeMapping(erp_system=erps["MARG"], entity_type="LOCATION", source_code="BHILAI NAGAR",
                           target_id=locations["BHL"].id, source_name="Bhilai Nagar"))
     transporters = {}
-    for code, name, person, mobile, gst, area, veh, lrp in TRANSPORTERS:
-        t = Transporter(code=code, name=name, contact_person=person, mobile=mobile, gstin=gst, pan=gst[2:12],
-                        service_area=area, payment_terms="Monthly bill, 30 days", credit_days=30,
+    for code, name, person, mobile, gst, area, veh, lrp, pay, pickup in TRANSPORTERS:
+        t = Transporter(code=code, name=name, contact_person=person, mobile=mobile, gstin=gst,
+                        pan=gst[2:12] if gst else None, service_area=area,
+                        payment_terms="Cash at dispatch" if pay == "CASH" else "Monthly bill, 30 days",
+                        credit_days=None if pay == "CASH" else 30, payment_mode=pay,
+                        direct_pickup_charge=Decimal(pickup[0]) if pickup else None,
+                        direct_pickup_basis=pickup[1] if pickup else "PER_TRIP",
                         address=f"Transport Nagar, {'Nagpur' if code == 'VDL' else 'Raipur'}",
                         city="Nagpur" if code == "VDL" else "Raipur",
                         state="Maharashtra" if code == "VDL" else "Chhattisgarh")
         db.add(t)
         transporters[code] = t
+    for code, name, mobile, basis, rate, notes in AUTOS:
+        db.add(OutsideAuto(code=code, name=name, mobile=mobile, charge_basis=basis, rate=Decimal(rate), notes=notes))
     users = {}
     for uname, full, role, cfa_codes, pwd in USERS:
         u = User(username=uname, full_name=full, role=roles[role], password_hash=hash_password(pwd),
@@ -294,10 +366,11 @@ def seed_masters(db: Session, today: date) -> Ctx:
             "company_code": "Division", "cfa_code": "Depot", "invoice_no": "InvoiceNo", "invoice_date": "InvoiceDate",
             "customer_code": "CustomerCode", "customer_name": "CustomerName", "location": "City",
             "sales_value": "NetAmount", "boxes": "NoOfCases", "source_invoice_id": "InvoiceId"}, "%d/%m/%Y"),
-        ("Intrect - Invoice export (Own distribution)", "INTRECT", None, {
+        ("Intrect - Item-wise invoice export (Own distribution)", "INTRECT", None, {
             "company_code": "principal", "cfa_code": "branch", "invoice_no": "inv_no", "invoice_date": "inv_date",
             "customer_code": "party_id", "customer_name": "party_name", "location": "delivery_city",
-            "sales_value": "net_value", "boxes": "boxes", "source_invoice_id": "doc_id"}, "AUTO"),
+            "sales_value": "net_value", "boxes": "boxes", "source_invoice_id": "doc_id",
+            "sku_code": "item_code", "sku_name": "item_name", "qty": "qty", "item_value": "line_value"}, "AUTO"),
         ("Standard CTDMS template", "GENERIC", None, {k: k for k in imp.TARGET_FIELDS}, "AUTO"),
     ]
     for name, erp, co, cmap, dfmt in templates:
@@ -326,6 +399,13 @@ def seed_rates(c: Ctx, fy_from: date, revision_from: date) -> None:
     rate_service.create_rate(db, admin, company_id=c.companies["OWN"].id, is_default=True,
                              rate_per_box=Decimal("10.00"), effective_from=fy_from, auto_approve=True,
                              remarks="Own distribution default for unlisted locations", change_reason="Default rate")
+    # v1.3 transporter rate cards (rate per case per area) - what gatepasses charge and bills are checked against
+    from app.services import transporter_rate_service as trs
+    for tcode, areas in TRANSPORTER_RATES.items():
+        for loc, rate in areas.items():
+            trs.propose(db, admin, transporter_id=c.transporters[tcode].id, location_id=c.locations[loc].id,
+                        rate_per_case=Decimal(rate), effective_from=fy_from, reason="Rate card at start of year",
+                        auto_approve=True)
 
 
 def rate_revision(c: Ctx, revision_from: date) -> None:
@@ -449,6 +529,31 @@ def _erp_row(r: Rec) -> dict:
             "delivery_city": loc_name, "net_value": float(r.sales), "boxes": r.boxes}
 
 
+SKUS = [("OWN-PCM650", "Paracetamol 650 mg Tab 15s", 18.5), ("OWN-AZI500", "Azithromycin 500 mg Tab 3s", 62.0),
+        ("OWN-PAN40", "Pantoprazole 40 mg Tab 15s", 48.0), ("OWN-CET10", "Cetirizine 10 mg Tab 10s", 12.0),
+        ("OWN-ORS", "ORS Sachet 21 g", 19.0), ("OWN-MVT", "Multivitamin Syrup 200 ml", 96.0),
+        ("OWN-AMX625", "Amoxicillin + Clav 625 Tab 6s", 118.0), ("OWN-DCL", "Diclofenac Gel 30 g", 64.0)]
+
+
+def _erp_rows(r: Rec) -> list[dict]:
+    """Intrect exports one row per SKU (item-wise register); the others one row per invoice."""
+    row = _erp_row(r)
+    if r.erp != "INTRECT":
+        return [row]
+    import zlib
+    rnd = random.Random(zlib.crc32(r.inv_no.encode()))
+    picks = rnd.sample(SKUS, k=rnd.randint(2, 4))
+    weights = [rnd.randint(1, 5) for _ in picks]
+    total = float(r.sales)
+    out, used = [], 0.0
+    for k, ((code, name, price), w) in enumerate(zip(picks, weights)):
+        value = round(total * w / sum(weights), 2) if k < len(picks) - 1 else round(total - used, 2)
+        used += value
+        out.append({**row, "item_code": code, "item_name": name, "qty": max(1, int(value / price)),
+                    "line_value": value})
+    return out
+
+
 def _to_bytes(rows: list[dict], kind: str) -> tuple[bytes, str]:
     headers = list(rows[0].keys())
     if kind == "xlsx":
@@ -477,7 +582,8 @@ def _to_bytes(rows: list[dict], kind: str) -> tuple[bytes, str]:
 
 FORMAT = {"SAP": "xlsx", "MARG": "csv", "CBO": "csv", "INTRECT": "xlsx"}
 TEMPLATE = {"SAP": "SAP - Billing documents (Company A)", "MARG": "MARG - Sales register (Company B)",
-            "CBO": "CBO - Invoice export (Company C)", "INTRECT": "Intrect - Invoice export (Own distribution)"}
+            "CBO": "CBO - Invoice export (Company C)",
+            "INTRECT": "Intrect - Item-wise invoice export (Own distribution)"}
 IMPORTER = {"SAP": "admin", "MARG": "admin", "CBO": "admin", "INTRECT": "admin"}
 
 
@@ -485,7 +591,7 @@ def import_files(c: Ctx, recs: list[Rec], label: str, when: datetime, extra_rows
     db = c.db
     batches = []
     for erp in ("SAP", "MARG", "CBO", "INTRECT"):
-        rows = [_erp_row(r) for r in recs if r.erp == erp]
+        rows = [x for r in recs if r.erp == erp for x in _erp_rows(r)]
         rows += (extra_rows or {}).get(erp, [])
         if not rows:
             continue
@@ -514,9 +620,117 @@ def _operator(c: Ctx, inv: Invoice) -> User:
 
 def _transporter(c: Ctx, inv: Invoice) -> Transporter:
     code = TRANSPORTER_BY_LOCATION[inv.location.code]
-    if inv.location.code == "RPR" and RND.random() < 0.3:
-        code = "SBT"
+    if code in ("AUTO", "SELF"):
+        code = "SCM"
     return c.transporters[code]
+
+
+def _carrier(inv: Invoice) -> str:
+    """Who takes this invoice: a transporter code, AUTO (local outside auto) or SELF (customer collects)."""
+    loc = inv.location.code
+    code = TRANSPORTER_BY_LOCATION.get(loc, "SCM")
+    r = RND.random()
+    if loc == "RPR":
+        return "SELF" if r < 0.15 else ("AUTO" if r < 0.75 else "SCM")
+    if loc in ("DRG", "BHL", "RJN") and r < 0.3:
+        return "SBT"
+    if loc == "BSP" and r < 0.25:
+        return "CGR"
+    return code
+
+
+LR_START = {"PGC": 24600, "BJR": 2850, "OSHO": 6500, "ORL": 900, "PRK": 3530, "JBG": 6750, "CGR": 5000,
+            "SCM": 5000, "SBT": 5000, "VDL": 5000}
+LR_PREFIX = {"CGR": "CGR", "SCM": "SCM", "SBT": "SBT", "VDL": "VDL"}
+LR_NEXT: dict[str, int] = {}  # running LR numbers per transporter (reset by run())
+
+
+def make_gatepass(c: Ctx, invs: list[Invoice], carrier: str, d: date, stage: str = "DISPATCHED",
+                  reprint: bool = False) -> DispatchSlip | None:
+    db = c.db
+    op = _operator(c, invs[0])
+    hh = RND.randint(13, 18) if d == invs[0].invoice_date else RND.randint(9, 16)
+    mm = RND.choice([0, 10, 15, 25, 30, 40, 45])
+    clock(d, hh, mm)
+    autos = {a.code: a for a in db.scalars(select(OutsideAuto))}
+    req = ds.GatepassRequest(dispatch_date=d, dispatch_time=time(hh, mm),
+                             cases={i.id: i.boxes or RND.randint(2, 8) for i in invs})
+    if carrier == "SELF":
+        req.mode = DispatchMode.SELF
+    elif carrier == "AUTO":
+        req.mode = DispatchMode.OUTSIDE_AUTO
+        req.outside_auto_id = autos["AUTO-RAM"].id
+    else:
+        req.transporter_id = c.transporters[carrier].id
+        req.mode = DispatchMode.DIRECT if carrier == "PRK" and RND.random() < 0.3 else DispatchMode.TRANSPORTER
+        if carrier in ("ORL", "PGC", "BJR", "CGR") and RND.random() < 0.35:
+            req.pickup_mode = PickupMode.OUTSIDE_AUTO
+            req.outside_auto_id = autos["AUTO-SONU"].id
+    try:
+        slip = ds.create_gatepass(db, op, invs, req)
+    except ds.BusinessError:
+        return None  # e.g. an invoice with a box change awaiting approval stays in the queue
+    if stage == "GENERATED":
+        return slip
+    clock(d, hh, min(mm + 4, 59))
+    ds.print_gatepass(db, op, slip, RND.choice(["PRINT_A5", "PRINT_A5", "PRINT_A4", "PDF_A5"]))
+    if reprint:
+        clock(d, min(hh + 1, 21), 5)
+        ds.print_gatepass(db, op, slip, "PRINT_A5", RND.choice(["Printer jam - first copy torn",
+                                                                "Transporter lost the copy",
+                                                                "Customer requested duplicate for gate pass"]))
+    if stage == "PRINTED":
+        return slip
+    clock(d, min(hh + 1, 22), 20)
+    ds.gate_out(db, op, slip)
+    return slip
+
+
+def dispatch_in_gatepasses(c: Ctx, invs: list[Invoice], stages: list[str] | None = None) -> list[DispatchSlip]:
+    """Group the day's invoices per (dispatch date, CFA, carrier) into gatepasses - one per pickup."""
+    groups: dict[tuple, list[Invoice]] = {}
+    for inv in invs:
+        if inv.status not in (InvoiceStatus.PENDING, InvoiceStatus.VERIFIED, InvoiceStatus.EXCEPTION):
+            continue
+        if inv.exception_code and inv.exception_code != "BOXES_MISSING":
+            continue
+        same_day = RND.random() < 0.7 or inv.invoice_date >= c.today
+        d = inv.invoice_date if same_day else inv.invoice_date + timedelta(days=1)
+        if d.weekday() == 6:
+            d += timedelta(days=1)
+        d = min(d, c.today)
+        groups.setdefault((d, inv.cfa_id, _carrier(inv)), []).append(inv)
+    slips = []
+    for k, ((d, _cfa, carrier), group) in enumerate(sorted(groups.items(), key=lambda x: (x[0][0], x[0][1], x[0][2]))):
+        stage = stages[k % len(stages)] if stages else "DISPATCHED"
+        if stage == "NONE":
+            continue
+        slip = make_gatepass(c, group, carrier, d, stage, reprint=RND.random() < 0.04)
+        if slip:
+            slips.append(slip)
+    return slips
+
+
+def assign_lrs(c: Ctx, slips: list[DispatchSlip], leave_open: float = 0.0) -> None:
+    """The transporter's LR / bilty numbers arrive a day or two after dispatch (one per consignee)."""
+    db = c.db
+    seq = LR_NEXT
+    for slip in sorted(slips, key=lambda s: (s.dispatch_date, s.id)):
+        if not slip.transporter_id or slip.is_void:
+            continue
+        tcode = slip.transporter.code
+        by_cust: dict[int, list[Invoice]] = {}
+        for inv in ds.slip_invoices(db, slip):
+            if inv.status != InvoiceStatus.CANCELLED and not inv.lr_no:
+                by_cust.setdefault(inv.customer_id, []).append(inv)
+        for group in by_cust.values():
+            if RND.random() < leave_open:
+                continue
+            seq[tcode] = seq.get(tcode, 5000) + RND.randint(1, 3)
+            lr = f"{LR_PREFIX.get(tcode, '')}{seq[tcode]}"
+            when = slip.dispatch_date + timedelta(days=RND.choice([0, 1, 1, 2]))
+            clock(min(when, c.today), 11, RND.randint(0, 59))
+            ds.set_lr(db, _operator(c, group[0]), group, lr, slip.dispatch_date)
 
 
 def dispatch_invoice(c: Ctx, inv: Invoice, stop_at: str = "DISPATCHED", reprint: bool = False) -> None:
@@ -581,6 +795,8 @@ def run(reset: bool = True, quiet: bool = False) -> dict:
     db = SessionLocal()
     global _DB
     _DB = db
+    LR_NEXT.clear()
+    LR_NEXT.update(LR_START)
     log = (lambda *a: None) if quiet else print
     try:
         clock(fy_from if fy_from < m2 else m2, 9, 0)
@@ -604,28 +820,25 @@ def run(reset: bool = True, quiet: bool = False) -> dict:
             d += timedelta(days=1)
         if not revised:
             rate_revision(c, m0)
+        _qr_captures(c, today)
         db.commit()
         log(f"imports ✓ ({len(all_recs)} invoices)")
 
-        # ---- dispatch simulation
+        # ---- dispatch simulation: one gatepass per pickup (carrier) per day, LR numbers arriving later
         invs = list(db.scalars(select(Invoice).order_by(Invoice.invoice_date, Invoice.id)))
         recent_cut = today - timedelta(days=3)
-        open_recent = []
-        for inv in invs:
-            if inv.status not in (InvoiceStatus.PENDING,):
-                continue
-            if inv.invoice_date < recent_cut:
-                dispatch_invoice(c, inv, "DISPATCHED", reprint=RND.random() < 0.05)
-            else:
-                open_recent.append(inv)
-        # recent invoices in every stage so the pending queue is realistic
-        stages = ["DISPATCHED", "SLIP_PRINTED", "SLIP_GENERATED", "VERIFIED", "PENDING_DETAILS", "NONE", "NONE"]
-        for i, inv in enumerate(open_recent):
-            st = stages[i % len(stages)]
-            if st != "NONE":
-                dispatch_invoice(c, inv, st)
+        old = [i for i in invs if i.invoice_date < recent_cut]
+        recent = [i for i in invs if i.invoice_date >= recent_cut]
+        slips = dispatch_in_gatepasses(c, old)
+        db.flush()
+        assign_lrs(c, slips)
+        # recent invoices in every stage so the desk, the gate and the LR-pending list are realistic
+        recent_slips = dispatch_in_gatepasses(c, recent, ["DISPATCHED", "PRINTED", "DISPATCHED", "GENERATED", "NONE",
+                                                          "DISPATCHED", "NONE"])
+        db.flush()
+        assign_lrs(c, [s for s in recent_slips if s.gate_out_at], leave_open=0.5)
         db.commit()
-        log("dispatch workflow ✓")
+        log(f"dispatch workflow ✓ ({len(slips) + len(recent_slips)} gatepasses)")
 
         _overrides_and_cancellations(c, invs, today)
         db.commit()
@@ -657,6 +870,25 @@ def run(reset: bool = True, quiet: bool = False) -> dict:
         set_fake_now(None)
         _DB = None
         db.close()
+
+
+QR_DEMO = [  # (company, customer, invoice no, value, cases) - captured at the desk by scanning the e-invoice QR
+    ("COA", "C-UTP01", "QR-SAP-5501", "48210.00", 7), ("COB", "C-SMD01", "QR-MB-5502", "23655.00", 4),
+    ("COA", "C-DHR01", "QR-SAP-5503", "112840.00", 18),
+]
+
+
+def demo_qr(c: Ctx, co: str, cu: str, inv_no: str, value, d: date) -> str:
+    from app.services.einvoice_service import make_demo_qr
+    return make_demo_qr(c.companies[co].gstin, c.customers[cu].gstin, inv_no, d, Decimal(value))
+
+
+def _qr_captures(c: Ctx, today: date) -> None:
+    from app.services import einvoice_service
+    for k, (co, cu, no, value, cases) in enumerate(QR_DEMO):
+        clock(today, 15, 10 + k * 3)
+        einvoice_service.scan(c.db, c.users["operator.raipur"], demo_qr(c, co, cu, no, value, today),
+                              cfa_id=c.cfas["RPR"].id, cases=cases)
 
 
 def _problem_rows(c: Ctx, part: list[Rec], hist: list[Rec]) -> dict:
@@ -720,17 +952,19 @@ def _overrides_and_cancellations(c: Ctx, invs: list[Invoice], today: date) -> No
         clock(today, 12, 30)
         ds.cancel(db, c.users["cfa.raipur"] if inv.cfa.code == "RPR" else c.users["checker"], inv,
                   "Invoice cancelled in ERP - credit note issued (order returned)")
-    slipped = [i for i in invs if i.status == InvoiceStatus.SLIP_GENERATED]
+    slipped = list(db.scalars(select(DispatchSlip).where(DispatchSlip.is_void.is_(False),
+                                                         DispatchSlip.print_count == 0,
+                                                         DispatchSlip.transporter_id.isnot(None))
+                              .order_by(DispatchSlip.id)))
     if slipped:
-        inv = slipped[0]
+        slip = slipped[0]
+        group = ds.slip_invoices(db, slip)
         clock(today, 13, 10)
-        ds.void_slip(db, c.users["checker"], inv, "Vehicle changed by transporter after slip was generated")
-        tr_new = c.transporters["SBT"] if inv.transporter.code != "SBT" else c.transporters["SCM"]
-        ds.save_details(db, _operator(c, inv), inv, transporter_id=tr_new.id, vehicle_no="CG07BT3030",
-                        lr_no=f"SBT{RND.randint(9000, 9999)}", dispatch_date=inv.dispatch_date,
-                        dispatch_time=inv.dispatch_time, remarks="Re-routed via Shree Balaji")
+        ds.void_gatepass(db, c.users["checker"], slip, "Wrong invoice picked - gatepass made again")
         clock(today, 13, 20)
-        ds.generate_slip(db, _operator(c, inv), inv)
+        ds.create_gatepass(db, _operator(c, group[0]), group, ds.GatepassRequest(
+            mode=slip.dispatch_mode, transporter_id=slip.transporter_id, dispatch_date=today,
+            cases={i.id: i.boxes for i in group}, remarks="Re-made after correction"))
     hist_dispatched = [i for i in invs if i.status == InvoiceStatus.DISPATCHED]
     if hist_dispatched:
         inv = hist_dispatched[len(hist_dispatched) // 3]
@@ -763,17 +997,26 @@ def _bills(c: Ctx, m2: date, m1: date) -> None:
         recon_service.rematch(db, b)
         return b
 
-    # M-2: exact bills, approved and paid
-    for tcode in ("CGR", "SBT", "SCM"):
-        b = make(tcode, m2, "01")
-        clock(period(m2)[1] + timedelta(days=6), 15, 30)
-        recon_service.approve(db, chk, b, "Matched with system freight")
-        clock(period(m2)[1] + timedelta(days=12), 12, 0)
-        recon_service.mark_paid(db, acc, b, f"UTR{RND.randint(10**11, 10**12 - 1)}")
-    # M-1: one exact (approved), one with variances (awaiting approval), one matched awaiting approval
-    b = make("SBT", m1, "01")
-    clock(period(m1)[1] + timedelta(days=6), 15, 30)
-    recon_service.approve(db, chk, b, "Matched")
+    def approve_pay(b, m, pay=True):
+        if not b.lines or b.status not in ("MATCHED", "VARIANCE"):
+            return
+        clock(period(m)[1] + timedelta(days=5), 12, 0)
+        recon_service.apply_rate_review(db, acc, b, [], "Rates as per card")
+        clock(period(m)[1] + timedelta(days=6), 15, 30)
+        recon_service.approve(db, chk, b, "Matched with gatepasses")
+        if pay:
+            clock(period(m)[1] + timedelta(days=12), 12, 0)
+            recon_service.mark_paid(db, acc, b, f"UTR{RND.randint(10**11, 10**12 - 1)}")
+
+    # M-2: every TBB transporter's bill matched, approved and paid
+    for tcode in ("CGR", "SBT", "SCM", "PRK", "OSHO", "PGC", "ORL", "BJR"):
+        approve_pay(make(tcode, m2, "01"), m2)
+    # M-1: some approved, one with variances (awaiting approval), scanned bills with irregularities below
+    approve_pay(make("SBT", m1, "01"), m1, pay=False)
+    approve_pay(make("PGC", m1, "01"), m1, pay=False)
+    b = make("PRK", m1, "01")
+    clock(period(m1)[1] + timedelta(days=5), 12, 0)
+    recon_service.apply_rate_review(db, acc, b, [], "Parakh rates unchanged")
     k = {"n": 0}
 
     def overbill(ln, amt):
@@ -793,6 +1036,137 @@ def _bills(c: Ctx, m2: date, m1: date) -> None:
     recon_service.rematch(db, b2)
     make("CGR", m1, "01")
     make("VDL", m2, "01")
+    _scanned_bills(c, m1, period(m1))
+
+
+def _bill_image(title: str, header: list[str], rows: list[list], footer: str) -> bytes:
+    """A plain 'photographed bill' picture for the demo (real bills are phone photos / scans)."""
+    from PIL import Image, ImageDraw, ImageFont
+    w, rh = 1100, 34
+    h = 200 + rh * (len(rows) + 2) + 80
+    img = Image.new("RGB", (w, h), (250, 248, 240))
+    d = ImageDraw.Draw(img)
+    try:
+        font = ImageFont.truetype(str(BASE_DIR / "app" / "static" / "fonts" / "DejaVuSans.ttf"), 20)
+        big = ImageFont.truetype(str(BASE_DIR / "app" / "static" / "fonts" / "DejaVuSans-Bold.ttf"), 30)
+    except OSError:
+        font = big = ImageFont.load_default()
+    d.text((40, 30), title, fill=(30, 30, 90), font=big)
+    d.text((40, 80), "TRANSPORTATION BILL", fill=(60, 60, 60), font=font)
+    cols = [40, 180, 330, 600, 760, 880, 980]
+    y = 140
+    for x, txt in zip(cols, header):
+        d.text((x, y), txt, fill=(0, 0, 0), font=font)
+    d.line((30, y + rh - 4, w - 30, y + rh - 4), fill=(80, 80, 80), width=2)
+    for r in rows:
+        y += rh
+        for x, txt in zip(cols, r):
+            d.text((x, y), "" if txt is None else str(txt), fill=(20, 20, 120), font=font)
+    y += rh + 10
+    d.line((30, y, w - 30, y), fill=(80, 80, 80), width=2)
+    d.text((40, y + 15), footer, fill=(0, 0, 0), font=big)
+    import io as _io
+    buf = _io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _store_scan(content: bytes, label: str) -> list[dict]:
+    folder = get_settings().upload_dir / "bills"
+    folder.mkdir(parents=True, exist_ok=True)
+    name = f"demo-{label}.png"
+    (folder / name).write_bytes(content)
+    return [{"name": name, "original": f"{label}.jpg", "type": "image/png"}]
+
+
+def _scanned_bills(c: Ctx, m1: date, per: tuple[date, date]) -> None:
+    """Bills as they arrive on paper, scanned and read into lines, showing every kind of irregularity."""
+    db = c.db
+    acc = c.users["accounts"]
+    pf, pt = per
+
+    def consignments(tcode, d_from, d_to, billed=False):
+        invs = list(db.scalars(select(Invoice).where(
+            Invoice.transporter_id == c.transporters[tcode].id, Invoice.status == InvoiceStatus.DISPATCHED,
+            Invoice.dispatch_date >= d_from, Invoice.dispatch_date <= d_to,
+            Invoice.transporter_bill_id.isnot(None) if billed else Invoice.transporter_bill_id.is_(None))
+            .order_by(Invoice.dispatch_date, Invoice.id)))
+        return recon_service.consignments(invs)
+
+    def scanned(tcode, bill_no, rows, title, total=None):
+        tr = c.transporters[tcode]
+        clock(pt + timedelta(days=3), 10, 30)
+        lines_total = sum(Decimal(str(r.get("billed_amount") or 0)) for r in rows)
+        b = recon_service.create_bill(db, acc, transporter_id=tr.id, bill_no=bill_no, bill_date=pt + timedelta(days=1),
+                                      bill_amount=total if total is not None else lines_total, period_from=pf,
+                                      period_to=pt, source="SCAN", remarks=f"Paper bill {m1:%b %Y}, scanned")
+        img = _bill_image(title, ["LR No", "Date", "Party", "Station", "Cases", "Rate", "Amount"],
+                          [[r.get("lr_no"), r["lr_date"].strftime("%d.%m.%y") if r.get("lr_date") else "",
+                            (r.get("party_name") or "")[:18], r.get("station"), r.get("billed_boxes"),
+                            r.get("billed_rate"), r.get("billed_amount")] for r in rows],
+                          f"TOTAL  Rs. {b.bill_amount:,.2f}")
+        b.scan_files = _store_scan(img, f"{tcode}-{m1:%y%m}")
+        b.extraction = {"demo": True, "lines": len(rows)}
+        recon_service.save_lines(db, acc, b, [{k: ("" if v is None else str(v)) for k, v in r.items()} for r in rows])
+        return b
+
+    def row(grp, **over):
+        first = grp[0]
+        cases = sum(i.boxes or 0 for i in grp)
+        rate = first.rate_per_box or Decimal("0")
+        r = {"lr_no": first.lr_no, "lr_date": first.lr_date or first.dispatch_date, "party_name": first.customer.name,
+             "station": first.location.code if RND.random() < 0.5 else first.location.name, "billed_boxes": cases,
+             "billed_rate": rate, "billed_amount": sum((recon_service.transporter_due(db, i) for i in grp), Decimal("0"))}
+        r.update(over)
+        return r
+
+    # 1) Orient Logistics (like the printed bill no. 79): a rate increase to ₹40 for Raigarh, an LR we did not have,
+    #    one consignment billed twice, more cases than dispatched, an arithmetic slip and an LR that is not ours
+    grps = [g for g in consignments("ORL", pf, pt)]
+    lrless = grps.pop() if len(grps) >= 4 else None
+    rows = []
+    for k, g in enumerate(grps[:12]):
+        first = g[0]
+        if first.location.code == "RGH" and k % 2 == 0:
+            cases = sum(i.boxes or 0 for i in g)
+            rows.append(row(g, billed_rate=Decimal("40.00"), billed_amount=Decimal("40.00") * cases))
+        elif k == 3:
+            rows.append(row(g, billed_boxes=sum(i.boxes or 0 for i in g) + 2,
+                            billed_amount=(sum(i.boxes or 0 for i in g) + 2) * (first.rate_per_box or 0)))
+        elif k == 5:
+            r = row(g)
+            r["billed_amount"] = r["billed_amount"] + Decimal("100")  # 3 x 50 written as 250
+            rows.append(r)
+        else:
+            rows.append(row(g))
+    # an LR the transporter gave us but we never typed in: clear ours so the bill line has to be matched
+    if lrless:
+        lr = lrless[0].lr_no or "999"
+        for i in lrless:
+            i.lr_no = None
+            i.lr_date = None
+        db.flush()
+        rows.append(row(lrless, lr_no=lr))
+    paid = consignments("ORL", pf - timedelta(days=40), pf - timedelta(days=1), billed=True)
+    if paid:
+        rows.append(row(paid[0]))  # already paid on last month's bill
+    rows.append({"lr_no": "1189", "lr_date": pt - timedelta(days=3), "party_name": "Ganga Medical", "station": "Champa",
+                 "billed_boxes": 6, "billed_rate": Decimal("50.00"), "billed_amount": Decimal("300.00")})
+    if rows:
+        scanned("ORL", "79", rows, "ORIENT LOGISTICS SERVICE · Bill No 79")
+
+    # 2) Jai Bhole Garage is paid in cash at every dispatch - their bill must not be paid again
+    jbg = consignments("JBG", pf, pt)
+    if jbg:
+        scanned("JBG", "2615", [row(g) for g in jbg[:5]], "JAI BHOLE GARAGE (Goods Transport) · 2615")
+
+    # 3) Osho Express charged ₹28 instead of ₹25 per case all month -> rate review proposes the new rate
+    osho = consignments("OSHO", pf, pt)
+    if osho:
+        rows = [row(g, billed_rate=Decimal("28.00"), billed_amount=Decimal("28.00") * sum(i.boxes or 0 for i in g))
+                for g in osho[:10]]
+        scanned("OSHO", "336", rows, "OSHO EXPRESS · Bilaspur - Raipur daily service · 336")
+    db.flush()
 
 
 def write_sample_files(c: Ctx, today: date) -> None:
@@ -816,8 +1190,16 @@ def write_sample_files(c: Ctx, today: date) -> None:
         recs.append(Rec(erp, co, cfa, cu, loc, inv_no, today, Decimal(bx * 1150 + i * 17), bx))
     names = {"SAP": "SAP_billing_documents_sample", "MARG": "MARG_sales_register_sample",
              "CBO": "CBO_invoice_export_sample", "INTRECT": "Intrect_invoice_export_sample"}
+    # e-invoice QR payloads for invoices not in CTDMS yet: paste one into "Scan & Gatepass" (a 2D scanner types the same)
+    qr_lines = ["# Demo e-invoice QR codes (GST IRP format, unsigned demo). Paste one line into Scan & Gatepass.", ""]
+    for k, (co, cu, val, cases) in enumerate([("COA", "C-SBV01", "36240.00", 6), ("COB", "C-JNH01", "58900.00", 9),
+                                             ("COC", "C-HRM01", "17480.00", 3)]):
+        no = f"QR{today:%y%m%d}{k + 1:02d}"
+        qr_lines += [f"# {c.companies[co].name} -> {c.customers[cu].name}, invoice {no}, Rs {val}, {cases} cases",
+                     demo_qr(c, co, cu, no, val, today), ""]
+    (SAMPLE_DIR / "einvoice_qr_samples.txt").write_text("\n".join(qr_lines), encoding="utf-8")
     for erp in names:
-        rows = [_erp_row(r) for r in recs if r.erp == erp]
+        rows = [x for r in recs if r.erp == erp for x in _erp_rows(r)]
         if erp == "MARG":
             rows.append({"Bill No": f"MB/{today:%y}/29999", "Bill Date": today.strftime("%d-%m-%Y"), "Branch": "RAIPUR",
                          "Party Code": "NEW888", "Party Name": "SANJIVANI MEDICAL STORES", "Station": "RAIPUR",

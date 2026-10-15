@@ -21,7 +21,7 @@
       <b>Demo logins</b> <span class="muted">(click to fill)</span>
       <table>
         {% for u, p, r in demo_users %}
-        <tr><td><code data-fill-user="{{ u }}" data-fill-pass="{{ p }}">{{ u }}</code></td><td class="muted">{{ r }}</td><td class="muted"><code>{{ p }}</code></td></tr>
+        <tr class="demo-row" data-fill-user="{{ u }}" data-fill-pass="{{ p }}" tabindex="0" role="button" aria-label="Fill in {{ u }}"><td><code>{{ u }}</code></td><td class="muted">{{ r }}</td><td class="muted"><code>{{ p }}</code></td></tr>
         {% endfor %}
       </table>
     </div>

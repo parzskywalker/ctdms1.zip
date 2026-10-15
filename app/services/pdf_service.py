@@ -157,6 +157,95 @@ def _slip_flowables(snap: dict, width: float, base: float, print_label: str, pri
     return out
 
 
+def _gatepass_flowables(snap: dict, width: float, base: float, print_label: str, printed_line: str):
+    """v1.3 gatepass: one pickup, invoices grouped per customer, charges, payment. No vehicle / LR needed."""
+    st = _styles(base)
+    P = Paragraph
+    out = []
+    bc = code128.Code128(snap["dispatch_no"], barHeight=9 * mm if base > 8 else 7 * mm, barWidth=0.9 if base > 8 else 0.7)
+    head = Table([
+        [P(f"<b>{_esc(snap.get('org_name'))}</b>", st["title"]), P(print_label, st["banner"])],
+        [P(_esc(snap.get("org_address")), st["small"]), ""],
+        [P("GATEPASS / DISPATCH SLIP", st["big"]), bc],
+        [P(f"No: <b>{_esc(snap['dispatch_no'])}</b>", st["reg"]),
+         P(f"Generated: {_esc(snap.get('generated_at'))}", st["small"])],
+    ], colWidths=[width * 0.6, width * 0.4])
+    head.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+                              ("BOTTOMPADDING", (0, 0), (-1, -1), 1), ("TOPPADDING", (0, 0), (-1, -1), 1),
+                              ("LINEBELOW", (0, -1), (-1, -1), 1.2, NAVY)]))
+    out += [head, Spacer(1, 2 * mm)]
+    tr, auto = snap.get("transporter") or {}, snap.get("outside_auto") or {}
+    carrier = (f"{tr.get('name')} · {tr.get('contact') or ''} {tr.get('mobile') or ''}"
+               + (f" · GST {tr['gstin']}" if tr.get("gstin") else "") + f" · {tr.get('payment_label') or ''}") if tr \
+        else ("Customer / own vehicle" if snap.get("mode") == "SELF" else "—")
+    info = [[P("Dispatch date &amp; time", st["lbl"]), P(f"{_esc(snap.get('dispatch_date'))} {snap.get('dispatch_time') or ''}", st["val"]),
+             P("From", st["lbl"]), P(_esc(f"{snap['cfa']['name']} ({snap['cfa']['code']})"), st["val"])],
+            [P("Mode", st["lbl"]), P(_esc(snap.get("mode_label")), st["val"]), P("Carrier", st["lbl"]), P(_esc(carrier), st["val"])]]
+    if auto:
+        basis = "per case" if auto.get("charge_basis") == "PER_CASE" else "per trip"
+        info.append([P("Outside auto", st["lbl"]), P(_esc(f"{auto.get('name')} {auto.get('mobile') or ''}"), st["val"]),
+                     P("Auto charge", st["lbl"]), P(f"₹{Decimal(auto.get('rate') or 0):,.2f} {basis}", st["val"])])
+    t = Table(info, colWidths=[width * 0.14, width * 0.32, width * 0.12, width * 0.42])
+    t.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.6, LINE), ("INNERGRID", (0, 0), (-1, -1), 0.4, LINE),
+                           ("VALIGN", (0, 0), (-1, -1), "TOP")]))
+    out += [t, Spacer(1, 2 * mm)]
+    rows = [[P(x, st["lbl"]) for x in ("Customer · area / invoice", "Date", "Co.", "Cases", "Rate", "Charge")]]
+    styles = [("BOX", (0, 0), (-1, -1), 0.6, LINE), ("INNERGRID", (0, 0), (-1, -1), 0.3, LINE),
+              ("BACKGROUND", (0, 0), (-1, 0), SOFT), ("ALIGN", (3, 0), (-1, -1), "RIGHT"), ("VALIGN", (0, 0), (-1, -1), "TOP")]
+    for g in snap.get("groups", []):
+        cu = g["customer"]
+        rows.append([P(f"<b>{_esc(cu['name'])}</b> ({_esc(cu.get('type'))}) — {_esc(g['location']['name'])}<br/>"
+                       f"<font size={base - 1.5}>{_esc(cu.get('address'))} · {_esc(cu.get('phone'))} · LR: __________</font>",
+                       st["reg"]), "", "", P(f"<b>{g['cases']}</b>", st["right"]), "",
+                     P(f"<b>{fmt_money(Decimal(g['freight']) + Decimal(g.get('extra') or 0))}</b>", st["right"])])
+        styles.append(("BACKGROUND", (0, len(rows) - 1), (-1, len(rows) - 1), colors.HexColor("#f7f9fc")))
+        styles.append(("SPAN", (0, len(rows) - 1), (2, len(rows) - 1)))
+        for i in g["invoices"]:
+            rows.append([P(f"&nbsp;&nbsp;{_esc(i['invoice_no'])}", st["reg"]), P(_esc(i["invoice_date"]), st["small"]),
+                         P(_esc(i["company_code"]), st["small"]), P(str(i["cases"]), st["right"]),
+                         P(fmt_money(Decimal(i["rate"])) if i.get("rate") is not None else "trip", st["right"]),
+                         P(fmt_money(Decimal(i["freight"])), st["right"])])
+    lines = Table(rows, colWidths=[width * 0.42, width * 0.13, width * 0.08, width * 0.1, width * 0.12, width * 0.15],
+                  repeatRows=1)
+    lines.setStyle(TableStyle(styles))
+    out += [lines, Spacer(1, 2 * mm)]
+    tot = snap.get("totals", {})
+    extra = ""
+    if Decimal(tot.get("pickup") or 0):
+        extra += f" + pickup {fmt_money(Decimal(tot['pickup']))}"
+    if Decimal(tot.get("auto") or 0):
+        extra += f" + auto {fmt_money(Decimal(tot['auto']))}"
+    money_tbl = Table([
+        [P("Invoices", st["lbl"]), P("Total cases", st["lbl"]), P("Freight" + extra, st["lbl"]), P("Total charged", st["lbl"])],
+        [P(f"<font size={base + 6}><b>{tot.get('invoices')}</b></font>", st["reg"]),
+         P(f"<font size={base + 6}><b>{tot.get('cases')}</b></font>", st["reg"]),
+         P(fmt_money(Decimal(tot.get("freight") or 0)), st["val"]),
+         P(f"<font size={base + 3}><b>{fmt_money(Decimal(tot.get('total') or 0))}</b></font><br/>"
+           f"<font size={base - 1}>paid now {fmt_money(Decimal(tot.get('paid') or 0))}"
+           + (f" · to be billed {fmt_money(Decimal(tot.get('balance') or 0))}" if Decimal(tot.get("balance") or 0) > 0 else "")
+           + "</font>", st["reg"])],
+    ], colWidths=[width * 0.18, width * 0.18, width * 0.28, width * 0.36])
+    money_tbl.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), SOFT), ("BOX", (0, 0), (-1, -1), 0.8, NAVY),
+                                   ("INNERGRID", (0, 0), (-1, -1), 0.4, LINE), ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
+    out += [money_tbl, Spacer(1, 2 * mm)]
+    if snap.get("remarks"):
+        out += [P(f"Remarks: {_esc(snap['remarks'])}", st["reg"]), Spacer(1, 2 * mm)]
+    sig_h = 13 * mm if base > 8 else 9 * mm
+    sig = Table([
+        [P("Prepared by", st["lbl"]), P("Cases counted by", st["lbl"]), P("Gate / security", st["lbl"]),
+         P("Received by transporter / driver", st["lbl"])],
+        [P(_esc(snap.get("prepared_by")), st["reg"]), "", "", ""],
+        ["", "", "", ""],
+        [P("Signature", st["small"]), P("Signature", st["small"]), P("Signature &amp; time", st["small"]),
+         P("Signature &amp; mobile", st["small"])],
+    ], colWidths=[width / 4] * 4, rowHeights=[None, None, sig_h, None])
+    sig.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.6, LINE), ("INNERGRID", (0, 0), (-1, -1), 0.3, LINE),
+                             ("LINEBELOW", (0, 2), (-1, 2), 0.6, GREY), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
+    out += [sig, Spacer(1, 2 * mm), P(_esc(snap.get("footer")), st["center"]),
+            P(f"{_esc(snap.get('central_id'))} · {printed_line}", st["center"])]
+    return out
+
+
 def dispatch_slips_pdf(items: list[tuple[dict, str, str]], size: str = "A5") -> bytes:
     """items: [(snapshot, print_label, printed_line)] -> one PDF, one slip per page."""
     pagesize = A5 if size == "A5" else A4
@@ -169,7 +258,10 @@ def dispatch_slips_pdf(items: list[tuple[dict, str, str]], size: str = "A5") -> 
     for i, (snap, label, line) in enumerate(items):
         if i:
             story.append(PageBreak())
-        story.append(KeepTogether(_slip_flowables(snap, doc.width, base, label, line)))
+        if snap.get("v") == 2:  # a gatepass may run to a second page when it carries many invoices
+            story.extend(_gatepass_flowables(snap, doc.width, base, label, line))
+        else:
+            story.append(KeepTogether(_slip_flowables(snap, doc.width, base, label, line)))
     doc.build(story)
     return buf.getvalue()
 
@@ -191,14 +283,36 @@ def table_pdf(title: str, subtitle: str, columns: list[tuple[str, str]], rows: l
     tstyle = ParagraphStyle("t", fontName=bold, fontSize=13, leading=16, textColor=NAVY)
     sstyle = ParagraphStyle("s", fontName=reg, fontSize=8, leading=10, textColor=GREY)
     numeric = {"int", "money", "rate", "pct", "num"}
+    note_head = ParagraphStyle("nh", fontName=bold, fontSize=8, leading=10, textColor=NAVY, spaceBefore=4)
+    note_body = ParagraphStyle("nb", fontName=reg, fontSize=7, leading=8.6)
+
+    # Very long cells (e.g. a transporter's 3,000 LR numbers in one row) cannot fit in a table row that has to
+    # stay on one page - ReportLab raised LayoutError and the export returned HTTP 500 (QA-10). Such cells are
+    # shown as "N items - see note [k]" and printed in full, across as many pages as needed, after the table.
+    notes: list[tuple[str, str]] = []
+
+    def _cell_text(v, i, r):
+        s = "" if v is None else str(v)
+        n = s.count(",") + 1 if "," in s else 0
+        long_list = n > LONG_LIST_ITEMS and len(s) > 120
+        if len(s) <= LONG_CELL_CHARS and not long_list:
+            return _esc(v)
+        label = "" if i == 0 or r[0] in (None, "") else str(r[0])
+        label = label if 0 < len(label) <= 60 else (label[:57] + "..." if label else f"row {len(data)}")
+        notes.append((f"[{len(notes) + 1}] {label} - {columns[i][0]}", s))
+        what = f"{n:,} items" if n > 1 else f"{len(s):,} characters"
+        return f"<i>{what} - full list in note [{len(notes)}] below</i>"
 
     data = [[Paragraph(_esc(lbl), head_r if kind in numeric else head) for lbl, kind in columns]]
     for r in rows:
-        data.append([Paragraph(_esc(v), cell_r if columns[i][1] in numeric else cell) for i, v in enumerate(r)])
+        data.append([Paragraph(_cell_text(v, i, r), cell_r if columns[i][1] in numeric else cell)
+                     for i, v in enumerate(r)])
     if totals:
         data.append([Paragraph(f"<b>{_esc(v)}</b>" if v not in (None, "") else "", cell_r if columns[i][1] in numeric
                                else cell) for i, v in enumerate(totals)])
-    t = Table(data, repeatRows=1, colWidths=[doc.width / ncols] * ncols)
+    # splitInRow: a row that is still taller than a page (many medium-length cells) continues on the next page
+    # instead of crashing.
+    t = Table(data, repeatRows=1, colWidths=[doc.width / ncols] * ncols, splitInRow=1)
     style = [("BACKGROUND", (0, 0), (-1, 0), NAVY), ("GRID", (0, 0), (-1, -1), 0.25, LINE),
              ("VALIGN", (0, 0), (-1, -1), "TOP"), ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, SOFT]),
              ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2)]
@@ -214,6 +328,19 @@ def table_pdf(title: str, subtitle: str, columns: list[tuple[str, str]], rows: l
         canvas.drawRightString(pagesize[0] - 10 * mm, 7 * mm, f"Page {d.page}")
         canvas.restoreState()
 
-    doc.build([Paragraph(_esc(title), tstyle), Paragraph(_esc(subtitle), sstyle), Spacer(1, 4 * mm), t],
-              onFirstPage=_footer, onLaterPages=_footer)
+    story = [Paragraph(_esc(title), tstyle), Paragraph(_esc(subtitle), sstyle), Spacer(1, 4 * mm), t]
+    if notes:
+        story += [Spacer(1, 5 * mm), Paragraph("Notes - full text of long cells", tstyle)]
+        for heading, text in notes:
+            story.append(Paragraph(_esc(heading), note_head))
+            # moderate-size paragraphs so ReportLab can break them across pages quickly; cut only between items
+            while text:
+                cut = len(text) if len(text) <= 3000 else (text.rfind(" ", 0, 3000) + 1 or 3000)
+                story.append(Paragraph(_esc(text[:cut]), note_body))
+                text = text[cut:]
+    doc.build(story, onFirstPage=_footer, onLaterPages=_footer)
     return buf.getvalue()
+
+
+LONG_CELL_CHARS = 400   # longer text moves to the notes after the table
+LONG_LIST_ITEMS = 10    # so does a comma-separated list with more items than this (LR / vehicle lists)

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge, pager with context %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Customer notifications</h1>
+    <div class="sub">WhatsApp / SMS alerts to customers when their goods leave the gate{{ '' if on_gate_out else ' (off)' }} and when the transporter's LR number is entered{{ '' if on_lr else ' (off)' }} — one message per customer per gatepass.</div></div>
+  <div class="actions">
+    {% if provider != 'OFF' and can('dispatch.operate') %}
+    <form method="post" action="/notifications/send-now" style="margin:0"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn btn-primary" type="submit">Send queued now</button></form>
+    {% endif %}
+    {% if can('admin.settings') %}<a class="btn" href="/admin/settings">Settings</a>{% endif %}
+  </div>
+</div>
+{% if provider == 'OFF' %}
+<div class="alert alert-info"><b>Notifications are switched off.</b> Nothing is queued or sent. An administrator can choose a provider in System Settings › <i>notify.provider</i>: <b>LOG</b> to try it without sending, <b>WHATSAPP_CLOUD</b> (WhatsApp Business Cloud API) or <b>HTTP_SMS</b> (your SMS gateway). The API token goes in <code>CTDMS_NOTIFY_TOKEN</code> in the <code>.env</code> file.</div>
+{% elif provider == 'LOG' %}
+<div class="alert alert-warn"><b>Trial mode (LOG):</b> messages are queued and marked sent, but nothing leaves the server. Switch to WHATSAPP_CLOUD or HTTP_SMS to really send.</div>
+{% endif %}
+<div class="tabs">
+  <a href="?{{ 'event=' ~ event if event else '' }}" class="{{ 'on' if not status }}">All</a>
+  {% for s in statuses %}<a href="?status={{ s }}{{ '&event=' ~ event if event else '' }}" class="{{ 'on' if status == s }}">{{ s|title }}<span class="count">{{ counts[s] }}</span></a>{% endfor %}
+</div>
+<form class="filters" method="get">
+  {% if status %}<input type="hidden" name="status" value="{{ status }}">{% endif %}
+  <div class="f narrow"><label>From</label><input type="date" name="date_from" value="{{ d_from.isoformat() }}"></div>
+  <div class="f narrow"><label>To</label><input type="date" name="date_to" value="{{ d_to.isoformat() }}"></div>
+  <div class="f"><label>Event</label><select name="event"><option value="">All</option>{% for k, v in events.items() %}<option value="{{ k }}" {% if k == event %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
+  <div class="f wide"><label>Search</label><input type="search" name="q" value="{{ q }}" placeholder="Customer, number or text"></div>
+  <div class="f" style="flex:0 0 auto;min-width:0"><button class="btn btn-primary" type="submit">Apply</button> <a class="btn btn-ghost" href="/notifications">Reset</a></div>
+</form>
+<div class="card flush">
+  <div class="table-wrap"><table class="data compact">
+    <thead><tr><th>Queued</th><th>Event</th><th>Customer · to</th><th>Message</th><th>Gatepass</th><th>Status</th><th class="num">Tries</th><th></th></tr></thead>
+    <tbody>
+    {% for n in rows %}
+      <tr>
+        <td class="nowrap small">{{ n.created_at|dt }}</td>
+        <td>{{ n.event_label }}<div class="small muted">{{ n.channel|lower }}</div></td>
+        <td>{{ n.customer.name if n.customer else '' }}<div class="small mono {{ 'pos' if not n.to_number else 'muted' }}">{{ ('+' ~ n.to_number) if n.to_number else 'no mobile' }}</div></td>
+        <td class="small" style="max-width:460px">{{ n.body }}</td>
+        <td class="nowrap">{% if n.slip_id %}<a class="mono small" href="/gatepass/{{ n.slip_id }}">{{ n.slip.dispatch_no }}</a>{% endif %}</td>
+        <td>{{ badge({'SENT': 'DISPATCHED', 'FAILED': 'REJECTED', 'QUEUED': 'PENDING', 'SENDING': 'SLIP_GENERATED'}[n.status], n.status|title) }}
+          {% if n.sent_at %}<div class="small muted">{{ n.sent_at|dt }}</div>{% elif n.status == 'QUEUED' and n.next_attempt_at and n.attempts %}<div class="small muted">next try {{ n.next_attempt_at|dt }}</div>{% endif %}
+          {% if n.last_error %}<div class="small pos" title="{{ n.last_error }}">{{ n.last_error[:90] }}</div>{% endif %}</td>
+        <td class="num">{{ n.attempts }}</td>
+        <td class="num">{% if n.status in ('FAILED', 'QUEUED') and can('dispatch.operate') %}<form method="post" action="/notifications/{{ n.id }}/retry" style="margin:0"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn btn-sm" type="submit">{{ 'Retry' if n.status == 'FAILED' else 'Try now' }}</button></form>{% endif %}</td>
+      </tr>
+    {% else %}<tr><td colspan="8" class="empty">No notifications for this filter.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  {{ pager(page, pages, total, qs) }}
+</div>
+{% endblock %}

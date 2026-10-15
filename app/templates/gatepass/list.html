@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge, pager with context %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Gatepasses</h1><div class="sub">Every pickup that left (or is about to leave) the warehouse — one gatepass per transporter / auto trip.</div></div>
+  <div class="actions">
+    {% if can('dispatch.operate') %}<a class="btn btn-primary" href="/gatepass/new">New gatepass</a>{% endif %}
+    <a class="btn" href="/gatepass/gate">Gate check</a><a class="btn" href="/gatepass/lr-pending">LR pending</a>
+  </div>
+</div>
+<form class="filters" method="get">
+  <div class="f narrow"><label>From</label><input type="date" name="date_from" value="{{ d_from.isoformat() }}"></div>
+  <div class="f narrow"><label>To</label><input type="date" name="date_to" value="{{ d_to.isoformat() }}"></div>
+  <div class="f"><label>Transporter</label><select name="transporter_id"><option value="">All</option>{% for t in transporters %}<option value="{{ t.id }}" {% if t.id == tid %}selected{% endif %}>{{ t.name }}</option>{% endfor %}</select></div>
+  <div class="f"><label>Mode</label><select name="mode"><option value="">All</option>{% for k, v in modes.items() %}<option value="{{ k }}" {% if k == mode %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
+  <div class="f narrow"><label>State</label><select name="state">{% for k, v in states.items() %}<option value="{{ k }}" {% if k == state %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
+  <div class="f wide"><label>Search</label><input type="search" name="q" value="{{ q }}" placeholder="Gatepass, invoice or LR no"></div>
+  <div class="f" style="flex:0 0 auto;min-width:0"><button class="btn btn-primary" type="submit">Apply</button> <a class="btn btn-ghost" href="/gatepass">Reset</a></div>
+</form>
+<div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+  <div class="kpi"><div class="lbl">Gatepasses</div><div class="val">{{ sums[0] }}</div><div class="hint">excluding void</div></div>
+  <div class="kpi"><div class="lbl">Cases</div><div class="val">{{ sums[1]|int }}</div></div>
+  <div class="kpi"><div class="lbl">Charged</div><div class="val">{{ sums[2]|kpi_money }}</div></div>
+  <div class="kpi"><div class="lbl">Paid at dispatch</div><div class="val">{{ sums[3]|kpi_money }}</div><div class="hint">rest is billed (TBB)</div></div>
+</div>
+<div class="card flush">
+  <div class="table-wrap"><table class="data">
+    <thead><tr><th>Gatepass</th><th>Date</th><th>Mode · carrier</th><th class="num">Invoices</th><th class="num">Cases</th><th class="num">Charged</th><th class="num">Paid</th><th>LR</th><th>State</th></tr></thead>
+    <tbody>
+    {% for s in slips %}
+      <tr>
+        <td class="nowrap"><a class="mono" href="/gatepass/{{ s.id }}"><b>{{ s.dispatch_no }}</b></a></td>
+        <td class="nowrap">{{ s.dispatch_date|date }}</td>
+        <td>{{ s.mode_label }}<div class="small muted">{{ s.transporter.name if s.transporter else '' }}{% if s.outside_auto %}{{ ' · ' if s.transporter }}{{ s.outside_auto.name }}{% endif %}</div></td>
+        <td class="num">{{ s.invoice_count }}</td><td class="num">{{ s.total_cases }}</td>
+        <td class="num">{{ s.total_charge|money }}</td><td class="num">{{ s.amount_paid|money }}</td>
+        <td class="small">{% if s.id in lr_missing %}{% if lr_missing[s.id] %}<span class="pos">{{ lr_missing[s.id] }} missing</span>{% else %}<span class="neg">complete</span>{% endif %}{% else %}—{% endif %}</td>
+        <td>{{ badge(s.state, {'VOID': 'Void', 'DISPATCHED': 'Gone out', 'SLIP_PRINTED': 'Printed', 'SLIP_GENERATED': 'Not printed'}[s.state]) }}</td>
+      </tr>
+    {% else %}<tr><td colspan="9" class="empty">No gatepasses for this filter.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  {{ pager(page, pages, total, qs) }}
+</div>
+{% endblock %}

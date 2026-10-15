@@ -17,6 +17,7 @@ from app.services.dispatch_service import actions_for
 from app.services.freight_engine import find_rate
 from app.services.reports import Filters, filtered_invoices
 from app.services.scope import apply_invoice_scope, can_see_invoice
+from app.services.utils import safe_int
 from app.web.templating import filter_options, flash, redirect, render, safe_path
 
 router = APIRouter(dependencies=[Depends(csrf_protect)], include_in_schema=False)
@@ -49,7 +50,7 @@ def register(request: Request, db: Session = Depends(get_db), user: User = Depen
         f = Filters.from_params(request.query_params, default_range="quarter")
         stmt = filtered_invoices(user, f, include_cancelled=True)
     total = db.scalar(select(func.count()).select_from(stmt.subquery()))
-    page = max(int(request.query_params.get("page", 1) or 1), 1)
+    page = safe_int(request.query_params.get("page"), 1, minimum=1)
     pages = max(math.ceil(total / PAGE), 1)
     rows = list(db.scalars(stmt.order_by(Invoice.invoice_date.desc(), Invoice.id.desc())
                            .offset((page - 1) * PAGE).limit(PAGE)))
@@ -67,7 +68,9 @@ def detail(invoice_id: int, request: Request, db: Session = Depends(get_db),
     inv = get_invoice(db, user, invoice_id)
     overrides = list(db.scalars(select(InvoiceOverride).where(InvoiceOverride.invoice_id == inv.id)
                                 .order_by(InvoiceOverride.requested_at.desc())))
-    slips = list(db.scalars(select(DispatchSlip).where(DispatchSlip.invoice_id == inv.id).order_by(DispatchSlip.id)))
+    from app.models import DispatchSlipLine
+    slips = list(db.scalars(select(DispatchSlip).join(DispatchSlipLine, DispatchSlipLine.slip_id == DispatchSlip.id)
+                            .where(DispatchSlipLine.invoice_id == inv.id).order_by(DispatchSlip.id)))
     prints = list(db.scalars(select(SlipPrintLog).where(SlipPrintLog.invoice_id == inv.id).order_by(SlipPrintLog.id)))
     history = list(db.scalars(select(AuditLog).where(AuditLog.record_type == "Invoice",
                                                      AuditLog.record_id == str(inv.id)).order_by(AuditLog.ts)))

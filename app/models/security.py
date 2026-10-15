@@ -57,6 +57,7 @@ class User(Base, TimestampMixin):
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime)
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
     password_changed_at: Mapped[datetime | None] = mapped_column(DateTime, default=utcnow)
+    tokens_valid_after: Mapped[datetime | None] = mapped_column(DateTime)  # API tokens issued earlier are refused
 
     role: Mapped[Role] = relationship(back_populates="users", lazy="joined")
     companies: Mapped[list["Company"]] = relationship(secondary=user_companies)  # noqa: F821

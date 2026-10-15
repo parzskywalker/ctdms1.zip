@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Transporter rate cards</h1><div class="sub">Rate per case for each delivery area, per transporter. The gatepass charges from these; transporter bills are checked against them. Changes need a second person's approval and never overwrite history.</div></div>
+  <div class="actions"><a class="btn" href="/rate-cards/template.csv">CSV template</a></div>
+</div>
+<div class="card flush">
+  <div class="table-wrap"><table class="data">
+    <thead><tr><th>Transporter</th><th>Payment</th><th>Direct pickup</th><th class="num">Areas priced</th><th class="num">Rate range / case</th><th>Pending changes</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr {% if not r.t.is_active %}class="muted"{% endif %}><td><b>{{ r.t.name }}</b><div class="small muted">{{ r.t.service_area or '' }}</div></td>
+        <td>{{ r.t.payment_label }}</td><td>{{ r.t.direct_pickup_charge|money if r.t.direct_pickup_charge else '—' }}{% if r.t.direct_pickup_charge %} <span class="small muted">{{ 'per case' if r.t.direct_pickup_basis == 'PER_CASE' else 'per trip' }}</span>{% endif %}</td>
+        <td class="num">{{ r.areas or '—' }}</td><td class="num">{% if r.min is not none %}{{ r.min|rate }}{% if r.max != r.min %} – {{ r.max|rate }}{% endif %}{% else %}<span class="pos">no rates</span>{% endif %}</td>
+        <td>{% if r.pending %}<span class="badge b-PENDING_APPROVAL">{{ r.pending }} awaiting approval</span>{% endif %}</td>
+        <td class="num"><a class="btn btn-sm" href="/rate-cards/{{ r.t.id }}">Open</a></td></tr>
+    {% else %}<tr><td colspan="7" class="empty">No transporters yet.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endblock %}

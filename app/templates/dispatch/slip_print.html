@@ -2,67 +2,111 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Dispatch Slip{% if items|length == 1 %} {{ items[0][0].dispatch_no }}{% else %}s ({{ items|length }}){% endif %}</title>
+<title>{% if items|length == 1 %}Gatepass {{ items[0][0].dispatch_no }}{% else %}Gatepasses ({{ items|length }}){% endif %}</title>
 <style>
-  @page { size: {{ size }} portrait; margin: {{ '9mm' if size == 'A5' else '14mm' }}; }
+  @page { size: {{ size }} portrait; margin: {{ '8mm' if size == 'A5' else '12mm' }}; }
   * { box-sizing: border-box; }
-  body { font-family: "Segoe UI", Arial, sans-serif; color: #111; margin: 0; font-size: {{ '10px' if size == 'A5' else '12.5px' }}; background: #e9edf2; }
-  .sheet { background: #fff; width: {{ '148mm' if size == 'A5' else '210mm' }}; min-height: {{ '210mm' if size == 'A5' else '297mm' }}; margin: 12px auto; padding: {{ '9mm' if size == 'A5' else '14mm' }}; box-shadow: 0 2px 12px rgba(0,0,0,.15); page-break-after: always; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #111; margin: 0; font-size: {{ '9.5px' if size == 'A5' else '12px' }}; background: #e9edf2; }
+  .sheet { background: #fff; width: {{ '148mm' if size == 'A5' else '210mm' }}; min-height: {{ '210mm' if size == 'A5' else '297mm' }}; margin: 12px auto; padding: {{ '8mm' if size == 'A5' else '12mm' }}; box-shadow: 0 2px 12px rgba(0,0,0,.15); page-break-after: always; }
   .sheet:last-child { page-break-after: auto; }
-  .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #1f3a5f; padding-bottom: 6px; margin-bottom: 8px; }
+  .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #1f3a5f; padding-bottom: 6px; margin-bottom: 7px; gap: 10px; }
   .org { font-weight: 700; font-size: 1.25em; }
   .muted { color: #5b6675; }
-  .title { font-size: 1.8em; font-weight: 800; color: #1f3a5f; letter-spacing: .5px; margin-top: 4px; }
+  .title { font-size: 1.7em; font-weight: 800; color: #1f3a5f; letter-spacing: .5px; margin-top: 3px; }
   .dno { font-family: Consolas, monospace; font-size: 1.25em; font-weight: 700; }
   .label { color: #b42318; font-weight: 800; text-align: right; }
-  table { width: 100%; border-collapse: collapse; margin-bottom: 7px; }
-  td { border: 1px solid #c9d1dc; padding: 3px 6px; vertical-align: top; width: 50%; }
+  .bc svg { height: {{ '11mm' if size == 'A5' else '14mm' }}; width: auto; display: block; margin-left: auto; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+  td, th { border: 1px solid #c9d1dc; padding: 3px 5px; vertical-align: top; }
+  th { background: #eef2f7; text-align: left; font-size: .9em; }
+  .kv td { width: 50%; }
   td .l { display: block; color: #5b6675; font-size: .82em; }
   td .v { font-weight: 700; }
-  .money td { background: #eef2f7; width: 33.3%; border-color: #1f3a5f; }
-  .money .big { font-size: 1.9em; font-weight: 800; }
-  .sig td { width: 25%; height: {{ '15mm' if size == 'A5' else '22mm' }}; vertical-align: bottom; }
+  .num { text-align: right; white-space: nowrap; }
+  .grp td { background: #f7f9fc; font-weight: 700; }
+  .money td { background: #eef2f7; border-color: #1f3a5f; }
+  .money .big { font-size: 1.7em; font-weight: 800; }
+  .sig td { width: 25%; height: {{ '14mm' if size == 'A5' else '20mm' }}; vertical-align: bottom; }
   .foot { text-align: center; color: #5b6675; font-size: .85em; margin-top: 4px; }
+  .lr { color: #5b6675; font-size: .85em; }
   .bar { position: sticky; top: 0; background: #10233a; color: #fff; padding: 8px 14px; display: flex; gap: 10px; align-items: center; font-size: 13px; }
   .bar button { font: inherit; padding: 5px 12px; border-radius: 5px; border: 0; cursor: pointer; }
   @media print { body { background: #fff; } .sheet { margin: 0; box-shadow: none; width: auto; min-height: 0; padding: 0; } .bar { display: none; } }
 </style>
 </head>
 <body>
-<div class="bar"><b>{{ items|length }} slip{{ 's' if items|length > 1 }} · {{ size }}</b><span>Print event recorded.</span><button onclick="window.print()">Print again (same print event)</button><button onclick="window.close()">Close</button></div>
+<div class="bar"><b>{{ items|length }} gatepass{{ 'es' if items|length > 1 }} · {{ size }}</b><span>Print event recorded.</span><button onclick="window.print()">Print again (same print event)</button><button onclick="window.close()">Close</button></div>
 {% for snap, label, line in items %}
 <div class="sheet">
   <div class="head">
     <div>
       <div class="org">{{ snap.org_name }}</div>
       <div class="muted">{{ snap.org_address }}</div>
-      <div class="title">DISPATCH SLIP</div>
-      <div>Dispatch No: <span class="dno">{{ snap.dispatch_no }}</span></div>
+      <div class="title">{{ 'GATEPASS / DISPATCH SLIP' if snap.v == 2 else 'DISPATCH SLIP' }}</div>
+      <div>No: <span class="dno">{{ snap.dispatch_no }}</span></div>
     </div>
-    <div>
+    <div style="text-align:right">
       <div class="label">{{ label }}</div>
-      <div class="muted" style="text-align:right">Generated {{ snap.generated_at }}</div>
+      <div class="bc">{{ snap.dispatch_no|barcode_svg }}</div>
+      <div class="muted">Generated {{ snap.generated_at }}</div>
     </div>
   </div>
-  <table>
-    <tr><td><span class="l">Company / Principal</span><span class="v">{{ snap.company.name }} ({{ snap.company.code }})</span></td><td><span class="l">CFA</span><span class="v">{{ snap.cfa.name }} ({{ snap.cfa.code }})</span></td></tr>
-    <tr><td><span class="l">Invoice No</span><span class="v">{{ snap.invoice_no }}</span></td><td><span class="l">Invoice Date</span><span class="v">{{ snap.invoice_date }}</span></td></tr>
+{% if snap.v == 2 %}
+  <table class="kv">
+    <tr><td><span class="l">Dispatch date &amp; time</span><span class="v">{{ snap.dispatch_date }} {{ snap.dispatch_time or '' }}</span></td>
+        <td><span class="l">From (CFA / warehouse)</span><span class="v">{{ snap.cfa.name }} ({{ snap.cfa.code }})</span></td></tr>
+    <tr><td><span class="l">Mode of dispatch</span><span class="v">{{ snap.mode_label }}</span></td>
+        <td>{% if snap.transporter %}<span class="l">Transporter</span><span class="v">{{ snap.transporter.name }}</span>
+            <div>{{ snap.transporter.contact or '' }} {{ snap.transporter.mobile or '' }}{% if snap.transporter.gstin %} · GST {{ snap.transporter.gstin }}{% endif %}</div>
+            <div class="muted">{{ snap.transporter.payment_label }}{% if snap.transporter.city %} · {{ snap.transporter.city }}{% endif %}</div>
+          {% elif snap.mode == 'SELF' %}<span class="l">Collected by</span><span class="v">Customer / own vehicle</span>
+          {% else %}<span class="l">Carrier</span><span class="v">—</span>{% endif %}</td></tr>
+    {% if snap.outside_auto %}
+    <tr><td colspan="2"><span class="l">Outside auto{{ ' (to the transporter)' if snap.mode in ('TRANSPORTER','DIRECT') }}</span><span class="v">{{ snap.outside_auto.name }}{% if snap.outside_auto.mobile %} · {{ snap.outside_auto.mobile }}{% endif %}</span> — ₹{{ '%.2f'|format(snap.outside_auto.rate|float) }} {{ 'per case' if snap.outside_auto.charge_basis == 'PER_CASE' else 'per trip' }}</td></tr>
+    {% endif %}
   </table>
   <table>
-    <tr><td><span class="l">Customer / Party</span><span class="v">{{ snap.customer.name }}</span></td><td><span class="l">Customer Code</span><span class="v">{{ snap.customer.code }}{% if snap.customer.erp_code and snap.customer.erp_code != snap.customer.code %} · ERP {{ snap.customer.erp_code }}{% endif %}</span></td></tr>
-    <tr><td><span class="l">Delivery Address</span><span class="v">{{ snap.customer.address or '—' }}</span></td><td><span class="l">Delivery Location</span><span class="v">{{ snap.location.name }}{% if snap.location.route %} · Route {{ snap.location.route }}{% endif %}</span></td></tr>
+    <thead><tr><th>Customer · area</th><th>Invoice no</th><th>Date</th><th>Co.</th><th class="num">Cases</th><th class="num">Rate/case</th><th class="num">Charge</th></tr></thead>
+    <tbody>
+    {% for g in snap.groups %}
+      <tr class="grp"><td colspan="4">{{ g.customer.name }}{% if g.customer.type %} <span class="muted">({{ g.customer.type }})</span>{% endif %} — {{ g.location.name }}<div class="lr">{{ g.customer.address or '' }}{% if g.customer.phone %} · {{ g.customer.phone }}{% endif %}{% if g.customer.whatsapp and g.customer.whatsapp != g.customer.phone %} · WA {{ g.customer.whatsapp }}{% endif %} · LR no: ____________</div></td>
+        <td class="num">{{ g.cases }}</td><td></td><td class="num">₹{{ '{:,.2f}'.format(g.freight|float + g.extra|float) }}</td></tr>
+      {% for i in g.invoices %}
+      <tr><td></td><td>{{ i.invoice_no }}</td><td>{{ i.invoice_date }}</td><td>{{ i.company_code }}</td><td class="num">{{ i.cases }}</td>
+          <td class="num">{{ ('₹' ~ '%.2f'|format(i.rate|float)) if i.rate is not none else 'trip' }}</td><td class="num">₹{{ '{:,.2f}'.format(i.freight|float) }}</td></tr>
+      {% endfor %}
+    {% endfor %}
+    </tbody>
   </table>
   <table class="money">
+    <tr><td><span class="l">Invoices</span><span class="big">{{ snap.totals.invoices }}</span></td>
+        <td><span class="l">Total cases</span><span class="big">{{ snap.totals.cases }}</span></td>
+        <td><span class="l">Freight{% if snap.totals.pickup|float %} + pickup{% endif %}{% if snap.totals.auto|float %} + auto{% endif %}</span><span class="v">₹{{ '{:,.2f}'.format(snap.totals.freight|float) }}{% if snap.totals.pickup|float %} + ₹{{ '{:,.2f}'.format(snap.totals.pickup|float) }}{% endif %}{% if snap.totals.auto|float %} + ₹{{ '{:,.2f}'.format(snap.totals.auto|float) }}{% endif %}</span></td>
+        <td><span class="l">Total charged</span><span class="big">₹{{ '{:,.2f}'.format(snap.totals.total|float) }}</span>
+          <div>Paid now ₹{{ '{:,.2f}'.format(snap.totals.paid|float) }}{% if snap.totals.balance|float > 0 %} · <b>to be billed ₹{{ '{:,.2f}'.format(snap.totals.balance|float) }}</b>{% endif %}</div></td></tr>
+  </table>
+  {% if snap.remarks %}<table><tr><td><span class="l">Remarks</span>{{ snap.remarks }}</td></tr></table>{% endif %}
+  <table class="sig">
+    <tr><td><span class="l">Prepared by</span>{{ snap.prepared_by or '' }}<br><br><span class="l">Signature</span></td><td><span class="l">Cases counted by</span><br><br><span class="l">Signature</span></td><td><span class="l">Gate / security</span><br><br><span class="l">Signature &amp; time</span></td><td><span class="l">Received by transporter / driver</span><br><br><span class="l">Signature &amp; mobile</span></td></tr>
+  </table>
+{% else %}
+  <table class="kv">
+    <tr><td><span class="l">Company / Principal</span><span class="v">{{ snap.company.name }} ({{ snap.company.code }})</span></td><td><span class="l">CFA</span><span class="v">{{ snap.cfa.name }} ({{ snap.cfa.code }})</span></td></tr>
+    <tr><td><span class="l">Invoice No</span><span class="v">{{ snap.invoice_no }}</span></td><td><span class="l">Invoice Date</span><span class="v">{{ snap.invoice_date }}</span></td></tr>
+    <tr><td><span class="l">Customer / Party</span><span class="v">{{ snap.customer.name }}</span></td><td><span class="l">Customer Code</span><span class="v">{{ snap.customer.code }}</span></td></tr>
+    <tr><td><span class="l">Delivery Address</span><span class="v">{{ snap.customer.address or '—' }}</span></td><td><span class="l">Delivery Location</span><span class="v">{{ snap.location.name }}</span></td></tr>
+  </table>
+  <table class="money kv">
     <tr><td><span class="l">No. of Boxes</span><span class="big">{{ snap.boxes }}</span></td><td><span class="l">Rate per Box</span><span class="v">₹{{ '%.2f'|format(snap.rate_per_box|float) }}</span></td><td><span class="l">Transportation Expense</span><span class="big">₹{{ '{:,.2f}'.format(snap.freight_amount|float) }}</span></td></tr>
   </table>
-  <table>
-    <tr><td><span class="l">Transporter</span><span class="v">{{ snap.transporter.name if snap.transporter else '—' }}{% if snap.transporter and snap.transporter.mobile %} ({{ snap.transporter.mobile }}){% endif %}</span></td><td><span class="l">Vehicle No</span><span class="v">{{ snap.vehicle_no or '—' }}</span></td></tr>
+  <table class="kv">
+    <tr><td><span class="l">Transporter</span><span class="v">{{ snap.transporter.name if snap.transporter else '—' }}</span></td><td><span class="l">Vehicle No</span><span class="v">{{ snap.vehicle_no or '—' }}</span></td></tr>
     <tr><td><span class="l">LR / Docket No</span><span class="v">{{ snap.lr_no or '—' }}</span></td><td><span class="l">Dispatch Date &amp; Time</span><span class="v">{{ snap.dispatch_date }} {{ snap.dispatch_time }}</span></td></tr>
-    <tr><td colspan="2" style="width:100%"><span class="l">Remarks</span><span class="v">{{ snap.remarks or '' }}</span></td></tr>
   </table>
   <table class="sig">
     <tr><td><span class="l">Prepared by</span>{{ snap.prepared_by or '' }}<br><br><span class="l">Signature</span></td><td><span class="l">Checked by</span>{{ snap.checked_by or '' }}<br><br><span class="l">Signature</span></td><td><span class="l">Dispatched by</span><br><br><span class="l">Signature</span></td><td><span class="l">Transporter / Driver</span><br><br><span class="l">Signature &amp; mobile</span></td></tr>
   </table>
+{% endif %}
   <div class="foot">{{ snap.footer }}</div>
   <div class="foot">{{ snap.central_id }} · {{ line }}</div>
 </div>

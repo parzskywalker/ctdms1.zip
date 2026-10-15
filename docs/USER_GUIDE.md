@@ -1,47 +1,73 @@
 # User guide (day-to-day)
 
-## Dispatch operator (warehouse)
+## Dispatch desk (warehouse operator) — v1.3 gatepass flow
 
-1. **Pending Dispatch** opens after login. Scan or type the invoice number in the search box and press Enter — an
-   exact match opens the dispatch screen directly.
-2. Check boxes and freight (Boxes × Rate = Expense). If the physical count differs, use *Change boxes* with a
-   reason — it goes to the checker for approval and the invoice waits. If boxes were not received from the ERP,
-   enter them (no approval needed for a first entry).
-3. Select **Transporter**, enter **Vehicle No** and **LR No** (date/time default to now) → **Verify**.
-4. **Generate Dispatch Slip** → dispatch number is issued and details lock.
-5. **Print Slip** (A5 or A4, or PDF). Give the copy to the driver and get signatures.
-6. **Complete Dispatch**. The system refuses completion until the slip is printed.
+1. **Scan & Gatepass** (menu *Dispatch desk*). Point the 2D barcode scanner at the **e-invoice QR** printed on each
+   invoice (or type the invoice number and press Enter). An invoice not yet in CTDMS is captured from the QR
+   (company, customer, number, date, value); one already imported is simply added. Type the cases when asked.
+   You can also tick invoices on *Pending Dispatch* and press **Make one gatepass**.
+2. Check the **cases** per invoice. A count different from the ERP's needs a checker (or a box-change request).
+3. Choose **who carries the goods**:
+   * *Transporter* — booked with a transporter; charged per case from their **rate card** for each area.
+     *Goods reach the transporter by*: Regular, or an **Outside auto** (its per-trip / per-case charge is added).
+   * *Transporter – direct pickup* — the transporter collects from our warehouse; their direct-pickup extra is added.
+   * *Outside auto* — a hired auto delivers straight to the customer (per trip or per case).
+   * *Self pickup* — the customer collects; no charge.
+4. The right-hand panel shows freight, extras, **total charged** and **amount paid now** (cash for autos and CASH
+   transporters; TBB transporters bill later). Invoices whose area has no rate on that transporter's card are
+   flagged — add the rate under *Transporter Rate Cards* (a second person approves it).
+5. **Generate gatepass** → one number for the whole pickup. **Print** it (A5/A4/PDF): it carries a barcode, every
+   customer with its invoices, cases and charge, the transporter's name/contact/GST/payment mode — no vehicle number.
+6. **Gate check**: the guard scans the gatepass barcode, counts the cases and presses **Confirm gate-out**. All its
+   invoices become DISPATCHED. A void, unprinted or already-used gatepass shows a red STOP.
+7. **LR numbers** come later from the transporter: type them on the gatepass page (one per customer) or on
+   **LR Pending** in bulk. They can be corrected (with a reason) until the transporter's bill is approved.
 
-Many invoices on one vehicle: tick them on Pending Dispatch → *Bulk dispatch* → one transporter/vehicle, LR per
-invoice → *Verify & generate slips* → *Print N slips* → *Complete N dispatches*.
-
-Reprint: allowed with a reason; the copy is marked "REPRINT #n (DUPLICATE)". Wrong vehicle after slip generation:
-ask the checker to *Void slip*, correct, regenerate.
+Wrong gatepass before gate-out: a checker **voids** it (reason), the invoices return to the queue, make a new one.
+Reprints need a reason and are marked "REPRINT #n (DUPLICATE)".
 
 ## CFA manager
 
-* **Invoice Import**: upload the ERP export → check the column mapping (or pick the saved template) → *Apply
-  mapping & validate* → *Import valid rows*. Fix rejected rows in *Needs attention*: map an unknown ERP customer code
-  to the right customer, create a missing customer/location, or correct the row, then *Retry*.
-* **Freight Exceptions**: add missing rates (*Add rate* pre-fills the combination). A checker approves; matching
-  invoices re-price automatically.
-* Propose rate changes with *Revise rate* (new Effective From date).
+* **Invoice Import** — three ways, none needing ERP access:
+  * QR scanning at the dispatch desk (above);
+  * **Drop folder**: set each ERP's daily export (or "Save as") to `data/inbox` (or `data/inbox/<ERP code>`). It is
+    imported automatically every few minutes; the import log shows each batch;
+  * **One-click import**: drop any export file on the Import page. The layout is recognised from the column
+    headings. Item-wise exports (one row per SKU) become one invoice with SKU lines — or add the SKU lines to an
+    invoice already captured by QR.
+  Problem rows wait in the batch: map an unknown ERP customer code (or use the party GSTIN), create a missing
+  customer/area, correct, *Retry*. A new layout is mapped once and saved as a template.
+* **Transporter Rate Cards**: rate per case for each area per transporter; changes take an Effective From date and
+  go to a checker. Upload a whole rate list as CSV/Excel.
+* **Outside Autos** and **Customers** (type: stockist / retailer / hospital; mobile, WhatsApp, GSTIN) under Masters.
 
 ## Checker / approver
 
-* **Approvals**: override requests, rate changes, transporter bills. You cannot approve your own requests.
-* Void slips, cancel open dispatches (reason mandatory), re-run rate lookup on open invoices.
+* **Approvals**: box / freight overrides, principal rate changes, **transporter rate-card changes**, transporter
+  bills. You cannot approve your own requests.
+* Void gatepasses, cancel open dispatches (reason mandatory).
 
-## Accounts
+## Accounts — transporter bills
 
-* **Reconciliation › Enter / import bill**: bill no, date, amount, period → *auto-link dispatches* for the period, or
-  import the transporter's statement (LR No / Invoice No, Boxes, Amount). Lines are matched and flagged
-  (Matched / Variance / Not found / Duplicate billing / Not dispatched / Other transporter).
-* Save billed amounts, or *Allocate* a lump-sum bill. Another user approves (remarks required for variance); then
-  *Mark paid* with the UTR.
+1. **Scan a Bill**: choose the transporter, photograph each page (phone photo is fine; handwritten Hindi bills work)
+   or upload the PDF. With the AI reader switched on, the lines (LR / bilty no, date, party, station, cases, rate,
+   amount) are read for you; otherwise the photo is shown next to an empty table to type into. Excel/CSV statements
+   can still be imported, and *Link period dispatches* builds a bill from our own gatepasses.
+2. Check the lines against the photo and **Save lines & re-check**. Each line is cross-checked with our gatepasses:
+   * LR not in our dispatches (with a **"Probably: …"** suggestion when a consignment without LR matches — *This one*
+     links it and writes the LR onto our gatepass),
+   * billed twice (this bill or an earlier one), **already paid in cash** at dispatch, not dispatched, another
+     transporter's consignment — these cannot be approved;
+   * more cases than dispatched, rate different from the rate card, cases × rate ≠ amount, station / party
+     mismatch, date outside the period, lines not adding up to the bill total;
+   * our consignments in the period that are not on the bill.
+3. **Irregularity report** (screen / print / Excel) for the conversation with the transporter.
+4. **Has the transporter changed any rates?** — per area: rate card vs rate charged. Tick to propose the new rate
+   (a rate approver confirms it); save with nothing ticked to record "no rate changes".
+5. Another user **approves** (remarks for variance) → *Mark paid* with the UTR.
 
 ## Management
 
-* **Dashboard**: KPIs and charts with date/company/customer/CFA/location/transporter filters.
-* **Transportation MIS**: expand Company → Customer → CFA → Location → Invoice → Dispatch.
-* **Reports**: 18 reports, each exportable to Excel/CSV/PDF and printable.
+* **Dashboard** and **Transportation MIS** as before.
+* New reports: *Gatepass Register*, *Transporter × Area cost per case*, *SKU-wise Dispatch*, *Stockists / Retailers /
+  Hospitals*, *Mode of Dispatch*, *Outside Auto Expense*, *Transporter Bill Irregularities* — all exportable.

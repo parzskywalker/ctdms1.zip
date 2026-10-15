@@ -18,7 +18,8 @@ consolidated MIS.
 ## Quick start (local demo, ~2 minutes)
 
 Requirements: Python 3.11+. Easiest: double-click `start_demo.bat` (Windows) or run `./start_demo.sh`
-(macOS/Linux) — it installs everything, builds the demo database once and starts the app. Manually:
+(macOS/Linux) — it installs everything, loads the demo data **only into an empty database** (existing data is
+never reset) and starts the app. If something is missing (Python, packages) it stops with a clear message. Manually:
 
 ```bash
 cd ctdms
@@ -112,12 +113,14 @@ REST API documentation (OpenAPI) is served at `/api/docs`.
 ## Tests
 
 ```bash
-python3 -m pytest -q                                   # SQLite (28 tests, ~30 s)
+python3 -m pytest -q                                   # SQLite (97 tests, ~2 min)
 CTDMS_TEST_DATABASE_URL=postgresql+psycopg://user:pwd@localhost/ctdms_test python3 -m pytest -q   # PostgreSQL
 ```
 
 `tests/test_acceptance.py` maps one-to-one to the 27-point acceptance list — see
 [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md) for the matching click-through demo script.
+`tests/test_qa_fixes.py` and `tests/test_v12_fixes.py` hold the regression tests for every issue found in the two QA rounds
+(IDs match `docs/CTDMS_QA_Report.pdf`).
 
 ---
 
@@ -132,6 +135,9 @@ CTDMS_TEST_DATABASE_URL=postgresql+psycopg://user:pwd@localhost/ctdms_test pytho
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Docker, plain-server install, HTTPS, configuration, backups, scaling, go-live checklist |
 | [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | Day-to-day procedures for warehouse, CFA manager, checker and accounts |
 | [docs/STATUS.md](docs/STATUS.md) | Assumptions, completed / pending functionality, known limitations |
+| [CHANGELOG.md](CHANGELOG.md) | What changed in each version (v1.1 = QA fixes) |
+| docs/CTDMS_QA_Report.pdf | v1.0 QA report: findings with severity, reproduction steps, screenshots and fixes |
+| docs/CTDMS_User_Guide_v1.1.pdf | Illustrated user guide: update / fix steps first, then how to use every screen |
 
 ## Project layout
 

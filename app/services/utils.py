@@ -104,16 +104,42 @@ def parse_decimal(value) -> Decimal | None:
     if value is None:
         return None
     if isinstance(value, Decimal):
-        return value
+        return _check_finite(value, value)
     if isinstance(value, (int, float)):
-        return Decimal(str(value))
+        return _check_finite(Decimal(str(value)), value)
     s = str(value).strip().replace(",", "").replace("₹", "").replace("Rs.", "").replace("Rs", "").strip()
     if s == "":
         return None
     try:
-        return Decimal(s)
+        d = Decimal(s)
     except InvalidOperation as e:
         raise ValueError(f"Not a number: '{value}'") from e
+    return _check_finite(d, value)
+
+
+MAX_NUMBER = Decimal("1000000000000")  # 1e12: far above any real invoice value / box count / rate
+
+
+def _check_finite(d: Decimal, original) -> Decimal:
+    """Reject NaN / Infinity / absurd magnitudes (they crash reports and overflow NUMERIC columns)."""
+    if not d.is_finite():
+        raise ValueError(f"Not a number: '{original}'")
+    if abs(d) >= MAX_NUMBER:
+        raise ValueError(f"Number too large: '{original}'")
+    return d
+
+
+def safe_int(value, default: int | None = None, *, minimum: int | None = None, maximum: int = 2**62) -> int | None:
+    """Lenient int for query-string / form ids: bad or out-of-range input gives `default` instead of a 500."""
+    if value is None or value == "":
+        return default
+    try:
+        i = int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+    if i > maximum or (minimum is not None and i < minimum):
+        return default
+    return i
 
 
 def parse_int(value) -> int | None:
@@ -123,6 +149,14 @@ def parse_int(value) -> int | None:
     if d != d.to_integral_value():
         raise ValueError(f"Not a whole number: '{value}'")
     return int(d)
+
+
+def csv_safe(value):
+    """Neutralise spreadsheet formula injection: text starting with = + - @ (or tab/CR) gets a leading apostrophe
+    so Excel / LibreOffice show it as text instead of executing it. Numbers are left untouched."""
+    if isinstance(value, str) and value and value[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + value
+    return value
 
 
 def norm_code(value) -> str:
@@ -136,10 +170,11 @@ def norm_vehicle(value) -> str | None:
 
 
 VEHICLE_RE = re.compile(r"^[A-Z]{2}\d{1,2}[A-Z]{0,3}\d{3,4}$")
+BH_VEHICLE_RE = re.compile(r"^\d{2}BH\d{4}[A-Z]{1,2}$")  # Bharat-series plates, e.g. 22BH1234AA
 
 
 def vehicle_looks_valid(v: str | None) -> bool:
-    return bool(v and (VEHICLE_RE.match(v) or v.startswith("SELF") or v.startswith("HAND")))
+    return bool(v and (VEHICLE_RE.match(v) or BH_VEHICLE_RE.match(v) or v.startswith("SELF") or v.startswith("HAND")))
 
 
 # ----------------------------------------------------------------------------- sequences

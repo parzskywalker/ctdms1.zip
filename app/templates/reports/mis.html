@@ -15,7 +15,7 @@
     </table>
   </div>
 </div>
-<p class="small muted">Click ▸ to expand a level. Invoice rows open the invoice with its dispatch and freight details.</p>
+<p class="small muted">Click ▸ to expand a level.{% if can('invoice.view') %} Invoice rows open the invoice with its dispatch and freight details.{% endif %}</p>
 {% endblock %}
 {% block scripts %}
 <script>
@@ -27,12 +27,13 @@
   const inr = (v) => v === null || v === undefined || v === '' ? '—' : '₹' + Number(v).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
   const num = (v) => v === null || v === undefined ? '—' : Number(v).toLocaleString('en-IN');
   const pct = (v) => v === null || v === undefined ? '—' : Number(v).toFixed(2) + '%';
+  const CAN_OPEN_INVOICE = {{ 'true' if can('invoice.view') else 'false' }};
   const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
 
   function rowHtml(level, r, depth, key) {
     const last = level === 'invoice';
     const tog = last ? '<span class="tog"></span>' : '<span class="tog" data-key="' + key + '">▸</span>';
-    const label = last ? '<a href="/invoices/' + r.id + '">' + esc(r.label) + '</a> <span class="muted small">' + esc(r.invoice_date) + '</span> <span class="badge b-' + r.status + '">' + esc(r.status_label) + '</span>'
+    const label = last ? (CAN_OPEN_INVOICE ? '<a href="/invoices/' + r.id + '">' + esc(r.label) + '</a>' : '<b>' + esc(r.label) + '</b>') + ' <span class="muted small">' + esc(r.invoice_date) + '</span> <span class="badge b-' + r.status + '">' + esc(r.status_label) + '</span>'
                        : esc(r.label) + '<span class="lvl-tag">' + NAMES[level] + '</span>';
     const disp = last ? (r.dispatch_no ? '<span class="mono small">' + esc(r.dispatch_no) + '</span><br><span class="small muted">' + esc(r.transporter || '') + (r.lr_no ? ' · LR ' + esc(r.lr_no) : '') + (r.vehicle_no ? ' · ' + esc(r.vehicle_no) : '') + '</span>' : '<span class="muted small">not dispatched</span>') : '';
     const inv = last ? '' : num(r.invoices);

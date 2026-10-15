@@ -5,6 +5,7 @@ upload -> preview -> map columns -> validate -> commit -> correct & retry reject
 from __future__ import annotations
 
 import csv
+import logging
 import difflib
 import hashlib
 import io
@@ -18,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     CFA, BatchStatus, Company, Customer, ERPCodeMapping, ERPSystem, ImportBatch, ImportRow, ImportTemplate,
-    Invoice, InvoiceStatus, Location, RowStatus, Transporter, User, utcnow,
+    Invoice, InvoiceItem, InvoiceStatus, Location, RowStatus, Transporter, User, utcnow,
 )
 from app.services import audit
 from app.services import settings_service as cfg
@@ -27,7 +28,7 @@ from app.services.freight_engine import find_rate
 from app.services.invoice_service import apply_freight
 from app.services.scope import can_see
 from app.services.utils import (
-    fiscal_year, local_today, next_sequence, norm_code, norm_vehicle, parse_date, parse_decimal, parse_int,
+    fiscal_year, local_today, money, next_sequence, norm_code, norm_vehicle, parse_date, parse_decimal, parse_int,
 )
 
 MODULE = "IMPORT"
@@ -65,14 +66,64 @@ TARGET_FIELDS: dict[str, tuple[str, bool, list[str]]] = {
     "lr_no": ("LR / docket number", False, ["lr no", "lr number", "docket no", "docket", "gr no", "lr"]),
     "vehicle_no": ("Vehicle number", False, ["vehicle no", "vehicle number", "truck no", "vehicle"]),
     "remarks": ("Remarks", False, ["remarks", "narration", "note", "notes", "comment"]),
+    # v1.3: party GSTIN (finds the customer when the ERP code is not mapped yet), e-invoice IRN, SKU lines
+    "customer_gstin": ("Customer GSTIN", False, ["party gstin", "customer gstin", "gstin", "buyer gstin",
+                                                 "gst no", "gstin/uin", "party gst no"]),
+    "irn": ("E-invoice IRN", False, ["irn", "irn no", "e-invoice irn", "einvoice irn", "ack irn"]),
+    "sku_code": ("SKU / item code", False, ["item code", "sku", "sku code", "product code", "material",
+                                           "material code", "itemcode"]),
+    "sku_name": ("SKU / item name", False, ["item name", "product name", "item description", "product",
+                                           "material description", "description", "itemname"]),
+    "hsn": ("HSN code", False, ["hsn", "hsn code", "hsn/sac"]),
+    "batch_no": ("Batch number", False, ["batch", "batch no", "batch number"]),
+    "qty": ("Quantity (units)", False, ["qty", "quantity", "billed qty", "units", "pack qty"]),
+    "free_qty": ("Free quantity", False, ["free", "free qty", "scheme qty", "bonus qty"]),
+    "item_value": ("Line value", False, ["item value", "line value", "line amount", "item amount", "value"]),
 }
+ITEM_FIELDS = ("sku_code", "sku_name", "hsn", "batch_no", "qty", "free_qty", "item_value")
 
 REQUIRED_ALWAYS = [k for k, v in TARGET_FIELDS.items() if v[1]]
+
+log = logging.getLogger("ctdms.import")
 
 
 # ----------------------------------------------------------------------------- file reading
 def read_table(content: bytes, filename: str, sheet: str | None = None, header_row: int = 1) -> tuple[list[str], list[dict]]:
-    name = filename.lower()
+    """Parse an uploaded CSV / Excel file. Every failure becomes a friendly BusinessError (never an HTTP 500)."""
+    from app.config import get_settings
+    max_mb = get_settings().max_upload_mb
+    if len(content) > max_mb * 1024 * 1024:
+        raise BusinessError(f"File too large (max {max_mb} MB). Split it into smaller files.")
+    if not content:
+        raise BusinessError("The uploaded file is empty")
+    name = (filename or "").lower()
+    try:
+        return _read_table(content, name, sheet, header_row)
+    except BusinessError:
+        raise
+    except Exception as e:  # corrupt / password-protected / mislabelled files
+        kind = "Excel" if name.endswith((".xlsx", ".xlsm", ".xls")) else "CSV"
+        log.warning("Could not read uploaded file %s: %s: %s", filename, type(e).__name__, e)
+        raise BusinessError(f"Could not read '{filename}' as a {kind} file - it may be damaged, password-protected "
+                            f"or saved in a different format. Open it in Excel and use 'Save As' "
+                            f"(.xlsx or .csv), then upload again.") from e
+
+
+MAX_ROWS = 100_000
+PLAUSIBLE_MAX_BOXES = 2_000        # above this a row is flagged (WARNING) for a second look
+PLAUSIBLE_MAX_FREIGHT_PCT = 10     # freight above 10% of sales value is almost certainly a data-entry error
+
+
+def _capped(rows_iter, header_row: int) -> list:
+    out = []
+    for i, r in enumerate(rows_iter):
+        if i >= MAX_ROWS + header_row:
+            raise BusinessError(f"Too many rows; the limit is {MAX_ROWS:,} rows per file. Split the file.")
+        out.append(r)
+    return out
+
+
+def _read_table(content: bytes, name: str, sheet: str | None, header_row: int) -> tuple[list[str], list[dict]]:
     if name.endswith(".csv") or name.endswith(".txt"):
         text = None
         for enc in ("utf-8-sig", "cp1252", "latin-1"):
@@ -86,17 +137,19 @@ def read_table(content: bytes, filename: str, sheet: str | None = None, header_r
             dialect = csv.Sniffer().sniff(sample, delimiters=",;\t|")
         except csv.Error:
             dialect = csv.excel
-        rows = list(csv.reader(io.StringIO(text), dialect))
+        rows = _capped(csv.reader(io.StringIO(text), dialect), header_row)
     elif name.endswith(".xlsx") or name.endswith(".xlsm"):
         from openpyxl import load_workbook
         wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
         ws = wb[sheet] if sheet and sheet in wb.sheetnames else wb.worksheets[0]
-        rows = [list(r) for r in ws.iter_rows(values_only=True)]
+        rows = _capped((list(r) for r in ws.iter_rows(values_only=True)), header_row)
         wb.close()
     elif name.endswith(".xls"):
         import xlrd
         book = xlrd.open_workbook(file_contents=content)
         sh = book.sheet_by_name(sheet) if sheet and sheet in book.sheet_names() else book.sheet_by_index(0)
+        if sh.nrows > MAX_ROWS + header_row:
+            raise BusinessError(f"Too many rows ({sh.nrows:,}); the limit is {MAX_ROWS:,} per file. Split the file.")
         rows = []
         for r in range(sh.nrows):
             row = []
@@ -208,13 +261,15 @@ class Resolver:
             self.cache[k] = self.db.get(CFA, tid) if tid else self._by_code_or_name(CFA, code)
         return self.cache[k]
 
-    def customer(self, code, company_id=None) -> Customer | None:
-        k = ("cu", norm_code(code), company_id)
+    def customer(self, code, company_id=None, gstin=None) -> Customer | None:
+        k = ("cu", norm_code(code), company_id, norm_code(gstin))
         if k not in self.cache:
-            tid = self._mapping("CUSTOMER", code, company_id)
+            tid = self._mapping("CUSTOMER", code, company_id) if code not in (None, "") else None
             obj = self.db.get(Customer, tid) if tid else None
-            if not obj:
+            if not obj and code not in (None, ""):
                 obj = self.db.scalar(select(Customer).where(func.upper(Customer.code) == norm_code(code)))
+            if not obj and gstin:  # the same party's GSTIN is identical in every ERP
+                obj = customer_by_gstin(self.db, gstin)
             hops = 0
             while obj is not None and obj.merged_into_id and hops < 5:  # follow customer merges
                 obj = self.db.get(Customer, obj.merged_into_id)
@@ -251,6 +306,45 @@ class Resolver:
                 if by_code[m] not in out:
                     out.append(by_code[m])
         return out[:limit]
+
+
+def customer_by_gstin(db: Session, gstin) -> Customer | None:
+    g = norm_code(gstin).replace(" ", "")
+    if len(g) != 15:
+        return None
+    rows = list(db.scalars(select(Customer).where(func.upper(Customer.gstin) == g, Customer.merged_into_id.is_(None))))
+    active = [c for c in rows if c.is_active] or rows
+    return active[0] if len(active) == 1 else None
+
+
+def company_by_gstin(db: Session, gstin) -> Company | None:
+    g = norm_code(gstin).replace(" ", "")
+    if len(g) != 15:
+        return None
+    rows = list(db.scalars(select(Company).where(func.upper(Company.gstin) == g)))
+    return rows[0] if len(rows) == 1 else None
+
+
+# ----------------------------------------------------------------------------- layout recognition
+def match_template(db: Session, headers: list[str]) -> ImportTemplate | None:
+    """Recognise an ERP export by its column headings: the saved layout whose columns are all present (and the
+    most of them) wins. This is what lets a file be dropped in without choosing anything."""
+    have = {_norm_header(h) for h in headers}
+    best, best_score = None, 0
+    for t in db.scalars(select(ImportTemplate).where(ImportTemplate.is_active.is_(True))):
+        cols = [c for c in (t.column_map or {}).values() if c]
+        if not cols or t.column_map.get("invoice_no") is None:
+            continue
+        needed = [t.column_map.get(k) for k in ("invoice_no", "invoice_date") if t.column_map.get(k)]
+        if any(_norm_header(c) not in have for c in needed):
+            continue
+        hit = sum(1 for c in cols if _norm_header(c) in have)
+        if hit < max(3, int(len(cols) * 0.7)):
+            continue
+        score = hit * 100 + len(cols)  # all-columns-present beats partial; larger layouts beat generic ones
+        if score > best_score:
+            best, best_score = t, score
+    return best
 
 
 # ----------------------------------------------------------------------------- batches
@@ -292,14 +386,16 @@ def create_batch_from_file(db: Session, user: User, content: bytes, filename: st
     if len(content) > s.max_upload_mb * 1024 * 1024:
         raise BusinessError(f"File too large (max {s.max_upload_mb} MB)")
     template = db.get(ImportTemplate, template_id) if template_id else None
+    headers, records = read_table(content, filename, sheet or (template.sheet_name if template else None),
+                                  template.header_row if template else 1)
+    if template is None and template_id in (None, "", 0):
+        template = match_template(db, headers)  # recognised by its column headings
     if template and not erp_system_id:
         erp_system_id = template.erp_system_id
     if template and not company_id:
         company_id = template.company_id
     if template and not cfa_id:
         cfa_id = template.cfa_id
-    headers, records = read_table(content, filename, sheet or (template.sheet_name if template else None),
-                                  template.header_row if template else 1)
     fhash = hashlib.sha256(content).hexdigest()
     warning = None
     prev = db.scalar(select(ImportBatch).where(ImportBatch.file_hash == fhash,
@@ -333,18 +429,69 @@ def _err(code: str, msg: str, **extra) -> dict:
     return {"code": code, "msg": msg, **extra}
 
 
+def _blank(v) -> bool:
+    return v is None or (isinstance(v, str) and v.strip() == "")
+
+
+def item_mode(batch: ImportBatch) -> bool:
+    """Item-wise export (one row per SKU): rows of the same invoice are grouped into one invoice with SKU lines."""
+    cmap = batch.column_map or {}
+    return bool(cmap.get("sku_code") or cmap.get("sku_name"))
+
+
+def _items_of(rows: list[ImportRow]) -> list[dict]:
+    out = []
+    for r in rows:
+        d = r.data or {}
+        if all(_blank(d.get(k)) for k in ("sku_code", "sku_name")):
+            continue
+        it = {"sku_code": None if _blank(d.get("sku_code")) else str(d.get("sku_code")).strip().upper()[:60],
+              "sku_name": None if _blank(d.get("sku_name")) else str(d.get("sku_name")).strip()[:200],
+              "hsn": None if _blank(d.get("hsn")) else str(d.get("hsn")).strip()[:12],
+              "batch_no": None if _blank(d.get("batch_no")) else str(d.get("batch_no")).strip()[:40]}
+        for k in ("qty", "free_qty", "item_value"):
+            try:
+                it[k] = parse_decimal(d.get(k)) if not _blank(d.get(k)) else None
+            except ValueError:
+                it[k] = None
+        out.append(it)
+    return out
+
+
+def group_rows(batch: ImportBatch) -> list[list[ImportRow]]:
+    """Rows in file order, grouped per invoice (company + CFA + invoice number as written in the file)."""
+    if not item_mode(batch):
+        return [[r] for r in batch.rows]
+    groups: dict[tuple, list[ImportRow]] = {}
+    for r in batch.rows:
+        d = r.data or {}
+        key = tuple(norm_code(d.get(k)) for k in ("company_code", "cfa_code", "invoice_no"))
+        if not key[2]:
+            key = ("__row__", r.id, "")
+        groups.setdefault(key, []).append(r)
+    return list(groups.values())
+
+
 def validate_row(db: Session, batch: ImportBatch, row: ImportRow, res: Resolver, user: User | None,
-                 seen: set) -> dict | None:
-    """Validate one row. Returns resolved values (for commit) or None when rejected."""
+                 seen: set, group: list[ImportRow] | None = None) -> dict | None:
+    """Validate one row (or the header row of an item-wise invoice group). Returns resolved values (for commit)
+    or None when rejected."""
     d = row.data or {}
     errors, warnings = [], []
     allow_blank_boxes = cfg.get(db, "import.allow_blank_boxes")
+    items = _items_of(group) if group else []
+    if items and _blank(d.get("sales_value")):
+        line_total = sum((it["item_value"] for it in items if it["item_value"] is not None), Decimal("0"))
+        if line_total:
+            d = {**d, "sales_value": str(line_total)}
 
     def val(k):
         v = d.get(k)
         return None if v is None or (isinstance(v, str) and v.strip() == "") else v
 
     for k in REQUIRED_ALWAYS:
+        if k == "customer_code" and val("customer_gstin") is not None:
+            continue  # the party can be found by its GSTIN
         if val(k) is None:
             errors.append(_err("REQUIRED", f"{TARGET_FIELDS[k][0]} is required", field=k))
     if not allow_blank_boxes and val("boxes") is None:
@@ -404,12 +551,13 @@ def validate_row(db: Session, batch: ImportBatch, row: ImportRow, res: Resolver,
 
     # customer
     customer = None
-    if val("customer_code") is not None:
-        customer = res.customer(val("customer_code"), company.id if company else None)
+    if val("customer_code") is not None or val("customer_gstin") is not None:
+        customer = res.customer(val("customer_code"), company.id if company else None, gstin=val("customer_gstin"))
         if not customer:
-            sugg = res.customer_suggestions(val("customer_name"), str(val("customer_code")))
+            sugg = res.customer_suggestions(val("customer_name"), str(val("customer_code") or ""))
+            ident = val("customer_code") or f"GSTIN {val('customer_gstin')}"
             errors.append(_err("MISSING_CUSTOMER",
-                               f"Customer '{val('customer_code')}' ({val('customer_name') or 'no name'}) not found",
+                               f"Customer '{ident}' ({val('customer_name') or 'no name'}) not found",
                                field="customer_code",
                                suggestions=[{"id": c.id, "code": c.code, "name": c.name} for c in sugg]))
         elif not customer.is_active:
@@ -433,6 +581,7 @@ def validate_row(db: Session, batch: ImportBatch, row: ImportRow, res: Resolver,
 
     invoice_no = str(val("invoice_no")).strip().upper() if val("invoice_no") is not None else None
     fy = fiscal_year(inv_date) if inv_date else None
+    attach_to = None
     if company and cfa and invoice_no and fy:
         key = (company.id, cfa.id, fy, invoice_no)
         if key in seen:
@@ -442,10 +591,23 @@ def validate_row(db: Session, batch: ImportBatch, row: ImportRow, res: Resolver,
             dup = db.scalar(select(Invoice).where(Invoice.company_id == company.id, Invoice.cfa_id == cfa.id,
                                                   Invoice.fiscal_year == fy, Invoice.invoice_no == invoice_no))
             if dup and dup.id != row.invoice_id:
-                errors.append(_err("DUPLICATE", f"Invoice {invoice_no} already exists ({dup.central_id}, "
-                                                f"{dup.status_label})", invoice_id=dup.id))
+                if items and not dup.items and dup.status != InvoiceStatus.CANCELLED:
+                    # scanned at the desk earlier; the item-wise export now brings its SKU lines - add them
+                    attach_to = dup
+                    warnings.append(_err("ITEMS_TO_EXISTING", f"Invoice {invoice_no} already exists ({dup.central_id}"
+                                                              f", {dup.status_label}): {len(items)} SKU line(s) will "
+                                                              "be added to it", invoice_id=dup.id))
+                else:
+                    errors.append(_err("DUPLICATE", f"Invoice {invoice_no} already exists ({dup.central_id}, "
+                                                    f"{dup.status_label})", invoice_id=dup.id))
+    irn = str(val("irn")).strip().lower() if val("irn") is not None else None
+    if irn and not errors and not attach_to:
+        dup = db.scalar(select(Invoice).where(Invoice.irn == irn))
+        if dup:
+            errors.append(_err("DUPLICATE", f"E-invoice IRN already captured as invoice {dup.invoice_no}",
+                               invoice_id=dup.id))
     src_id = str(val("source_invoice_id")).strip() if val("source_invoice_id") is not None else None
-    if src_id and batch.erp_system_id and not errors:
+    if src_id and batch.erp_system_id and not errors and not attach_to:
         dup = db.scalar(select(Invoice).where(Invoice.source_erp_id == batch.erp_system_id,
                                               Invoice.source_invoice_id == src_id))
         if dup:
@@ -458,13 +620,24 @@ def validate_row(db: Session, batch: ImportBatch, row: ImportRow, res: Resolver,
         if not transporter:
             warnings.append(_err("TRANSPORTER_UNKNOWN", f"Transporter '{val('transporter_code')}' not found - ignored"))
 
-    if not errors:
+    if not errors and not attach_to:
         if boxes is None:
             warnings.append(_err("BOXES_MISSING", "No box count - will import as EXCEPTION (enter boxes at dispatch)"))
+        company_rates = cfg.get(db, "freight.source") == "COMPANY"
         lk = find_rate(db, company_id=company.id, cfa_id=cfa.id, customer_id=customer.id,
-                       location_id=location.id, on_date=inv_date)
-        if not lk.found:
+                       location_id=location.id, on_date=inv_date) if company_rates else None
+        if lk is not None and not lk.found:
             warnings.append(_err(lk.code, lk.message + " - will import as RATE MISSING"))
+        # plausibility (typing mistakes such as 99999 boxes): flagged for review, not rejected
+        if boxes is not None and boxes > PLAUSIBLE_MAX_BOXES:
+            warnings.append(_err("BOXES_HIGH", f"{boxes:,} boxes is unusually high for one invoice - please check",
+                                 field="boxes"))
+        if lk is not None and lk.found and boxes and sales and sales > 0:
+            freight = Decimal(boxes) * lk.rate_per_box
+            pct = freight * 100 / sales
+            if pct > PLAUSIBLE_MAX_FREIGHT_PCT:
+                warnings.append(_err("FREIGHT_HIGH", f"Freight ₹{freight:,.2f} would be {pct:.1f}% of the sales value "
+                                                     f"- check boxes / sales value", field="boxes"))
 
     row.errors = errors
     row.warnings = warnings
@@ -476,23 +649,54 @@ def validate_row(db: Session, batch: ImportBatch, row: ImportRow, res: Resolver,
     return {
         "company": company, "cfa": cfa, "customer": customer, "location": location, "invoice_no": invoice_no,
         "invoice_date": inv_date, "fy": fy, "sales": sales or Decimal("0"), "boxes": boxes,
-        "customer_code": str(val("customer_code")), "source_invoice_id": src_id or invoice_no,
+        "customer_code": str(val("customer_code") or customer.code), "source_invoice_id": src_id or invoice_no,
         "transporter": transporter, "lr_no": (str(val("lr_no")).strip().upper() if val("lr_no") else None),
-        "vehicle_no": norm_vehicle(val("vehicle_no")), "remarks": val("remarks"),
+        "vehicle_no": norm_vehicle(val("vehicle_no")), "remarks": val("remarks"), "irn": irn,
+        "items": items, "attach_to": attach_to,
     }
+
+
+def _follow(header: ImportRow, others: list[ImportRow]) -> None:
+    """SKU rows after the first row of an invoice take the header's verdict (they are not separate invoices)."""
+    for r in others:
+        if r.status in (RowStatus.IMPORTED, RowStatus.SKIPPED):
+            continue
+        r.status = header.status
+        r.errors = [] if header.status in (RowStatus.VALID, RowStatus.WARNING) else \
+            [_err("HEADER", f"SKU line of the invoice in row {header.row_no} - see that row")]
+        r.warnings = [_err("SKU_LINE", f"SKU line of the invoice in row {header.row_no}")]
+
+
+def _open_rows(rows: list[ImportRow]) -> list[ImportRow]:
+    return [r for r in rows if r.status not in (RowStatus.IMPORTED, RowStatus.SKIPPED)]
 
 
 def validate_batch(db: Session, batch: ImportBatch, user: User | None = None) -> dict:
     res = Resolver(db, batch.erp_system_id)
     seen: set = set()
+    grouped = item_mode(batch)
     # already-imported rows of this batch occupy their keys
-    for r in batch.rows:
-        if r.status in (RowStatus.NEW, RowStatus.VALID, RowStatus.WARNING, RowStatus.REJECTED, RowStatus.DUPLICATE):
-            validate_row(db, batch, r, res, user, seen)
+    for grp in group_rows(batch):
+        rows = [r for r in grp if r.status in (RowStatus.NEW, RowStatus.VALID, RowStatus.WARNING, RowStatus.REJECTED,
+                                               RowStatus.DUPLICATE)]
+        if not rows:
+            continue
+        validate_row(db, batch, rows[0], res, user, seen, grp if grouped else None)
+        _follow(rows[0], rows[1:])
     if batch.status == BatchStatus.UPLOADED:
         batch.status = BatchStatus.VALIDATED
     db.flush()
     return summarize(batch)
+
+
+def _add_items(inv: Invoice, items: list[dict]) -> None:
+    start = len(inv.items)
+    for n, it in enumerate(items, start=start + 1):
+        inv.items.append(InvoiceItem(line_no=n, sku_code=it["sku_code"], sku_name=it["sku_name"], hsn=it["hsn"],
+                                     batch_no=it["batch_no"], qty=it["qty"], free_qty=it["free_qty"],
+                                     value=money(it["item_value"]) if it["item_value"] is not None else None))
+    if items:
+        inv.item_count = len(inv.items)
 
 
 def summarize(batch: ImportBatch) -> dict:
@@ -509,37 +713,60 @@ def commit_batch(db: Session, user: User, batch: ImportBatch) -> dict:
         raise BusinessError("Batch is cancelled")
     res = Resolver(db, batch.erp_system_id)
     seen: set = set()
-    imported = exceptions = 0
-    for row in batch.rows:
-        if row.status in (RowStatus.IMPORTED, RowStatus.SKIPPED):
+    imported = exceptions = attached = 0
+    grouped = item_mode(batch)
+    for grp in group_rows(batch):
+        rows = _open_rows(grp)
+        if not rows:
             continue
-        v = validate_row(db, batch, row, res, user, seen)
+        row = rows[0]
+        v = validate_row(db, batch, row, res, user, seen, grp if grouped else None)
+        _follow(row, rows[1:])
         if not v:
             continue
-        inv = Invoice(
-            source_erp_id=batch.erp_system_id, source_invoice_id=v["source_invoice_id"],
-            company_id=v["company"].id, cfa_id=v["cfa"].id, customer_id=v["customer"].id,
-            customer_code=v["customer_code"], location_id=v["location"].id, invoice_no=v["invoice_no"],
-            invoice_date=v["invoice_date"], fiscal_year=v["fy"], sales_value=v["sales"], boxes=v["boxes"],
-            boxes_source="ERP", remarks=v["remarks"], transporter_id=v["transporter"].id if v["transporter"] else None,
-            lr_no=v["lr_no"], vehicle_no=v["vehicle_no"], import_batch_id=batch.id, imported_at=utcnow(),
-            imported_by_id=user.id if user else None, status=InvoiceStatus.PENDING,
-        )
-        db.add(inv)
-        db.flush()
-        apply_freight(db, inv)
-        row.invoice_id = inv.id
-        row.status = RowStatus.IMPORTED
-        imported += 1
-        if inv.status in (InvoiceStatus.RATE_MISSING, InvoiceStatus.EXCEPTION):
-            exceptions += 1
+        if v["attach_to"] is not None:
+            inv = v["attach_to"]
+            _add_items(inv, v["items"])
+            if inv.boxes is None and v["boxes"]:
+                audit.log(db, user, "BOXES_ENTERED", "OVERRIDE", record_type="Invoice", record_id=inv.id,
+                          ref=inv.invoice_no, field="BOXES", old=None, new=v["boxes"],
+                          reason=f"From ERP export {batch.batch_no}")
+                inv.boxes = v["boxes"]
+                inv.boxes_source = "ERP"
+                apply_freight(db, inv)
+            audit.log(db, user, "INVOICE_ITEMS_ADDED", MODULE, record_type="Invoice", record_id=inv.id,
+                      ref=inv.invoice_no, details={"batch": batch.batch_no, "lines": len(v["items"])})
+            attached += 1
+        else:
+            inv = Invoice(
+                source_erp_id=batch.erp_system_id, source_invoice_id=v["source_invoice_id"],
+                company_id=v["company"].id, cfa_id=v["cfa"].id, customer_id=v["customer"].id,
+                customer_code=v["customer_code"], location_id=v["location"].id, invoice_no=v["invoice_no"],
+                invoice_date=v["invoice_date"], fiscal_year=v["fy"], sales_value=v["sales"], boxes=v["boxes"],
+                boxes_source="ERP", remarks=v["remarks"],
+                transporter_id=v["transporter"].id if v["transporter"] else None,
+                lr_no=v["lr_no"], vehicle_no=v["vehicle_no"], import_batch_id=batch.id, imported_at=utcnow(),
+                imported_by_id=user.id if user else None, status=InvoiceStatus.PENDING, irn=v["irn"],
+                capture_mode="API" if batch.source in ("API", "ADAPTER") else "IMPORT",
+            )
+            db.add(inv)
+            db.flush()
+            _add_items(inv, v["items"])
+            apply_freight(db, inv)
+            imported += 1
+            if inv.status in (InvoiceStatus.RATE_MISSING, InvoiceStatus.EXCEPTION):
+                exceptions += 1
+        for r in [row, *rows[1:]]:
+            r.invoice_id = inv.id
+            r.status = RowStatus.IMPORTED
     _recount(batch, committed=True)
     batch.committed_at = utcnow()
     db.flush()
     audit.log(db, user, "IMPORT_COMMITTED", MODULE, record_type="ImportBatch", record_id=batch.id, ref=batch.batch_no,
               details={"imported_now": imported, "exceptions_now": exceptions, "imported_total": batch.imported_count,
-                       "rejected": batch.rejected_count, "duplicates": batch.duplicate_count})
-    return {"imported": imported, "exceptions": exceptions, **summarize(batch)}
+                       "rejected": batch.rejected_count, "duplicates": batch.duplicate_count,
+                       "items_added_to_existing": attached})
+    return {"imported": imported, "exceptions": exceptions, "items_added": attached, **summarize(batch)}
 
 
 def _recount(batch: ImportBatch, committed: bool = False) -> None:
@@ -586,6 +813,14 @@ def skip_row(db: Session, user: User, row: ImportRow, reason: str) -> None:
     _recount(row.batch)
 
 
+def find_code_mapping(db: Session, erp_system_id: int, entity_type: str, source_code: str,
+                      company_id: int | None = None) -> ERPCodeMapping | None:
+    return db.scalar(select(ERPCodeMapping).where(
+        ERPCodeMapping.erp_system_id == erp_system_id, ERPCodeMapping.entity_type == entity_type,
+        func.upper(ERPCodeMapping.source_code) == norm_code(source_code),
+        ERPCodeMapping.company_id.is_(None) if company_id is None else ERPCodeMapping.company_id == company_id))
+
+
 def add_code_mapping(db: Session, user: User, *, erp_system_id: int, entity_type: str, source_code: str,
                      target_id: int, source_name: str | None = None, company_id: int | None = None) -> ERPCodeMapping:
     if not erp_system_id:
@@ -627,6 +862,21 @@ def save_template(db: Session, user: User, batch: ImportBatch, name: str) -> Imp
     audit.log(db, user, "IMPORT_TEMPLATE_SAVED", MODULE, record_type="ImportTemplate", record_id=t.id, ref=t.name,
               details={"column_map": t.column_map})
     return t
+
+
+def quick_import(db: Session, user: User | None, content: bytes, filename: str, *, erp_system_id=None,
+                 company_id=None, cfa_id=None) -> tuple[ImportBatch, dict, str | None]:
+    """One step: recognise the layout, validate, import every good row. Problem rows stay in the batch for
+    correction on the import screen (nothing is guessed)."""
+    batch, warning = create_batch_from_file(db, user, content, filename, erp_system_id=erp_system_id,
+                                            company_id=company_id, cfa_id=cfa_id)
+    if "invoice_no" not in (batch.column_map or {}):
+        validate_batch(db, batch, user)
+        return batch, {"imported": 0, **summarize(batch)}, (warning or "") + \
+            " Layout not recognised - open the batch and map the columns once (then save it as a template)."
+    validate_batch(db, batch, user)
+    result = commit_batch(db, user, batch)  # user None = drop folder, audited as "system"
+    return batch, result, warning
 
 
 def ingest_records(db: Session, user: User | None, erp: ERPSystem | None, records: list[dict], *,

@@ -93,7 +93,7 @@ def change_password(request: Request, current: str = Form(...), new: str = Form(
     if new != confirm:
         flash(request, "New passwords do not match", "error")
         return redirect("/account/password")
-    problems = password_problems(new)
+    problems = password_problems(new, user.username)
     if problems:
         flash(request, "Password needs " + ", ".join(problems), "error")
         return redirect("/account/password")

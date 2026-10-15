@@ -3,7 +3,6 @@ ERP push endpoints authenticate with a per-ERP X-API-Key instead.
 """
 from __future__ import annotations
 
-import secrets
 from datetime import date, time
 from decimal import Decimal
 from typing import Any
@@ -11,8 +10,8 @@ from typing import Any
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy import and_, func, or_, select
+from sqlalchemy.orm import Session, selectinload
 
 from app import __version__
 from app.db import get_db
@@ -20,7 +19,9 @@ from app.integrations.runner import erp_for_api_key, field_map_for
 from app.models import (
     CFA, Company, Customer, ERPSystem, Invoice, InvoiceStatus, Location, Transporter, User, utcnow,
 )
-from app.security.auth import PermissionDenied, authenticate, create_access_token, require
+from app.security.auth import (
+    PermissionDenied, authenticate, create_access_token, current_user_optional, require, same_token,
+)
 from app.services import audit
 from app.services import dispatch_service as ds
 from app.services.dashboard import dashboard_data
@@ -29,21 +30,27 @@ from app.services.freight_engine import calc_freight, find_rate
 from app.services.import_service import Resolver, ingest_records
 from app.services.pdf_service import dispatch_slips_pdf
 from app.services.reports import REPORTS, Filters, filtered_invoices
-from app.services.scope import can_see_invoice
+from app.services.scope import can_see, can_see_invoice
 
 router = APIRouter(prefix="/api/v1")
 
 
-async def api_csrf(request: Request) -> None:
-    """Session-cookie callers must send X-CSRF-Token on writes; Bearer / API-key callers are exempt."""
+async def api_csrf(request: Request, _user: User | None = Depends(current_user_optional)) -> None:
+    """Writes authenticated by the browser session cookie must carry X-CSRF-Token.
+
+    Only a request that was really authenticated by a valid Bearer token is exempt (a request with a Bearer
+    header is judged by the token alone - see current_user_optional). The decision is taken from how the user
+    was authenticated, not from which headers are present: an arbitrary 'Authorization: xyz' or 'X-API-Key'
+    header next to a session cookie no longer switches the protection off (QA-07). ERP push endpoints use their
+    own X-API-Key check and do not accept the session at all.
+    """
     if request.method in ("GET", "HEAD", "OPTIONS"):
         return
-    if request.headers.get("authorization") or request.headers.get("x-api-key"):
-        return
-    if "session" in request.scope and request.session.get("sid"):
-        tok = request.headers.get("x-csrf-token")
-        if not tok or not secrets.compare_digest(tok, request.session.get("csrf", "")):
-            raise PermissionDenied(message="X-CSRF-Token header required for session-authenticated API writes")
+    if getattr(request.state, "auth_via", None) != "session":
+        return  # Bearer-token caller, or not signed in (the endpoint's auth check answers 401)
+    tok = request.headers.get("x-csrf-token")
+    if not tok or not same_token(request.session.get("csrf", ""), tok):
+        raise PermissionDenied(message="X-CSRF-Token header required for session-authenticated API writes")
 
 
 # ----------------------------------------------------------------------------- schemas
@@ -149,6 +156,8 @@ def token(body: TokenIn, db: Session = Depends(get_db)):
     user, err = authenticate(db, body.username, body.password)
     if not user:
         raise HTTPException(401, err)
+    if user.must_change_password:
+        raise HTTPException(403, "Password change required - sign in to the web app and set a new password first")
     tok, exp = create_access_token(user)
     audit.log(db, user, "API_TOKEN_ISSUED", "SECURITY", record_type="User", record_id=user.id, ref=user.username)
     db.commit()
@@ -164,7 +173,7 @@ def me(user: User = Depends(require())):
 
 # ----------------------------------------------------------------------------- invoices
 @router.get("/invoices", tags=["invoices"])
-def list_invoices(request: Request, page: int = Query(1, ge=1), page_size: int = Query(100, ge=1, le=1000),
+def list_invoices(request: Request, page: int = Query(1, ge=1, le=100_000), page_size: int = Query(100, ge=1, le=1000),
                   db: Session = Depends(get_db), user: User = Depends(require("invoice.view"))):
     f = Filters.from_params(request.query_params, default_range="none")
     stmt = filtered_invoices(user, f, include_cancelled=True)
@@ -224,11 +233,43 @@ def quote(company_code: str, location: str, cfa_code: str | None = None, custome
 
 
 # ----------------------------------------------------------------------------- dispatch
+_INV_LOAD = (selectinload(Invoice.company), selectinload(Invoice.cfa), selectinload(Invoice.customer),
+             selectinload(Invoice.location), selectinload(Invoice.transporter), selectinload(Invoice.source_erp))
+
+
 @router.get("/dispatch/pending", tags=["dispatch"])
-def pending(request: Request, db: Session = Depends(get_db), user: User = Depends(require("dispatch.view"))):
+def pending(request: Request, page: int = Query(1, ge=1, le=100_000), page_size: int = Query(500, ge=1, le=1000),
+            after: str | None = Query(None, description="next_cursor from the previous response"),
+            db: Session = Depends(get_db), user: User = Depends(require("dispatch.view"))):
+    """Open (not yet dispatched) invoices, oldest first (invoice date, then id), max `page_size` per call.
+
+    Complete, reliable reading - recommended for integrations: call once, then keep calling with
+    `after=<next_cursor>` until `has_more` is false. Every open invoice is returned exactly once even if others
+    are dispatched or added in between. `page=2, 3, ...` also works for quick browsing, but page numbers shift
+    when invoices leave the queue meanwhile. (Before v1.2: a bare list silently cut at 2,000.)
+    """
     f = Filters.from_params(request.query_params, default_range="none")
     stmt = filtered_invoices(user, f, statuses=InvoiceStatus.OPEN)
-    return [_inv_out(i) for i in db.scalars(stmt.order_by(Invoice.invoice_date).limit(2000))]
+    total = db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery()))
+    q = stmt.options(*_INV_LOAD).order_by(Invoice.invoice_date, Invoice.id)
+    if after:
+        try:
+            d, i = after.split("_", 1)
+            d, i = date.fromisoformat(d), int(i)
+        except ValueError:
+            raise HTTPException(422, "after: use the next_cursor value from the previous response") from None
+        q = q.where(or_(Invoice.invoice_date > d, and_(Invoice.invoice_date == d, Invoice.id > i)))
+        rows = db.scalars(q.limit(page_size + 1)).all()
+        has_more = len(rows) > page_size
+        rows = rows[:page_size]
+    else:
+        rows = db.scalars(q.offset((page - 1) * page_size).limit(page_size + 1)).all()
+        has_more = len(rows) > page_size
+        rows = rows[:page_size]
+    last = rows[-1] if rows else None
+    return {"total": total, "page": None if after else page, "page_size": page_size, "has_more": has_more,
+            "next_cursor": f"{last.invoice_date.isoformat()}_{last.id}" if last and has_more else None,
+            "items": [_inv_out(i) for i in rows]}
 
 
 @router.post("/invoices/{invoice_id:int}/dispatch", tags=["dispatch"], dependencies=[Depends(api_csrf)])
@@ -309,6 +350,8 @@ def masters(entity: str, db: Session = Depends(get_db), user: User = Depends(req
         raise HTTPException(404)
     out = []
     for o in db.scalars(select(model).order_by(model.code)):
+        if (model is Company and not can_see(user, o.id)) or (model is CFA and not can_see(user, None, o.id)):
+            continue
         d = {c.name: getattr(o, c.name) for c in model.__table__.columns
              if c.name not in ("api_key_hash", "config")}
         out.append({k: (str(v) if isinstance(v, Decimal) else v.isoformat() if hasattr(v, "isoformat") else v)

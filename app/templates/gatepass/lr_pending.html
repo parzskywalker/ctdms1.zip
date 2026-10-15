@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div><h1>LR pending</h1><div class="sub">Consignments that left with a transporter but have no LR / bilty number yet. Type them in as the transporter sends them; the bill cross-check uses them.</div></div>
+  <form method="get" class="row" style="margin:0">
+    <select name="transporter_id" style="width:auto"><option value="">All transporters</option>{% for t in transporters %}<option value="{{ t.id }}" {% if t.id == tid %}selected{% endif %}>{{ t.name }}</option>{% endfor %}</select>
+    <button class="btn" type="submit">Filter</button>
+  </form>
+</div>
+<form method="post" class="card flush">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="transporter_id" value="{{ tid or '' }}">
+  <div class="table-wrap"><table class="data compact">
+    <thead><tr><th>Gatepass</th><th>Date</th><th class="num">Days</th><th>Transporter</th><th>Customer · area</th><th>Invoices</th><th class="num">Cases</th><th style="width:250px">LR no / date</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td class="mono nowrap"><a href="/gatepass/{{ r.slip_id }}">{{ r.dispatch_no }}</a></td><td class="nowrap">{{ r.date|date }}</td>
+        <td class="num {% if r.date and (today - r.date).days > 3 %}pos{% endif %}">{{ (today - r.date).days if r.date else '' }}</td>
+        <td>{{ r.transporter.name }}</td><td>{{ r.customer.name }}<div class="small muted">{{ r.location.name }}</div></td>
+        <td class="small">{{ r.invs|map(attribute='invoice_no')|join(', ') }}</td><td class="num">{{ r.cases }}</td>
+        <td>{% if can('dispatch.operate') %}<div class="row" style="gap:4px;flex-wrap:nowrap"><input type="text" name="lr_{{ r.slip_id }}_{{ r.customer.id }}" placeholder="LR no" data-upper style="min-height:28px;padding:3px 6px;width:115px"><input type="date" name="lrdate_{{ r.slip_id }}_{{ r.customer.id }}" style="min-height:28px;padding:3px 4px;width:120px" max="{{ today.isoformat() }}"></div>{% endif %}</td>
+      </tr>
+    {% else %}<tr><td colspan="8" class="empty">Every consignment has its LR number.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  {% if rows and can('dispatch.operate') %}<div class="sticky-bar"><button class="btn btn-primary" type="submit">Save LR numbers</button><span class="small muted">Only filled rows are saved.</span></div>{% endif %}
+</form>
+{% endblock %}

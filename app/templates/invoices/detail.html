@@ -32,7 +32,8 @@
         <dl class="dl tight">
           <dt>Company</dt><dd>{{ inv.company.name }} <span class="muted">({{ inv.company.code }})</span></dd>
           <dt>CFA</dt><dd>{{ inv.cfa.name }}</dd>
-          <dt>Customer</dt><dd><a href="/masters/customers/{{ inv.customer_id }}">{{ inv.customer.name }}</a><br><span class="muted small">Central {{ inv.customer.code }} · ERP code {{ inv.customer_code or '—' }}</span></dd>
+          <dt>Customer</dt><dd><a href="/masters/customers/{{ inv.customer_id }}">{{ inv.customer.name }}</a> <span class="tag">{{ inv.customer.type_label }}</span><br><span class="muted small">Central {{ inv.customer.code }} · ERP code {{ inv.customer_code or '—' }}</span></dd>
+          <dt>Captured by</dt><dd>{{ {'QR_SCAN': 'E-invoice QR scan', 'IMPORT': 'ERP export import', 'API': 'ERP API / adapter', 'MANUAL': 'Manual'}.get(inv.capture_mode, inv.capture_mode) }}{% if inv.irn %}<br><span class="muted small mono" title="E-invoice IRN">IRN {{ inv.irn[:16] }}…</span>{% endif %}</dd>
           <dt>Delivery location</dt><dd>{{ inv.location.name }}{% if inv.location.route %} <span class="muted">· route {{ inv.location.route }}</span>{% endif %}</dd>
           <dt>Sales value</dt><dd>{{ inv.sales_value|money }}</dd>
           <dt>Imported</dt><dd>{{ inv.imported_at|dt }}{% if inv.imported_by %} by {{ inv.imported_by.full_name }}{% endif %}{% if inv.import_batch %}<br><a class="small" href="/imports/{{ inv.import_batch_id }}">batch {{ inv.import_batch.batch_no }}</a> ({{ inv.import_batch.source }}){% endif %}</dd>
@@ -50,7 +51,8 @@
           <div class="part"><small>Expense</small><span class="bigfig">{{ inv.freight_amount|money }}</span></div>
         </div>
         <dl class="dl tight" style="margin-top:12px">
-          <dt>Rate source</dt><dd>{% if inv.freight_rate %}<a href="/rates/{{ inv.freight_rate_id }}">Rate #{{ inv.freight_rate_id }}</a> · {{ inv.rate_level|level_label }}<br><span class="muted small">effective {{ inv.freight_rate.effective_from|date }} → {{ inv.freight_rate.effective_to|date or 'open' }}</span>{% elif inv.rate_level == 'MANUAL' %}Manual override (see below){% else %}—{% endif %}</dd>
+          <dt>Rate source</dt><dd>{% if inv.freight_rate %}<a href="/rates/{{ inv.freight_rate_id }}">Rate #{{ inv.freight_rate_id }}</a> · {{ inv.rate_level|level_label }}<br><span class="muted small">effective {{ inv.freight_rate.effective_from|date }} → {{ inv.freight_rate.effective_to|date or 'open' }}</span>{% elif inv.rate_level == 'MANUAL' %}Manual override (see below){% elif inv.rate_level %}{{ inv.rate_level|level_label }}{% if inv.transporter_id and inv.rate_level == 'TRANSPORTER' %} · <a href="/rate-cards/{{ inv.transporter_id }}">rate card</a>{% endif %}{% else %}Set on the gatepass (transporter rate card){% endif %}</dd>
+          {% if inv.extra_charge %}<dt>Pickup / auto share</dt><dd>{{ inv.extra_charge|money }} <span class="muted small">(total cost {{ inv.total_charge|money }})</span></dd>{% endif %}
           <dt>Basis</dt><dd>{{ inv.freight_basis.replace('_',' ').title() }} · boxes from {{ inv.boxes_source }}</dd>
           <dt>Calculated</dt><dd>{{ inv.freight_calculated_at|dt }}</dd>
           <dt>Master today</dt><dd class="small">{% if current.found %}{{ current.message }}{% else %}<span class="pos">{{ current.message }}</span>{% endif %}
@@ -80,12 +82,13 @@
     </div>
 
     <div class="card">
-      <div class="card-head"><h3>Dispatch</h3>{% if inv.dispatch_no %}<span class="mono">{{ inv.dispatch_no }}</span>{% endif %}</div>
+      <div class="card-head"><h3>Dispatch</h3>{% if inv.dispatch_no %}{% if inv.dispatch_slip_id %}<a class="mono" href="/gatepass/{{ inv.dispatch_slip_id }}">{{ inv.dispatch_no }}</a>{% else %}<span class="mono">{{ inv.dispatch_no }}</span>{% endif %}{% endif %}</div>
       <div class="grid g3">
         <dl class="dl tight">
-          <dt>Transporter</dt><dd>{{ inv.transporter.name if inv.transporter else '—' }}</dd>
-          <dt>Vehicle</dt><dd class="mono">{{ inv.vehicle_no or '—' }}</dd>
-          <dt>LR / docket</dt><dd class="mono">{{ inv.lr_no or '—' }}</dd>
+          <dt>Mode</dt><dd>{{ {'TRANSPORTER': 'Transporter', 'DIRECT': 'Transporter - direct pickup', 'OUTSIDE_AUTO': 'Outside auto', 'SELF': 'Self pickup'}.get(inv.dispatch_mode, '—') }}</dd>
+          <dt>Transporter</dt><dd>{{ inv.transporter.name if inv.transporter else (inv.outside_auto.name if inv.outside_auto else '—') }}</dd>
+          {% if inv.vehicle_no %}<dt>Vehicle</dt><dd class="mono">{{ inv.vehicle_no }}</dd>{% endif %}
+          <dt>LR / docket</dt><dd class="mono">{{ inv.lr_no or '—' }}{% if inv.lr_date %} <span class="muted small">{{ inv.lr_date|date }}</span>{% endif %}{% if inv.lr_updated_by %}<br><span class="muted small">entered by {{ inv.lr_updated_by.full_name }} {{ inv.lr_updated_at|dt }}</span>{% endif %}</dd>
           <dt>Dispatch</dt><dd>{{ inv.dispatch_date|date or '—' }} {{ inv.dispatch_time|time }}</dd>
         </dl>
         <dl class="dl tight">
@@ -98,6 +101,16 @@
           {% if inv.cancelled_at %}<dt>Cancelled</dt><dd>{{ inv.cancelled_by.full_name if inv.cancelled_by else '' }} · {{ inv.cancelled_at|dt }}<br><span class="small">{{ inv.cancel_reason }}</span></dd>{% endif %}
         </dl>
       </div>
+    </div>
+
+    <div class="card flush">
+      <div class="card-head"><h3>SKU lines</h3><span class="small muted">{{ inv.items|length }} line(s){% if inv.item_count and not inv.items %} · QR says {{ inv.item_count }} item(s); details arrive with the item-wise ERP export{% endif %}</span></div>
+      {% if inv.items %}
+      <div class="table-wrap"><table class="data compact">
+        <thead><tr><th>#</th><th>SKU</th><th>Item</th><th>HSN</th><th>Batch</th><th class="num">Qty</th><th class="num">Free</th><th class="num">Value</th></tr></thead>
+        <tbody>{% for it in inv.items %}<tr><td>{{ it.line_no }}</td><td class="mono">{{ it.sku_code or '' }}</td><td>{{ it.sku_name or '' }}</td><td>{{ it.hsn or '' }}</td><td>{{ it.batch_no or '' }}</td><td class="num">{{ '%g'|format(it.qty|float) if it.qty is not none else '' }}</td><td class="num">{{ '%g'|format(it.free_qty|float) if it.free_qty else '' }}</td><td class="num">{{ it.value|money }}</td></tr>{% endfor %}</tbody>
+      </table></div>
+      {% endif %}
     </div>
 
     <div class="card flush">

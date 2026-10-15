@@ -1,31 +1,47 @@
-"""Dispatch workflow (state machine) with the mandatory slip controls.
+"""Dispatch workflow (state machine) with the mandatory gatepass controls.
 
 PENDING -> VERIFIED -> SLIP_GENERATED -> SLIP_PRINTED -> DISPATCHED
 (RATE_MISSING / EXCEPTION block verification; CANCELLED is terminal unless reinstated.)
+
+v1.3: a dispatch slip is a **gatepass** - one pickup (transporter, transporter direct pickup, outside auto or
+self pickup) carrying one or more invoices for one or more customers. The charge per invoice is frozen on the
+gatepass (transporter rate card per case per area, or the principal rate card when `freight.source` = COMPANY).
+LR numbers are not needed to print it; they are entered later (audited) until the transporter's bill is approved.
+Gate-out (scan at the gate) completes every invoice of the gatepass - nothing is DISPATCHED without one.
+The one-invoice screens of v1.2 still work: they create a one-line gatepass.
 """
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import date, time
+from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import (
-    DispatchSlip, Invoice, InvoiceStatus, SlipPrintLog, Transporter, TransporterBill, User, utcnow,
+    DispatchMode, DispatchSlip, DispatchSlipLine, ExceptionCode, Invoice, InvoiceStatus, OutsideAuto, PaymentMode,
+    PickupMode, RateLevel, SlipPrintLog, Transporter, TransporterBill, User, utcnow,
 )
+from app.models.masters import ChargeBasis
 from app.models.recon import BillStatus
-from app.services import audit
+from app.services import audit, notify_service
 from app.services import settings_service as cfg
+from app.services import transporter_rate_service as trs
 from app.services.errors import BusinessError
 from app.services.invoice_service import refresh_status
+from app.services.scope import can_see_invoice
 from app.services.utils import (
-    fiscal_year, local_now, local_today, next_sequence, norm_vehicle, parse_date, parse_time,
+    fiscal_year, local_now, local_today, money, next_sequence, norm_vehicle, parse_date, parse_decimal, parse_int,
+    parse_time, safe_int, vehicle_looks_valid,
 )
 from app.services import context
 
 MODULE = "DISPATCH"
 S = InvoiceStatus
+ZERO = Decimal("0")
+GATEPASS_LEVELS = (RateLevel.TRANSPORTER, RateLevel.SELF, RateLevel.AUTO)  # rates set when the gatepass is made
 
 
 def _perm(user: User, perm: str) -> None:
@@ -33,12 +49,29 @@ def _perm(user: User, perm: str) -> None:
         raise BusinessError(f"You are not authorised for this action ({perm})")
 
 
+def freight_source(db: Session) -> str:
+    return "COMPANY" if cfg.get(db, "freight.source") == "COMPANY" else "TRANSPORTER"
+
+
 def active_slip(db: Session, inv: Invoice) -> DispatchSlip | None:
-    return db.scalar(select(DispatchSlip).where(DispatchSlip.invoice_id == inv.id, DispatchSlip.is_void.is_(False))
+    if inv.dispatch_slip_id:
+        slip = db.get(DispatchSlip, inv.dispatch_slip_id)
+        if slip and not slip.is_void:
+            return slip
+    return db.scalar(select(DispatchSlip).join(DispatchSlipLine, DispatchSlipLine.slip_id == DispatchSlip.id)
+                     .where(DispatchSlipLine.invoice_id == inv.id, DispatchSlip.is_void.is_(False))
                      .order_by(DispatchSlip.id.desc()))
 
 
-# ----------------------------------------------------------------------------- details
+def slip_invoices(db: Session, slip: DispatchSlip) -> list[Invoice]:
+    ids = [ln.invoice_id for ln in slip.lines]
+    if not ids:
+        return []
+    by_id = {i.id: i for i in db.scalars(select(Invoice).where(Invoice.id.in_(ids)))}
+    return [by_id[i] for i in ids if i in by_id]
+
+
+# ----------------------------------------------------------------------------- details (one-invoice screen)
 def save_details(db: Session, user: User, inv: Invoice, *, transporter_id=None, vehicle_no=None, lr_no=None,
                  dispatch_date=None, dispatch_time=None, remarks=None) -> list[str]:
     """Save draft dispatch details. Returns list of changed fields."""
@@ -46,14 +79,19 @@ def save_details(db: Session, user: User, inv: Invoice, *, transporter_id=None, 
     if inv.status in (S.DISPATCHED, S.CANCELLED):
         raise BusinessError(f"Invoice is {inv.status_label}; dispatch details are locked")
     if inv.status in (S.SLIP_GENERATED, S.SLIP_PRINTED):
-        raise BusinessError("Dispatch slip already generated - details are locked. Void the slip to correct them.")
+        raise BusinessError("Dispatch slip already generated - details are locked. Void the slip to correct them "
+                            "(the LR number can still be added on the gatepass page).")
 
     try:
         d = parse_date(dispatch_date) if dispatch_date not in (None, "") else None
         t = parse_time(dispatch_time) if dispatch_time not in (None, "") else None
     except ValueError as e:
         raise BusinessError(str(e)) from e
-    tid = int(transporter_id) if transporter_id not in (None, "", "0") else None
+    tid = None
+    if transporter_id not in (None, "", "0"):
+        tid = safe_int(transporter_id, minimum=1)
+        if tid is None:
+            raise BusinessError("Select an active transporter")
     if tid:
         tr = db.get(Transporter, tid)
         if not tr or not tr.is_active:
@@ -92,8 +130,10 @@ def verify(db: Session, user: User, inv: Invoice) -> None:
         raise BusinessError(f"Cannot verify: {inv.exception_reason or 'invoice has an open exception'}")
     if inv.status != S.PENDING:
         raise BusinessError(f"Cannot verify an invoice in status {inv.status_label}")
-    if not inv.boxes or inv.boxes <= 0 or inv.freight_amount is None:
-        raise BusinessError("Boxes and freight must be available before verification")
+    company = freight_source(db) == "COMPANY"
+    if not inv.boxes or inv.boxes <= 0 or (company and inv.freight_amount is None):
+        raise BusinessError("Boxes and freight must be available before verification" if company else
+                            "Number of cases must be available before verification")
     inv.verified_at = utcnow()
     inv.verified_by_id = user.id
     inv.status = S.VERIFIED
@@ -102,59 +142,356 @@ def verify(db: Session, user: User, inv: Invoice) -> None:
               details={"boxes": inv.boxes, "rate": str(inv.rate_per_box), "freight": str(inv.freight_amount)})
 
 
-# ----------------------------------------------------------------------------- slip
-def _slip_snapshot(db: Session, inv: Invoice, dispatch_no: str, user: User) -> dict:
-    c, f, cu, lo, tr = inv.company, inv.cfa, inv.customer, inv.location, inv.transporter
+# ----------------------------------------------------------------------------- gatepass
+@dataclass
+class GatepassRequest:
+    mode: str = DispatchMode.TRANSPORTER
+    transporter_id: int | None = None
+    outside_auto_id: int | None = None
+    pickup_mode: str = PickupMode.REGULAR
+    dispatch_date: date | None = None
+    dispatch_time: time | None = None
+    cases: dict | None = None            # {invoice_id: cases} entered on the gatepass
+    amount_paid: Decimal | None = None   # None -> default from payment mode
+    remarks: str | None = None
+
+
+@dataclass
+class PlannedLine:
+    inv: Invoice
+    cases: int
+    rate: Decimal | None
+    freight: Decimal
+    level: str
+    extra: Decimal = ZERO
+
+
+def _alloc(total: Decimal, weights: list[int]) -> list[Decimal]:
+    """Split money over lines in proportion to cases; the shares add up exactly to the total (paise)."""
+    total = money(total)
+    if not weights or total == 0:
+        return [ZERO for _ in weights]
+    w_sum = sum(weights) or len(weights)
+    ws = weights if sum(weights) else [1] * len(weights)
+    shares = [(total * w / w_sum).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) for w in ws]
+    shares[-1] += total - sum(shares)
+    return shares
+
+
+def _auto_charge(auto: OutsideAuto | None, cases: int) -> Decimal:
+    if not auto:
+        return ZERO
+    if auto.charge_basis == ChargeBasis.PER_CASE:
+        return money(Decimal(cases) * (auto.rate or ZERO))
+    return money(auto.rate or ZERO)
+
+
+def _pickup_charge(tr: Transporter | None, cases: int) -> Decimal:
+    if not tr or not tr.direct_pickup_charge:
+        return ZERO
+    if tr.direct_pickup_basis == ChargeBasis.PER_CASE:
+        return money(Decimal(cases) * tr.direct_pickup_charge)
+    return money(tr.direct_pickup_charge)
+
+
+def plan_gatepass(db: Session, user: User | None, invs: list[Invoice], req: GatepassRequest,
+                  *, legacy: bool = False) -> tuple[list[PlannedLine], dict, list[str]]:
+    """Validate and price a gatepass without saving anything. Returns (lines, totals, problems)."""
+    problems: list[str] = []
+    if not invs:
+        return [], {}, ["Add at least one invoice"]
+    mode = req.mode if req.mode in DispatchMode.ALL else None
+    if not mode:
+        problems.append("Choose how the goods leave (transporter / direct pickup / outside auto / self)")
+        mode = DispatchMode.TRANSPORTER
+    tr = db.get(Transporter, req.transporter_id) if req.transporter_id else None
+    auto = db.get(OutsideAuto, req.outside_auto_id) if req.outside_auto_id else None
+    if mode in (DispatchMode.TRANSPORTER, DispatchMode.DIRECT):
+        if not tr or not tr.is_active:
+            problems.append("Transporter not selected")
+        if req.pickup_mode == PickupMode.OUTSIDE_AUTO and (not auto or not auto.is_active):
+            problems.append("Select the outside auto that takes the goods to the transporter")
+    if mode == DispatchMode.OUTSIDE_AUTO and (not auto or not auto.is_active):
+        problems.append("Select the outside auto")
+    d = req.dispatch_date or local_today()
+    if d > local_today() and not cfg.get(db, "dispatch.allow_future_date"):
+        problems.append("Dispatch date cannot be in the future")
+    cfa_ids = {i.cfa_id for i in invs}
+    if len(cfa_ids) > 1:
+        problems.append("All invoices on one gatepass must be from the same CFA / warehouse")
+    if len({i.id for i in invs}) != len(invs):
+        problems.append("The same invoice is listed twice")
+    company_mode = freight_source(db) == "COMPANY"
+
+    planned: list[PlannedLine] = []
+    for inv in invs:
+        tag = f"Invoice {inv.invoice_no}"
+        if user is not None and not can_see_invoice(user, inv):
+            problems.append(f"{tag}: not in your company / CFA scope")
+            continue
+        if inv.status == S.CANCELLED:
+            problems.append(f"{tag}: cancelled")
+            continue
+        if inv.status not in S.PRE_SLIP:
+            problems.append(f"{tag}: already on gatepass {inv.dispatch_no or ''} ({inv.status_label})")
+            continue
+        if inv.exception_code == ExceptionCode.OVERRIDE_PENDING:
+            problems.append(f"{tag}: a box / freight change is awaiting approval")
+        if inv.exception_code == ExceptionCode.RATE_CONFLICT:
+            problems.append(f"{tag}: {inv.exception_reason or 'rate conflict'}")
+        raw = (req.cases or {}).get(inv.id)
+        try:
+            cases = parse_int(raw) if raw not in (None, "") else inv.boxes
+        except ValueError:
+            problems.append(f"{tag}: cases must be a whole number")
+            continue
+        if not cases or cases <= 0:
+            problems.append(f"{tag}: number of cases missing")
+            continue
+        if cases > 5000:
+            problems.append(f"{tag}: {cases} cases looks wrong")
+            continue
+        if inv.boxes and cases != inv.boxes and not (user and user.can("override.direct")):
+            problems.append(f"{tag}: {cases} cases entered but the invoice says {inv.boxes}. Request a box change "
+                            "(approval) first, or ask a checker to make the gatepass.")
+        if d < inv.invoice_date:
+            problems.append(f"{tag}: dispatch date is before the invoice date")
+        rate: Decimal | None
+        if mode == DispatchMode.SELF:
+            rate, freight, level = ZERO, ZERO, RateLevel.SELF
+        elif mode == DispatchMode.OUTSIDE_AUTO:
+            rate = (auto.rate if auto and auto.charge_basis == ChargeBasis.PER_CASE else None)
+            freight = money(Decimal(cases) * rate) if rate is not None else ZERO  # per trip: allocated below
+            level = RateLevel.AUTO
+        elif company_mode or inv.freight_basis in ("MANUAL_RATE", "MANUAL_AMOUNT"):
+            if inv.freight_amount is None:
+                problems.append(f"{tag}: {inv.exception_reason or 'freight not calculated'}")
+                continue
+            rate = inv.rate_per_box
+            freight = inv.freight_amount if cases == inv.boxes else \
+                money(Decimal(cases) * (inv.rate_per_box or ZERO))
+            level = inv.rate_level or RateLevel.MANUAL
+        else:
+            if not tr:
+                continue
+            lk = trs.find(db, tr.id, inv.location_id, d)
+            if not lk.found:
+                problems.append(f"{tag}: {lk.message} - add it to the rate card")
+                continue
+            rate = lk.rate_per_case
+            freight = money(Decimal(cases) * rate)
+            level = RateLevel.TRANSPORTER
+        planned.append(PlannedLine(inv, cases, rate, freight, level))
+
+    total_cases = sum(p.cases for p in planned)
+    weights = [p.cases for p in planned]
+    pickup = auto_ch = ZERO
+    if mode == DispatchMode.OUTSIDE_AUTO and auto and auto.charge_basis == ChargeBasis.PER_TRIP:
+        for p, share in zip(planned, _alloc(auto.rate or ZERO, weights)):
+            p.freight = share
+            p.rate = (share / p.cases).quantize(Decimal("0.01")) if p.cases else None
+    if mode == DispatchMode.DIRECT:
+        pickup = _pickup_charge(tr, total_cases)
+    if mode in (DispatchMode.TRANSPORTER, DispatchMode.DIRECT) and req.pickup_mode == PickupMode.OUTSIDE_AUTO:
+        auto_ch = _auto_charge(auto, total_cases)
+    for p, share in zip(planned, _alloc(pickup + auto_ch, weights)):
+        p.extra = share
+    freight_total = sum((p.freight for p in planned), ZERO)
+    total = money(freight_total + pickup + auto_ch)
+
+    # who is paid now: outside autos and CASH transporters at dispatch; TBB transporters bill later
+    if req.amount_paid is not None:
+        paid = money(req.amount_paid)
+        if paid < 0 or paid > total:
+            problems.append(f"Amount paid must be between ₹0 and the total ₹{total}")
+    elif not cfg.get(db, "gatepass.cash_paid_default"):
+        paid = ZERO
+    elif mode == DispatchMode.OUTSIDE_AUTO:
+        paid = total
+    elif mode in (DispatchMode.TRANSPORTER, DispatchMode.DIRECT) and tr and tr.payment_mode == PaymentMode.CASH:
+        paid = total
+    else:
+        paid = auto_ch
+    status = "NIL" if total == 0 else ("PAID" if paid >= total else ("PARTIAL" if paid > 0 else "TBB"))
+    totals = {"invoices": len(planned), "cases": total_cases, "freight": freight_total, "pickup": pickup,
+              "auto": auto_ch, "total": total, "paid": paid, "balance": total - paid, "payment_status": status,
+              "mode": mode, "transporter": tr, "auto_obj": auto, "date": d}
+    return planned, totals, problems
+
+
+def _gatepass_snapshot(db: Session, slip: DispatchSlip, planned: list[PlannedLine], totals: dict, user: User) -> dict:
+    f = planned[0].inv.cfa
+    tr, auto = totals["transporter"], totals["auto_obj"]
+    groups: OrderedDict = OrderedDict()
+    for p in planned:
+        inv, cu, lo = p.inv, p.inv.customer, p.inv.location
+        g = groups.setdefault(cu.id, {
+            "customer": {"code": cu.code, "name": cu.name, "type": cu.type_label,
+                         "address": cu.delivery_address or cu.billing_address, "city": cu.city,
+                         "contact": cu.contact_person, "phone": cu.contact_phone, "whatsapp": cu.whatsapp,
+                         "gstin": cu.gstin},
+            "location": {"code": lo.code, "name": lo.name, "route": lo.route, "zone": lo.zone},
+            "invoices": [], "cases": 0, "freight": ZERO, "extra": ZERO})
+        g["invoices"].append({"invoice_no": inv.invoice_no, "invoice_date": inv.invoice_date.strftime("%d-%m-%Y"),
+                              "company_code": inv.company.code, "company": inv.company.name,
+                              "sales_value": str(inv.sales_value), "cases": p.cases,
+                              "rate": str(p.rate) if p.rate is not None else None, "freight": str(p.freight),
+                              "extra": str(p.extra)})
+        g["cases"] += p.cases
+        g["freight"] += p.freight
+        g["extra"] += p.extra
+    group_list = []
+    for g in groups.values():
+        g["freight"] = str(g["freight"])
+        g["extra"] = str(g["extra"])
+        group_list.append(g)
+    first = planned[0].inv
     return {
+        "v": 2,
         "org_name": cfg.get(db, "org.name"),
         "org_address": cfg.get(db, "org.address"),
         "footer": cfg.get(db, "slip.footer_note"),
-        "dispatch_no": dispatch_no,
+        "dispatch_no": slip.dispatch_no,
         "generated_at": local_now().strftime("%d-%m-%Y %H:%M"),
-        "central_id": inv.central_id,
-        "company": {"code": c.code, "name": c.name},
+        "dispatch_date": totals["date"].strftime("%d-%m-%Y"),
+        "dispatch_time": None,  # filled in by create_gatepass
         "cfa": {"code": f.code, "name": f.name, "address": f.address, "city": f.city, "state": f.state,
                 "phone": f.contact_phone},
-        "invoice_no": inv.invoice_no,
-        "invoice_date": inv.invoice_date.strftime("%d-%m-%Y"),
-        "source_erp": inv.source_erp.code if inv.source_erp else None,
-        "customer": {"code": cu.code, "erp_code": inv.customer_code, "name": cu.name,
-                     "address": cu.delivery_address or cu.billing_address, "city": cu.city,
-                     "contact": cu.contact_person, "phone": cu.contact_phone},
-        "location": {"code": lo.code, "name": lo.name, "route": lo.route, "zone": lo.zone},
-        "boxes": inv.boxes,
-        "rate_per_box": str(inv.rate_per_box),
-        "freight_amount": str(inv.freight_amount),
-        "rate_level": inv.rate_level,
-        "freight_basis": inv.freight_basis,
-        "sales_value": str(inv.sales_value),
-        "transporter": {"code": tr.code, "name": tr.name, "mobile": tr.mobile} if tr else None,
-        "vehicle_no": inv.vehicle_no,
-        "lr_no": inv.lr_no,
-        "dispatch_date": inv.dispatch_date.strftime("%d-%m-%Y") if inv.dispatch_date else None,
-        "dispatch_time": inv.dispatch_time.strftime("%H:%M") if inv.dispatch_time else None,
-        "remarks": inv.remarks,
+        "mode": totals["mode"], "mode_label": slip.mode_label, "pickup_mode": slip.pickup_mode,
+        "transporter": {"code": tr.code, "name": tr.name, "contact": tr.contact_person, "mobile": tr.mobile,
+                        "gstin": tr.gstin, "address": tr.address, "city": tr.city,
+                        "payment_mode": tr.payment_mode, "payment_label": tr.payment_label} if tr else None,
+        "outside_auto": {"code": auto.code, "name": auto.name, "mobile": auto.mobile,
+                         "charge_basis": auto.charge_basis, "rate": str(auto.rate)} if auto else None,
+        "rate_basis": freight_source(db),
+        "groups": group_list,
+        "totals": {k: (str(v) if isinstance(v, Decimal) else v) for k, v in totals.items()
+                   if k in ("invoices", "cases", "freight", "pickup", "auto", "total", "paid", "balance",
+                            "payment_status")},
+        "remarks": slip.remarks,
         "prepared_by": user.full_name,
-        "checked_by": inv.verified_by.full_name if inv.verified_by else None,
+        "checked_by": first.verified_by.full_name if (len(planned) == 1 and first.verified_by) else None,
+        # one-invoice slips also carry the v1.2 keys (API consumers, single-invoice print)
+        "invoice_no": first.invoice_no if len(planned) == 1 else None,
+        "central_id": first.central_id if len(planned) == 1 else f"{len(planned)} invoices",
     }
 
 
+def create_gatepass(db: Session, user: User, invs: list[Invoice], req: GatepassRequest, *,
+                    legacy: bool = False) -> DispatchSlip:
+    _perm(user, "dispatch.operate")
+    planned, totals, problems = plan_gatepass(db, user, invs, req, legacy=legacy)
+    if problems:
+        raise BusinessError("Cannot generate gatepass: " + "; ".join(problems))
+    if not planned:
+        raise BusinessError("Cannot generate gatepass: no invoice could be added")
+    d = totals["date"]
+    cfa = planned[0].inv.cfa
+    prefix = cfg.get(db, "dispatch.number_prefix") or "DS"
+    fy = fiscal_year(d)
+    seq = next_sequence(db, f"DISPATCH:{cfa.code}:{fy}")
+    dispatch_no = f"{prefix}/{cfa.code}/{fy.replace('-', '')[2:]}/{seq:05d}"
+    tr, auto = totals["transporter"], totals["auto_obj"]
+    mode = totals["mode"]
+    slip = DispatchSlip(
+        dispatch_no=dispatch_no, invoice_id=planned[0].inv.id if len(planned) == 1 else None, cfa_id=cfa.id,
+        dispatch_mode=mode,
+        pickup_mode=req.pickup_mode if mode in (DispatchMode.TRANSPORTER, DispatchMode.DIRECT) else PickupMode.REGULAR,
+        transporter_id=tr.id if tr and mode in (DispatchMode.TRANSPORTER, DispatchMode.DIRECT) else None,
+        outside_auto_id=auto.id if auto and (mode == DispatchMode.OUTSIDE_AUTO or
+                                            req.pickup_mode == PickupMode.OUTSIDE_AUTO) else None,
+        dispatch_date=d, invoice_count=len(planned), total_cases=totals["cases"], freight_total=totals["freight"],
+        pickup_charge=totals["pickup"], auto_charge=totals["auto"], total_charge=totals["total"],
+        amount_paid=totals["paid"], payment_status=totals["payment_status"],
+        remarks=(req.remarks or "").strip() or None, generated_by_id=user.id)
+    if slip.outside_auto_id is None:
+        totals["auto_obj"] = None
+    if slip.transporter_id is None:
+        totals["transporter"] = None
+    db.add(slip)
+    db.flush()
+    t = req.dispatch_time or local_now().time().replace(second=0, microsecond=0)
+    for p in planned:
+        inv = p.inv
+        old_status = inv.status
+        if inv.boxes != p.cases:
+            audit.log(db, user, "BOXES_ENTERED" if inv.boxes is None else "OVERRIDE_APPLIED", "OVERRIDE",
+                      record_type="Invoice", record_id=inv.id, ref=inv.invoice_no, field="BOXES", old=inv.boxes,
+                      new=p.cases, reason=f"Cases counted on gatepass {dispatch_no}")
+            inv.boxes_source = "MANUAL" if inv.boxes is None else "OVERRIDE"
+            inv.boxes = p.cases
+        if inv.exception_code == ExceptionCode.BOXES_MISSING:
+            inv.exception_code = None
+            inv.exception_reason = None
+        if p.level in GATEPASS_LEVELS:  # priced on the gatepass (company-card freight stays as it was)
+            inv.rate_per_box = p.rate
+            inv.rate_level = p.level
+            inv.freight_rate_id = None
+            inv.freight_basis = "CARD" if p.level == RateLevel.TRANSPORTER else "AUTO"
+        inv.freight_amount = p.freight
+        inv.extra_charge = p.extra
+        inv.freight_calculated_at = utcnow()
+        inv.dispatch_mode = mode
+        inv.transporter_id = slip.transporter_id
+        inv.outside_auto_id = slip.outside_auto_id
+        inv.dispatch_date = d
+        inv.dispatch_time = inv.dispatch_time if legacy and inv.dispatch_time else t
+        if not inv.verified_at:  # the cases were counted and confirmed on the gatepass
+            inv.verified_at = utcnow()
+            inv.verified_by_id = user.id
+        inv.dispatch_no = dispatch_no
+        inv.dispatch_slip_id = slip.id
+        inv.slip_generated_at = utcnow()
+        inv.slip_generated_by_id = user.id
+        inv.print_count = 0
+        inv.status = S.SLIP_GENERATED
+        slip.lines.append(DispatchSlipLine(invoice_id=inv.id, customer_id=inv.customer_id, location_id=inv.location_id,
+                                           cases=p.cases, rate_per_case=p.rate, freight=p.freight,
+                                           extra_charge=p.extra))
+        audit.log(db, user, "SLIP_GENERATED", MODULE, record_type="Invoice", record_id=inv.id, ref=inv.invoice_no,
+                  field="status", old=old_status, new=S.SLIP_GENERATED,
+                  details={"dispatch_no": dispatch_no, "cases": p.cases, "rate": audit._s(p.rate),
+                           "freight": str(p.freight), "extra": str(p.extra)})
+    db.flush()
+    slip.snapshot = _gatepass_snapshot(db, slip, planned, totals, user)
+    if legacy and len(planned) == 1:  # v1.2 one-invoice slip: keep the fields the old screens/API show
+        inv = planned[0].inv
+        slip.snapshot.update({"vehicle_no": inv.vehicle_no, "lr_no": inv.lr_no,
+                              "dispatch_time": inv.dispatch_time.strftime("%H:%M") if inv.dispatch_time else None})
+    else:
+        slip.snapshot["dispatch_time"] = t.strftime("%H:%M")
+    audit.log(db, user, "GATEPASS_GENERATED", MODULE, record_type="DispatchSlip", record_id=slip.id, ref=dispatch_no,
+              details={"invoices": len(planned), "cases": totals["cases"], "mode": mode,
+                       "transporter": tr.code if slip.transporter_id else None,
+                       "auto": auto.code if slip.outside_auto_id else None, "total": str(totals["total"]),
+                       "paid": str(totals["paid"])})
+    return slip
+
+
+# ----------------------------------------------------------------------------- one-invoice slip (v1.2 screens)
 def slip_blockers(db: Session, inv: Invoice) -> list[str]:
     problems = []
     if inv.status in (S.SLIP_GENERATED, S.SLIP_PRINTED, S.DISPATCHED):
         return ["Slip already generated"]
     if inv.status == S.CANCELLED:
         return ["Invoice cancelled"]
-    if inv.status in (S.RATE_MISSING, S.EXCEPTION):
+    company = freight_source(db) == "COMPANY"
+    if inv.status == S.RATE_MISSING or (inv.status == S.EXCEPTION and
+                                         inv.exception_code != ExceptionCode.BOXES_MISSING):
         problems.append(inv.exception_reason or "Open exception")
     if cfg.get(db, "dispatch.require_verify_before_slip") and inv.status != S.VERIFIED:
         problems.append("Invoice must be verified first")
     if not inv.boxes:
         problems.append("Number of boxes missing")
-    if inv.freight_amount is None:
+    if company and inv.freight_amount is None:
         problems.append("Freight not calculated")
     if not inv.transporter_id:
         problems.append("Transporter not selected")
+    elif not company and inv.freight_basis not in ("MANUAL_RATE", "MANUAL_AMOUNT"):
+        d = inv.dispatch_date or local_today()
+        lk = trs.find(db, inv.transporter_id, inv.location_id, d)
+        if not lk.found:
+            problems.append(lk.message)
     if cfg.get(db, "dispatch.vehicle_mandatory") and not inv.vehicle_no:
         problems.append("Vehicle number missing")
     if cfg.get(db, "dispatch.lr_mandatory") and not inv.lr_no:
@@ -170,68 +507,101 @@ def slip_blockers(db: Session, inv: Invoice) -> list[str]:
     return problems
 
 
+def data_warnings(db: Session, inv: Invoice) -> list[str]:
+    """Non-blocking sanity checks shown to the operator (the slip can still be generated)."""
+    out = []
+    if inv.vehicle_no and not vehicle_looks_valid(inv.vehicle_no):
+        out.append(f"Vehicle number '{inv.vehicle_no}' does not look like a registration number "
+                   "(e.g. CG04AB1234 / 22BH1234AA). Please double-check it.")
+    if inv.lr_no and inv.transporter_id:
+        dup = db.scalar(select(Invoice.invoice_no).where(
+            Invoice.lr_no == inv.lr_no, Invoice.transporter_id == inv.transporter_id, Invoice.id != inv.id,
+            Invoice.status != S.CANCELLED).limit(1))
+        if dup:
+            out.append(f"LR {inv.lr_no} is also used on invoice {dup} (same transporter). Fine for a shared "
+                       "consignment - otherwise check for a typo.")
+    return out
+
+
+def _lr_conflict(db: Session, lr_no: str, transporter_id: int | None, invs: list[Invoice]) -> Invoice | None:
+    """An LR of a transporter belongs to one consignment (one customer). Returns a clash on another customer."""
+    if not lr_no or not transporter_id:
+        return None
+    ids = [i.id for i in invs]
+    customers = {i.customer_id for i in invs}
+    return db.scalar(select(Invoice).where(Invoice.lr_no == lr_no, Invoice.transporter_id == transporter_id,
+                                           Invoice.id.notin_(ids), Invoice.status != S.CANCELLED,
+                                           Invoice.customer_id.notin_(customers)).limit(1))
+
+
 def generate_slip(db: Session, user: User, inv: Invoice) -> DispatchSlip:
     _perm(user, "dispatch.operate")
     problems = slip_blockers(db, inv)
     if problems:
         raise BusinessError("Cannot generate slip: " + "; ".join(problems))
     if inv.lr_no:
-        dup = db.scalar(select(Invoice).where(Invoice.lr_no == inv.lr_no, Invoice.transporter_id == inv.transporter_id,
-                                              Invoice.id != inv.id, Invoice.status != S.CANCELLED,
-                                              Invoice.customer_id != inv.customer_id))
+        dup = _lr_conflict(db, inv.lr_no, inv.transporter_id, [inv])
         if dup:
             raise BusinessError(f"LR {inv.lr_no} of this transporter is already used for invoice {dup.invoice_no} "
                                 f"(different customer)")
-    prefix = cfg.get(db, "dispatch.number_prefix") or "DS"
-    fy = fiscal_year(inv.dispatch_date or local_today())
-    seq = next_sequence(db, f"DISPATCH:{inv.cfa.code}:{fy}")
-    dispatch_no = f"{prefix}/{inv.cfa.code}/{fy.replace('-', '')[2:]}/{seq:05d}"
-    slip = DispatchSlip(dispatch_no=dispatch_no, invoice_id=inv.id, generated_by_id=user.id,
-                        snapshot=_slip_snapshot(db, inv, dispatch_no, user))
-    db.add(slip)
-    inv.dispatch_no = dispatch_no
-    inv.slip_generated_at = utcnow()
-    inv.slip_generated_by_id = user.id
-    old = inv.status
-    inv.status = S.SLIP_GENERATED
-    db.flush()
-    audit.log(db, user, "SLIP_GENERATED", MODULE, record_type="Invoice", record_id=inv.id, ref=inv.invoice_no,
-              field="status", old=old, new=S.SLIP_GENERATED, details={"dispatch_no": dispatch_no})
-    return slip
+    req = GatepassRequest(mode=DispatchMode.TRANSPORTER, transporter_id=inv.transporter_id,
+                          dispatch_date=inv.dispatch_date, dispatch_time=inv.dispatch_time,
+                          cases={inv.id: inv.boxes}, amount_paid=ZERO)
+    tr = db.get(Transporter, inv.transporter_id)
+    if tr and tr.payment_mode == PaymentMode.CASH and cfg.get(db, "gatepass.cash_paid_default"):
+        req.amount_paid = None
+    return create_gatepass(db, user, [inv], req, legacy=True)
 
 
-def record_print(db: Session, user: User, inv: Invoice, output: str, reason: str | None = None) -> tuple[DispatchSlip, SlipPrintLog]:
-    if inv.print_count == 0:
-        _perm(user, "dispatch.operate")
-    slip = active_slip(db, inv)
-    if not slip:
-        raise BusinessError("Generate the dispatch slip first")
+# ----------------------------------------------------------------------------- printing
+def _print_slip(db: Session, user: User, slip: DispatchSlip, output: str, reason: str | None) -> list[SlipPrintLog]:
     if output not in ("PRINT_A4", "PRINT_A5", "PDF_A4", "PDF_A5"):
         raise BusinessError("Unknown print format")
+    if slip.is_void:
+        raise BusinessError(f"Gatepass {slip.dispatch_no} is void")
     is_reprint = slip.print_count > 0
     if is_reprint:
         if not user.can("dispatch.reprint"):
             raise BusinessError("Not authorised to reprint dispatch slips")
-        if cfg.get(db, "dispatch.reprint_reason_required") and (not reason or len(reason.strip()) < 3):
-            raise BusinessError("Reason is mandatory for reprinting a dispatch slip")
+        if cfg.get(db, "dispatch.reprint_reason_required") and (not reason or len(reason.strip()) < 5):
+            raise BusinessError("Reason is mandatory for reprinting a dispatch slip (at least 5 characters)")
+    else:
+        _perm(user, "dispatch.operate")
     slip.print_count += 1
-    inv.print_count = (inv.print_count or 0) + 1
-    log = SlipPrintLog(slip_id=slip.id, invoice_id=inv.id, dispatch_no=slip.dispatch_no, print_no=slip.print_count,
-                       is_reprint=is_reprint, output=output, reason=(reason or "").strip() or None,
-                       printed_by_id=user.id, ip=context.request_ip.get())
-    db.add(log)
-    if not is_reprint:
-        inv.first_printed_at = utcnow()
-        inv.first_printed_by_id = user.id
-        if inv.status == S.SLIP_GENERATED:
-            inv.status = S.SLIP_PRINTED
-    audit.log(db, user, "SLIP_REPRINTED" if is_reprint else "SLIP_PRINTED", MODULE, record_type="Invoice",
-              record_id=inv.id, ref=inv.invoice_no, field="print_count", old=slip.print_count - 1,
-              new=slip.print_count, reason=reason, details={"dispatch_no": slip.dispatch_no, "output": output})
+    logs = []
+    for inv in slip_invoices(db, slip):
+        inv.print_count = (inv.print_count or 0) + 1
+        log = SlipPrintLog(slip_id=slip.id, invoice_id=inv.id, dispatch_no=slip.dispatch_no,
+                           print_no=slip.print_count, is_reprint=is_reprint, output=output,
+                           reason=(reason or "").strip() or None, printed_by_id=user.id, ip=context.request_ip.get())
+        db.add(log)
+        logs.append(log)
+        if not is_reprint:
+            inv.first_printed_at = utcnow()
+            inv.first_printed_by_id = user.id
+            if inv.status == S.SLIP_GENERATED:
+                inv.status = S.SLIP_PRINTED
+        audit.log(db, user, "SLIP_REPRINTED" if is_reprint else "SLIP_PRINTED", MODULE, record_type="Invoice",
+                  record_id=inv.id, ref=inv.invoice_no, field="print_count", old=slip.print_count - 1,
+                  new=slip.print_count, reason=reason, details={"dispatch_no": slip.dispatch_no, "output": output})
     db.flush()
+    return logs
+
+
+def record_print(db: Session, user: User, inv: Invoice, output: str, reason: str | None = None) -> tuple[DispatchSlip, SlipPrintLog]:
+    slip = active_slip(db, inv)
+    if not slip:
+        raise BusinessError("Generate the dispatch slip first")
+    logs = _print_slip(db, user, slip, output, reason)
+    log = next((lg for lg in logs if lg.invoice_id == inv.id), logs[0])
     return slip, log
 
 
+def print_gatepass(db: Session, user: User, slip: DispatchSlip, output: str, reason: str | None = None) -> SlipPrintLog:
+    return _print_slip(db, user, slip, output, reason)[0]
+
+
+# ----------------------------------------------------------------------------- completion / gate-out
 def completion_blockers(db: Session, inv: Invoice) -> list[str]:
     rule = cfg.get(db, "dispatch.complete_requires")
     if inv.status == S.DISPATCHED:
@@ -247,13 +617,7 @@ def completion_blockers(db: Session, inv: Invoice) -> list[str]:
     return []
 
 
-def complete(db: Session, user: User, inv: Invoice) -> None:
-    _perm(user, "dispatch.complete")
-    problems = completion_blockers(db, inv)
-    if problems:
-        audit.log(db, user, "COMPLETE_BLOCKED", MODULE, record_type="Invoice", record_id=inv.id, ref=inv.invoice_no,
-                  reason="; ".join(problems))
-        raise BusinessError("Cannot complete dispatch: " + "; ".join(problems))
+def _complete(db: Session, user: User, inv: Invoice) -> None:
     old = inv.status
     inv.status = S.DISPATCHED
     inv.completed_at = utcnow()
@@ -261,6 +625,167 @@ def complete(db: Session, user: User, inv: Invoice) -> None:
     inv.erp_sync_status = "PENDING"
     audit.log(db, user, "DISPATCH_COMPLETED", MODULE, record_type="Invoice", record_id=inv.id, ref=inv.invoice_no,
               field="status", old=old, new=S.DISPATCHED, details={"dispatch_no": inv.dispatch_no})
+
+
+def _close_slip_if_done(db: Session, user: User, slip: DispatchSlip | None) -> None:
+    if slip and not slip.gate_out_at:
+        invs = slip_invoices(db, slip)
+        if all(i.status in (S.DISPATCHED, S.CANCELLED) for i in invs):
+            slip.gate_out_at = utcnow()
+            slip.gate_out_by_id = user.id
+            notify_service.on_gate_out(db, user, slip, invs)
+
+
+def complete(db: Session, user: User, inv: Invoice) -> None:
+    _perm(user, "dispatch.complete")
+    problems = completion_blockers(db, inv)
+    if problems:
+        audit.log(db, user, "COMPLETE_BLOCKED", MODULE, record_type="Invoice", record_id=inv.id, ref=inv.invoice_no,
+                  reason="; ".join(problems))
+        raise BusinessError("Cannot complete dispatch: " + "; ".join(problems))
+    _complete(db, user, inv)
+    _close_slip_if_done(db, user, active_slip(db, inv))
+
+
+def gate_out(db: Session, user: User, slip: DispatchSlip) -> int:
+    """Guard scans the gatepass at the gate: every invoice on it becomes DISPATCHED (completion rule applies)."""
+    _perm(user, "dispatch.complete")
+    if slip.is_void:
+        raise BusinessError(f"Gatepass {slip.dispatch_no} is VOID - the goods must not leave on it")
+    if slip.gate_out_at:
+        raise BusinessError(f"Gatepass {slip.dispatch_no} already went out on {slip.gate_out_at:%d-%m-%Y %H:%M} UTC")
+    invs = [i for i in slip_invoices(db, slip) if i.status != S.CANCELLED]
+    problems = sorted({p for i in invs for p in completion_blockers(db, i) if p != "Already dispatched"})
+    if problems:
+        audit.log(db, user, "GATE_OUT_BLOCKED", MODULE, record_type="DispatchSlip", record_id=slip.id,
+                  ref=slip.dispatch_no, reason="; ".join(problems))
+        raise BusinessError("Gate-out refused: " + "; ".join(problems))
+    n = 0
+    for inv in invs:
+        if inv.status != S.DISPATCHED:
+            _complete(db, user, inv)
+            n += 1
+    slip.gate_out_at = utcnow()
+    slip.gate_out_by_id = user.id
+    audit.log(db, user, "GATE_OUT", MODULE, record_type="DispatchSlip", record_id=slip.id, ref=slip.dispatch_no,
+              details={"invoices": n, "cases": slip.total_cases})
+    notify_service.on_gate_out(db, user, slip, invs)  # "your order is on the way" (when alerts are switched on)
+    return n
+
+
+# ----------------------------------------------------------------------------- LR (arrives after dispatch)
+def lr_locked_reason(db: Session, inv: Invoice) -> str | None:
+    if inv.status == S.CANCELLED:
+        return "invoice cancelled"
+    if inv.status in S.PRE_SLIP:
+        return None
+    if inv.transporter_bill_id:
+        bill = db.get(TransporterBill, inv.transporter_bill_id)
+        if bill and bill.status in (BillStatus.APPROVED, BillStatus.PAID):
+            return f"on approved transporter bill {bill.bill_no}"
+    return None
+
+
+def set_lr(db: Session, user: User, invs: list[Invoice], lr_no: str | None, lr_date=None,
+           reason: str | None = None, *, from_bill: bool = False) -> int:
+    """Enter / correct the LR (bilty / GR / docket) number of a consignment - any time until the bill is approved.
+    from_bill: accounts staff accepting a bill line as this consignment (they hold recon.edit, not dispatch rights)."""
+    if not (from_bill and user.can("recon.edit")):
+        _perm(user, "dispatch.operate")
+    lr = (str(lr_no or "").strip().upper()) or None
+    if lr and len(lr) > 40:
+        raise BusinessError("LR number is too long")
+    try:
+        d = parse_date(lr_date) if lr_date not in (None, "") else None
+    except ValueError as e:
+        raise BusinessError(f"LR date: {e}") from e
+    if not invs:
+        raise BusinessError("No invoices selected")
+    for inv in invs:
+        why = lr_locked_reason(db, inv)
+        if why:
+            raise BusinessError(f"LR of invoice {inv.invoice_no} cannot be changed: {why}")
+        if inv.status not in (S.SLIP_GENERATED, S.SLIP_PRINTED, S.DISPATCHED):
+            raise BusinessError(f"Invoice {inv.invoice_no} is not on a gatepass yet")
+    trs_ids = {i.transporter_id for i in invs}
+    if lr and len(trs_ids) == 1:
+        dup = _lr_conflict(db, lr, next(iter(trs_ids)), invs)
+        if dup:
+            raise BusinessError(f"LR {lr} of this transporter is already used for {dup.customer.name} (invoice "
+                                f"{dup.invoice_no}). One LR belongs to one consignee - check the number.")
+    if d and any(d < (i.dispatch_date or i.invoice_date) for i in invs):
+        raise BusinessError("LR date cannot be before the dispatch date")
+    n = 0
+    for inv in invs:
+        if inv.lr_no == lr and inv.lr_date == (d or inv.lr_date):
+            continue
+        changed = inv.lr_no is not None and inv.lr_no != lr
+        if changed and (not reason or len(reason.strip()) < 3) and inv.lr_updated_at:
+            raise BusinessError(f"Invoice {inv.invoice_no} already has LR {inv.lr_no}; give a reason for changing it")
+        audit.log(db, user, "LR_CHANGED" if changed else "LR_ENTERED", MODULE, record_type="Invoice", record_id=inv.id,
+                  ref=inv.invoice_no, field="lr_no", old=inv.lr_no, new=lr, reason=reason,
+                  details={"lr_date": d.isoformat() if d else None, "dispatch_no": inv.dispatch_no})
+        inv.lr_no = lr
+        if d or not lr:
+            inv.lr_date = d
+        inv.lr_updated_at = utcnow()
+        inv.lr_updated_by_id = user.id
+        n += 1
+    if n and lr:
+        notify_service.on_lr(db, user, invs)  # tell the customer the LR number (when alerts are switched on)
+    if n and invs[0].transporter_bill_id:  # re-check the bill this consignment is on
+        bill = db.get(TransporterBill, invs[0].transporter_bill_id)
+        if bill and bill.status in (BillStatus.PENDING, BillStatus.MATCHED, BillStatus.VARIANCE):
+            from app.services import recon_service
+            recon_service.rematch(db, bill)
+    return n
+
+
+# ----------------------------------------------------------------------------- void / cancel
+def _release(db: Session, inv: Invoice) -> None:
+    """Take an invoice off its gatepass: back to the dispatch queue; card-priced freight is worked out again next time."""
+    inv.dispatch_no = None
+    inv.dispatch_slip_id = None
+    inv.slip_generated_at = None
+    inv.print_count = 0
+    inv.first_printed_at = None
+    if inv.rate_level in GATEPASS_LEVELS:
+        inv.rate_per_box = None
+        inv.rate_level = None
+        inv.freight_amount = None
+        inv.freight_basis = "AUTO"
+    inv.extra_charge = None
+
+
+def void_gatepass(db: Session, user: User, slip: DispatchSlip, reason: str) -> int:
+    _perm(user, "dispatch.void_slip")
+    if slip.is_void:
+        raise BusinessError("Gatepass is already void")
+    if not reason or len(reason.strip()) < 5:
+        raise BusinessError("Reason (min 5 characters) is required to void a gatepass")
+    invs = slip_invoices(db, slip)
+    gone = [i.invoice_no for i in invs if i.status == S.DISPATCHED]
+    if gone:
+        raise BusinessError(f"Invoices {', '.join(gone[:5])} already left the gate; cancel them individually "
+                            "(administrator) instead of voiding the gatepass")
+    slip.is_void = True
+    slip.voided_at = utcnow()
+    slip.voided_by_id = user.id
+    slip.void_reason = reason.strip()
+    n = 0
+    for inv in invs:
+        if inv.status not in (S.SLIP_GENERATED, S.SLIP_PRINTED) or inv.dispatch_slip_id not in (None, slip.id):
+            continue
+        old = inv.status
+        _release(db, inv)
+        inv.status = S.VERIFIED if inv.verified_at else S.PENDING
+        refresh_status(db, inv)
+        audit.log(db, user, "SLIP_VOIDED", MODULE, record_type="Invoice", record_id=inv.id, ref=inv.invoice_no,
+                  field="status", old=old, new=inv.status, reason=reason, details={"dispatch_no": slip.dispatch_no})
+        n += 1
+    audit.log(db, user, "GATEPASS_VOIDED", MODULE, record_type="DispatchSlip", record_id=slip.id,
+              ref=slip.dispatch_no, reason=reason, details={"invoices_released": n})
+    return n
 
 
 def void_slip(db: Session, user: User, inv: Invoice, reason: str) -> None:
@@ -271,19 +796,13 @@ def void_slip(db: Session, user: User, inv: Invoice, reason: str) -> None:
         raise BusinessError("Reason (min 5 characters) is required to void a slip")
     slip = active_slip(db, inv)
     if slip:
-        slip.is_void = True
-        slip.voided_at = utcnow()
-        slip.voided_by_id = user.id
-        slip.void_reason = reason
+        void_gatepass(db, user, slip, reason)
+        return
     old = inv.status
-    inv.dispatch_no = None
-    inv.slip_generated_at = None
-    inv.print_count = 0
-    inv.first_printed_at = None
+    _release(db, inv)
     inv.status = S.VERIFIED if inv.verified_at else S.PENDING
     audit.log(db, user, "SLIP_VOIDED", MODULE, record_type="Invoice", record_id=inv.id, ref=inv.invoice_no,
-              field="status", old=old, new=inv.status, reason=reason,
-              details={"dispatch_no": slip.dispatch_no if slip else None})
+              field="status", old=old, new=inv.status, reason=reason)
     refresh_status(db, inv)
 
 
@@ -300,7 +819,10 @@ def cancel(db: Session, user: User, inv: Invoice, reason: str) -> None:
         if bill and bill.status in (BillStatus.APPROVED, BillStatus.PAID):
             raise BusinessError(f"Invoice is on approved/paid transporter bill {bill.bill_no}; cannot cancel")
     slip = active_slip(db, inv)
-    if slip:
+    if slip and inv.status in (S.SLIP_GENERATED, S.SLIP_PRINTED) and len(slip.lines) > 1:
+        raise BusinessError(f"Invoice is on gatepass {slip.dispatch_no} with {len(slip.lines) - 1} other invoice(s). "
+                            "Void the gatepass first (it can then be made again without this invoice).")
+    if slip and len(slip.lines) <= 1:
         slip.is_void = True
         slip.voided_at = utcnow()
         slip.voided_by_id = user.id
@@ -324,10 +846,7 @@ def reinstate(db: Session, user: User, inv: Invoice, reason: str) -> None:
     if not reason or len(reason.strip()) < 5:
         raise BusinessError("Reason is mandatory")
     inv.status = S.PENDING
-    inv.dispatch_no = None
-    inv.slip_generated_at = None
-    inv.print_count = 0
-    inv.first_printed_at = None
+    _release(db, inv)
     inv.completed_at = None
     inv.verified_at = None
     inv.cancelled_at = None
@@ -378,3 +897,11 @@ def actions_for(db: Session, user: User, inv: Invoice) -> Actions:
 def default_dispatch_datetime() -> tuple[date, time]:
     now = local_now()
     return now.date(), now.time().replace(second=0, microsecond=0)
+
+
+def parse_money(v) -> Decimal | None:
+    try:
+        d = parse_decimal(v)
+    except ValueError as e:
+        raise BusinessError(f"Amount: {e}") from e
+    return money(d) if d is not None else None

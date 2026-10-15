@@ -2,12 +2,27 @@
 {% from "_macros.html" import badge with context %}
 {% block content %}
 <div class="page-head">
-  <div><h1>Invoice Import</h1><div class="sub">Controlled import of ERP invoice exports (Excel / CSV). Live API/DB pulls run from Administration › Integration Settings and land in the same pipeline.</div></div>
+  <div><h1>Invoice Import</h1><div class="sub">No ERP access needed: scan the e-invoice QR at the dispatch desk, let the ERP's daily export drop into the folder below, or upload any export here. Live API/DB pulls (where an ERP offers them) run from Administration › Integration Settings and land in the same pipeline.</div></div>
+  <div class="actions">{% if can('dispatch.operate') %}<a class="btn" href="/gatepass/new">Scan invoices (QR)</a>{% endif %}</div>
+</div>
+<div class="grid g2">
+  <form method="post" action="/imports/quick" enctype="multipart/form-data" class="card stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <h2 style="margin:0">One-click import</h2>
+    <p class="small muted" style="margin:0">Drop any ERP export (invoice-wise or item-wise). CTDMS recognises the layout from its column headings, imports every good row and keeps problem rows for correction. Item-wise files add SKU lines — also to invoices already scanned at the desk.</p>
+    <div class="row"><input type="file" name="file" accept=".csv,.xlsx,.xls,.txt" required style="flex:1"><button class="btn btn-primary" type="submit">Import</button></div>
+  </form>
+  <div class="card stack">
+    <h2 style="margin:0">Drop folder {% if inbox.enabled %}<span class="badge b-ACTIVE">checked every {{ inbox.every }} min</span>{% else %}<span class="badge b-INACTIVE">off</span>{% endif %}</h2>
+    <p class="small muted" style="margin:0">Set the ERP's scheduled export (or "Save as") to <code>{{ inbox.path }}</code> — or a sub-folder named after the ERP code (e.g. <code>inbox\MARG</code>). Files are imported automatically and moved to <code>processed</code>; unreadable ones go to <code>failed</code> with a note.</p>
+    <div class="small">{% if inbox.waiting %}Waiting: {{ inbox.waiting|join(', ') }}{% else %}<span class="muted">Nothing waiting.</span>{% endif %}{% if inbox.failed %}<div class="pos">Recently failed: {{ inbox.failed|join(', ') }}</div>{% endif %}</div>
+    <form method="post" action="/imports/inbox/run"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn" type="submit">Check the folder now</button></form>
+  </div>
 </div>
 <div class="grid g-side">
   <form method="post" action="/imports/upload" enctype="multipart/form-data" class="card">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
-    <div class="card-head"><h2>1 · Upload file</h2></div>
+    <div class="card-head"><h2>Step-by-step upload</h2><span class="small muted">for a new layout: map the columns once, save as template</span></div>
     <div class="form-grid">
       <div class="w2"><label>File (.csv, .xlsx, .xls) <span class="req">*</span></label><input type="file" name="file" accept=".csv,.xlsx,.xls,.txt" required></div>
       <div><label>Source ERP</label><select name="erp_system_id"><option value="">— select —</option>{% for e in erps %}<option value="{{ e.id }}">{{ e.code }} · {{ e.name }}</option>{% endfor %}</select><div class="field-hint">Used for ERP code mapping</div></div>

@@ -33,6 +33,33 @@ def seeded():
     yield
 
 
+# The v1.0-v1.2 suites test the principal rate card (company + CFA + location, priced at import). It is still a
+# supported mode (setting freight.source = COMPANY); v1.3 prices on the gatepass from the transporter rate card.
+COMPANY_RATE_MODULES = {"test_acceptance", "test_controls", "test_qa_fixes", "test_v12_fixes"}
+
+
+def set_freight_source(mode: str) -> None:
+    from app.models import Setting
+    s = SessionLocal()
+    try:
+        row = s.get(Setting, "freight.source")
+        if row is None:
+            row = Setting(key="freight.source", value_type="choice", category="Freight rates",
+                          choices="TRANSPORTER,COMPANY")
+            s.add(row)
+        row.value = mode
+        s.commit()
+    finally:
+        s.close()
+
+
+@pytest.fixture(autouse=True)
+def freight_source(request):
+    mode = "COMPANY" if request.module.__name__.split(".")[-1] in COMPANY_RATE_MODULES else "TRANSPORTER"
+    set_freight_source(mode)
+    yield mode
+
+
 def _test_session():
     """Session for assertions. On SQLite it uses the driver's default (autocommit reads) so the test never
     holds a lock or a stale snapshot while the app handles requests."""

@@ -22,10 +22,22 @@ every record is traceable to an import batch and row.
 | `cfa_code` | if not defaulted | plant / depot / branch → mapping |
 | `boxes` | optional* | blank → invoice lands as EXCEPTION "boxes missing"; entered at dispatch (*configurable) |
 | `location` | optional | delivery city / station; defaults to the customer's delivery location |
+| `customer_gstin` | optional | finds the customer by GSTIN when the ERP code is not mapped (then `customer_code` may be blank) |
+| `irn` | optional | e-invoice IRN; duplicates refused |
+| `sku_code`, `sku_name`, `hsn`, `batch_no`, `qty`, `free_qty`, `item_value` | optional | item-wise rows → SKU lines; `sales_value` defaults to the sum of `item_value` |
 | `customer_name`, `source_invoice_id`, `transporter_code`, `lr_no`, `vehicle_no`, `remarks` | optional | |
 
 ## Ways in
 
+0. **No ERP access at all (v1.3)** — the usual case:
+   * **E-invoice QR scan** at the dispatch desk (*Scan & Gatepass*). The IRP-signed QR on every B2B e-invoice
+     carries seller GSTIN, buyer GSTIN, invoice no / date / value, item count and IRN. Company and customer masters
+     need their **GSTIN** filled once. The IRN is unique, so scanning twice never creates a duplicate.
+   * **Drop folder**: any ERP that can export or schedule an Excel / CSV report writes it to `data/inbox` (or
+     `data/inbox/<ERP code>` so the ERP's code mappings are used). The layout is recognised from the column headings
+     (saved import templates) and the file is imported automatically.
+   * **Item-wise exports** (one row per SKU: item code / name / qty / value) give SKU-level data per invoice and
+     are merged into invoices captured by QR.
 1. **Excel / CSV upload** (*Operations › Invoice Import*) — available today for every ERP. Save one template per
    export layout. Samples of each ERP's layout are in `sample_data/`.
 2. **Push API** — the ERP (or a small middleware job) POSTs invoices:

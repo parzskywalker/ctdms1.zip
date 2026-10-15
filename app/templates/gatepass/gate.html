@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge with context %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Gate check</h1><div class="sub">Scan the barcode on the printed gatepass (or type its number). Goods leave only on a printed, valid gatepass.</div></div>
+</div>
+<form method="get" class="card row" style="align-items:flex-end">
+  <div style="flex:1 1 300px"><label for="gate-code">Gatepass number</label><input id="gate-code" type="text" name="code" value="{{ code }}" autofocus autocomplete="off" placeholder="DS/RPR/2627/00012 or the last digits"></div>
+  <button class="btn btn-primary btn-lg" type="submit">Check</button>
+</form>
+
+{% if not_found %}<div class="alert alert-error"><b>No gatepass "{{ code }}".</b> Do not let the goods out — ask the dispatch desk.</div>{% endif %}
+
+{% if slip %}
+  {% if slip.is_void %}
+    <div class="alert alert-error" style="font-size:16px"><b>STOP — gatepass {{ slip.dispatch_no }} is VOID.</b> {{ slip.void_reason }}</div>
+  {% elif slip.gate_out_at %}
+    <div class="alert alert-warn" style="font-size:16px"><b>Already went out</b> on {{ slip.gate_out_at|dt }} ({{ slip.gate_out_by.full_name if slip.gate_out_by else '' }}). A second vehicle with this gatepass must be stopped.</div>
+  {% elif blockers %}
+    <div class="alert alert-error" style="font-size:16px"><b>STOP — not cleared.</b><ul>{% for b in blockers %}<li>{{ b }}</li>{% endfor %}</ul></div>
+  {% else %}
+    <div class="alert alert-success" style="font-size:16px"><b>Cleared.</b> Count the cases, then confirm gate-out.</div>
+  {% endif %}
+  <div class="grid g-side">
+    <div class="card flush">
+      <div class="card-head"><h3><span class="mono">{{ slip.dispatch_no }}</span> · {{ slip.mode_label }}</h3><span>{{ slip.transporter.name if slip.transporter else '' }}{% if slip.outside_auto %} · {{ slip.outside_auto.name }} {{ slip.outside_auto.mobile or '' }}{% endif %}</span></div>
+      <div class="table-wrap"><table class="data compact">
+        <thead><tr><th>Invoice</th><th>Customer</th><th>Area</th><th class="num">Cases</th><th>Status</th></tr></thead>
+        <tbody>{% for i in invs %}<tr><td>{{ i.invoice_no }}</td><td>{{ i.customer.name }}</td><td>{{ i.location.name }}</td><td class="num">{{ i.boxes }}</td><td>{{ badge(i.status) }}</td></tr>{% endfor %}</tbody>
+        <tfoot><tr><td colspan="3"><b>Total cases to count</b></td><td class="num"><b class="bigfig">{{ slip.total_cases }}</b></td><td></td></tr></tfoot>
+      </table></div>
+    </div>
+    <div>
+      {% if not slip.is_void and not slip.gate_out_at and not blockers and can('dispatch.complete') %}
+      <form method="post" action="/gatepass/{{ slip.id }}/gate-out" class="card stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="back" value="gate">
+        <h3 style="margin:0">{{ slip.total_cases }} cases counted?</h3>
+        <button class="btn btn-ok btn-lg" type="submit">Confirm gate-out</button>
+      </form>
+      {% endif %}
+      <div class="card"><dl class="dl tight"><dt>Date</dt><dd>{{ slip.dispatch_date|date }}</dd><dt>Printed</dt><dd>{{ '×%d'|format(slip.print_count) if slip.print_count else 'NO' }}</dd><dt>Invoices</dt><dd>{{ slip.invoice_count }}</dd></dl></div>
+    </div>
+  </div>
+{% endif %}
+
+<div class="card flush">
+  <div class="card-head"><h3>Waiting at the gate ({{ waiting|length }})</h3></div>
+  <div class="table-wrap"><table class="data compact">
+    <thead><tr><th>Gatepass</th><th>Date</th><th>Carrier</th><th class="num">Cases</th><th>Printed</th><th></th></tr></thead>
+    <tbody>{% for s in waiting %}<tr><td class="mono">{{ s.dispatch_no }}</td><td>{{ s.dispatch_date|date }}</td><td>{{ s.transporter.name if s.transporter else s.mode_label }}</td><td class="num">{{ s.total_cases }}</td><td>{{ 'yes' if s.print_count else '<span class="pos">no</span>'|safe }}</td><td class="num"><a class="btn btn-sm" href="/gatepass/gate?code={{ s.dispatch_no|urlencode }}">Check</a></td></tr>
+    {% else %}<tr><td colspan="6" class="empty">Nothing waiting.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% endblock %}

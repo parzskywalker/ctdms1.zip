@@ -24,6 +24,12 @@ def _pending_override(db: Session, inv: Invoice) -> InvoiceOverride | None:
                                                    InvoiceOverride.status == OverrideStatus.PENDING))
 
 
+def company_rates(db: Session) -> bool:
+    """True when freight comes from the principal rate card at import (v1.2); False when the transporter rate
+    card prices each invoice on the gatepass (v1.3 default)."""
+    return cfg.get(db, "freight.source") == "COMPANY"
+
+
 def refresh_status(db: Session, inv: Invoice) -> str:
     """Derive the pre-slip status from the invoice's data. Post-slip statuses are left untouched."""
     if inv.status not in InvoiceStatus.PRE_SLIP:
@@ -33,7 +39,7 @@ def refresh_status(db: Session, inv: Invoice) -> str:
         code = ExceptionCode.OVERRIDE_PENDING
     elif inv.boxes is None or inv.boxes <= 0:
         code = ExceptionCode.BOXES_MISSING
-    elif inv.freight_amount is None:
+    elif inv.freight_amount is None and company_rates(db):
         code = inv.exception_code if inv.exception_code in (ExceptionCode.RATE_CONFLICT,) else ExceptionCode.RATE_MISSING
     if code:
         reason = inv.exception_reason if code == inv.exception_code and inv.exception_reason else ExceptionCode.LABELS[code]
@@ -52,6 +58,9 @@ def apply_freight(db: Session, inv: Invoice, user: User | None = None, *, reason
     """Look up the applicable rate and (re)compute freight. Never touches slipped/dispatched/cancelled invoices
     and never re-prices invoices whose freight was set by an authorised manual override (unless forced)."""
     if inv.status not in InvoiceStatus.PRE_SLIP:
+        return
+    if not company_rates(db) and inv.freight_basis == "AUTO":
+        refresh_status(db, inv)  # priced from the transporter rate card when the gatepass is made
         return
     if inv.freight_basis != "AUTO" and not force_lookup:
         inv.freight_amount = calc_freight(inv.boxes, inv.rate_per_box) if inv.freight_basis == "MANUAL_RATE" \
@@ -97,6 +106,9 @@ def recalculate(db: Session, user: User, inv: Invoice, reason: str) -> None:
         raise BusinessError("Freight is frozen once the dispatch slip is generated")
     if not reason or len(reason.strip()) < 3:
         raise BusinessError("Reason is required")
+    if not company_rates(db):
+        raise BusinessError("Freight comes from the transporter rate card when the gatepass is made - nothing to "
+                            "recalculate here")
     apply_freight(db, inv, user, reason=reason, audit_it=True, force_lookup=True)
 
 

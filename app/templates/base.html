@@ -20,7 +20,7 @@
       <div class="group">
         <div>{{ group }}</div>
         {% for label, url, icon in items %}
-          <a href="{{ url }}" class="{% if (url == '/' and path == '/') or (url != '/' and (path == url or path.startswith(url + '/'))) %}active{% endif %}">{{ label }}</a>
+          <a href="{{ url }}" class="{% if url == active_url %}active{% endif %}">{{ label }}</a>
         {% endfor %}
       </div>
     {% endfor %}

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="crumbs"><a href="/rate-cards">Transporter rate cards</a> › {{ t.name }}</div>
+<div class="page-head">
+  <div><h1>{{ t.name }}</h1><div class="sub">{{ t.payment_label }}{% if t.direct_pickup_charge %} · direct pickup {{ t.direct_pickup_charge|money }} {{ 'per case' if t.direct_pickup_basis == 'PER_CASE' else 'per trip' }}{% endif %} · {{ t.contact_person or '' }} {{ t.mobile or '' }}</div></div>
+  <div class="actions"><a class="btn" href="/masters/transporters/{{ t.id }}">Transporter details</a></div>
+</div>
+<form method="post" action="/rate-cards/{{ t.id }}/propose" class="card flush">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <div class="table-wrap"><table class="data">
+    <thead><tr><th>Area</th><th class="num">Rate / case today</th><th>Since</th><th>Next / pending</th><th>History</th>{% if can('rate.create') %}<th style="width:250px">New rate · from</th>{% endif %}</tr></thead>
+    <tbody>
+    {% for a in areas %}
+      <tr><td><b>{{ a.location.name }}</b> <span class="small muted">{{ a.location.code }}</span></td>
+        <td class="num"><b>{{ a.current.rate_per_case|rate if a.current else '—' }}</b></td>
+        <td class="small">{{ a.current.effective_from|date if a.current else '' }}</td>
+        <td class="small">{% if a.future %}{{ a.future.rate_per_case|rate }} from {{ a.future.effective_from|date }}{% endif %}{% if a.pending %}<span class="badge b-PENDING_APPROVAL">{{ a.pending.rate_per_case|rate }} from {{ a.pending.effective_from|date }} awaiting approval</span>{% endif %}</td>
+        <td class="small muted">{% for h in a.history|reverse %}{% if h.status in ('APPROVED','REJECTED') %}<div>{{ h.rate_per_case|rate }} {{ h.effective_from|date }}{% if h.effective_to %}–{{ h.effective_to|date }}{% endif %} {% if h.status == 'REJECTED' %}(rejected){% endif %}{% if h.source == 'BILL' %} · from bill{% endif %}</div>{% endif %}{% endfor %}</td>
+        {% if can('rate.create') %}<td>{% if not a.pending %}<div class="row" style="gap:4px;flex-wrap:nowrap"><input type="text" inputmode="decimal" name="rate_{{ a.location.id }}" placeholder="₹" style="width:80px;min-height:28px;padding:3px 6px"><input type="date" name="from_{{ a.location.id }}" value="{{ today.isoformat() }}" style="min-height:28px;padding:3px 4px;width:130px"></div>{% endif %}</td>{% endif %}
+      </tr>
+    {% else %}<tr><td colspan="6" class="empty">No rates yet for {{ t.name }}. Add the areas they serve below.</td></tr>{% endfor %}
+    {% if can('rate.create') and others %}
+      <tr><td colspan="5"><label class="small muted">Add an area</label><select name="new_location" style="max-width:260px"><option value="">— choose area —</option>{% for lo in others %}<option value="{{ lo.id }}">{{ lo.name }} ({{ lo.code }})</option>{% endfor %}</select></td>
+        <td><div class="row" style="gap:4px;flex-wrap:nowrap"><input type="text" inputmode="decimal" name="new_rate" placeholder="₹" style="width:80px;min-height:28px;padding:3px 6px"><input type="date" name="new_from" value="{{ today.isoformat() }}" style="min-height:28px;padding:3px 4px;width:130px"></div></td></tr>
+    {% endif %}
+    </tbody>
+  </table></div>
+  {% if can('rate.create') %}
+  <div class="sticky-bar"><input type="text" name="reason" placeholder="Reason / reference (e.g. transporter's rate letter dated…)" style="flex:1;max-width:420px" required minlength="3"><button class="btn btn-primary" type="submit">Send for approval</button><span class="small muted">A second person approves; the old rate ends the day before the new one starts.</span></div>
+  {% endif %}
+</form>
+{% if can('rate.create') %}
+<form method="post" action="/rate-cards/{{ t.id }}/upload" enctype="multipart/form-data" class="card row">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <div><b>Upload a rate list</b><div class="small muted">CSV / Excel with Area, Rate, Effective from (<a href="/rate-cards/template.csv">template</a>).</div></div>
+  <input type="file" name="file" accept=".csv,.xlsx,.xls" required><input type="text" name="reason" placeholder="Reason" style="max-width:240px"><button class="btn" type="submit">Upload for approval</button>
+</form>
+{% endif %}
+{% endblock %}

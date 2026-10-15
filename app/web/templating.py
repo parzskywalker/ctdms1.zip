@@ -63,33 +63,64 @@ def _tojson(v):
             .replace("&", "\\u0026").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))
 
 
+def _barcode_svg(text):
+    """Code 128 barcode as inline SVG (printed gatepasses are scanned at the gate)."""
+    from markupsafe import Markup
+    if not text:
+        return ""
+    try:
+        from reportlab.graphics import renderSVG
+        from reportlab.graphics.barcode import createBarcodeDrawing
+        d = createBarcodeDrawing("Code128", value=str(text), barHeight=32, barWidth=1.0, humanReadable=False)
+        svg = renderSVG.drawToString(d)
+        return Markup(svg[svg.find("<svg"):])
+    except Exception:  # noqa: BLE001 - the number is printed anyway
+        return ""
+
+
 env.filters.update(money=fmt_money, kpi_money=_kpi_money, int=fmt_int, date=fmt_date, dt=fmt_dt, time=fmt_time, pct=_pct, rate=_rate,
                    status_label=lambda s: InvoiceStatus.LABELS.get(s, (s or "").replace("_", " ").title()),
-                   level_label=lambda s: RateLevel.LABELS.get(s, s or "—"), display=display, jsdata=_tojson)
+                   level_label=lambda s: RateLevel.LABELS.get(s, s or "—"), display=display, jsdata=_tojson,
+                   barcode_svg=_barcode_svg)
 env.globals.update(app_version=__version__, InvoiceStatus=InvoiceStatus)
 
 NAV = [
     ("Dashboard", [("Dashboard", "/", "dashboard.view", "grid")]),
+    ("Dispatch desk", [
+        ("Scan & Gatepass", "/gatepass/new", "dispatch.operate", "scan"),
+        ("Gatepasses", "/gatepass", "dispatch.view", "clipboard"),
+        ("Gate Check", "/gatepass/gate", "dispatch.view", "shield"),
+        ("LR Pending", "/gatepass/lr-pending", "dispatch.view", "list"),
+        ("Customer Alerts", "/notifications", "dispatch.view", "bell"),
+        ("Pending Dispatch", "/dispatch/pending", "dispatch.view", "truck"),
+    ]),
     ("Operations", [
         ("Invoice Import", "/imports", "invoice.import", "upload"),
         ("Invoice Register", "/invoices", "invoice.view", "list"),
-        ("Pending Dispatch", "/dispatch/pending", "dispatch.view", "truck"),
         ("Dispatch Register", "/dispatch/register", "dispatch.view", "clipboard"),
         ("Freight Exceptions", "/exceptions", "invoice.view", "alert"),
         ("Approvals", "/approvals", "override.approve|rate.approve|recon.approve", "check"),
-        ("Reconciliation", "/recon", "recon.view", "scale"),
+        ("Transporter Bills", "/recon", "recon.view", "scale"),
+        ("Scan a Bill", "/recon/scan", "recon.edit", "scan"),
     ]),
     ("Masters", [
         ("Companies", "/masters/companies", "master.view", "building"),
         ("Customers", "/masters/customers", "master.view", "users"),
         ("CFAs", "/masters/cfas", "master.view", "warehouse"),
-        ("Locations", "/masters/locations", "master.view", "pin"),
-        ("Freight Rates", "/rates", "rate.view", "rupee"),
+        ("Areas / Locations", "/masters/locations", "master.view", "pin"),
         ("Transporters", "/masters/transporters", "master.view", "truck"),
+        ("Transporter Rate Cards", "/rate-cards", "rate.view", "rupee"),
+        ("Outside Autos", "/masters/autos", "master.view", "truck"),
+        ("Principal Freight Rates", "/rates", "rate.view", "rupee"),
         ("ERP Mappings", "/masters/erp-mappings", "master.view", "link"),
     ]),
     ("Reports", [
         ("Transportation MIS", "/mis", "report.view", "layers"),
+        ("Gatepass Register", "/reports/gatepass-register", "report.view", "bar"),
+        ("Transporter × Area", "/reports/transporter-area", "report.view", "bar"),
+        ("SKU-wise Dispatch", "/reports/sku-dispatch", "report.view", "bar"),
+        ("Customer Types", "/reports/customer-type", "report.view", "bar"),
+        ("Bill Irregularities", "/reports/bill-irregularities", "report.view", "bar"),
         ("Company-wise", "/reports/company-freight", "report.view", "bar"),
         ("Customer-wise", "/reports/customer-freight", "report.view", "bar"),
         ("CFA-wise", "/reports/cfa-freight", "report.view", "bar"),
@@ -137,10 +168,15 @@ def render(request: Request, name: str, ctx: dict | None = None, status_code: in
     has_session = "session" in request.scope
     today = local_today()
     last_month_end = today.replace(day=1) - timedelta(days=1)
+    nav = nav_for(user)
+    path = request.url.path
+    urls = [u for _, items in nav for _, u, _ in items]
+    matches = [u for u in urls if (u == "/" and path == "/") or (u != "/" and (path == u or path.startswith(u + "/")))]
     base = {
         "request": request,
         "user": user,
-        "nav": nav_for(user),
+        "nav": nav,
+        "active_url": max(matches, key=len) if matches else None,  # most specific menu entry only
         "csrf": csrf_token(request) if has_session else "",
         "flashes": request.session.pop("flash", []) if has_session else [],
         "app_title": s.app_title,
@@ -176,6 +212,18 @@ def active_lists(db: Session) -> dict:
 async def get_form(request: Request):
     """Dependency: parsed form data, so endpoints can stay synchronous (run in the thread pool)."""
     return await request.form()
+
+
+def read_upload(upload) -> bytes:
+    """Read an UploadFile without ever holding more than max_upload_mb (+1 byte) in memory."""
+    from app.services.errors import BusinessError
+    limit = get_settings().max_upload_mb * 1024 * 1024
+    content = upload.file.read(limit + 1)
+    if len(content) > limit:
+        raise BusinessError(f"File too large (max {get_settings().max_upload_mb} MB). Split it into smaller files.")
+    if not content:
+        raise BusinessError("The uploaded file is empty")
+    return content
 
 
 def safe_path(target: str | None, default: str = "/") -> str:

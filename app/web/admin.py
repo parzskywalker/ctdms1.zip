@@ -9,19 +9,19 @@ from fastapi.responses import Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db import Base, get_db
+from app.db import Base, get_db, write_block, write_transaction
 from app.integrations.base import REGISTRY, get_adapter
 from app.integrations.runner import field_map_for, new_api_key, run_sync
 from app.models import CFA, Company, ERPSystem, IntegrationRun, Role, User, UserSession
 from app.security.auth import (
-    csrf_protect, hash_password, password_problems, require, revoke_user_sessions,
+    csrf_protect, hash_password, password_problems, require, sign_out_everywhere,
 )
 from app.security.permissions import PERMISSION_GROUPS, PERMISSIONS
 from app.services import audit
 from app.services import settings_service as cfg
 from app.services.errors import BusinessError
 from app.services.import_service import TARGET_FIELDS
-from app.services.utils import local_now
+from app.services.utils import local_now, safe_int
 from app.web.templating import flash, get_form, redirect, render
 
 router = APIRouter(dependencies=[Depends(csrf_protect)], include_in_schema=False)
@@ -58,23 +58,25 @@ def user_edit(uid: int, request: Request, db: Session = Depends(get_db), user: U
 @router.post("/admin/users/save")
 def user_save(request: Request, form=Depends(get_form), db: Session = Depends(get_db),
               user: User = Depends(require("admin.users"))):
-    uid = int(form["id"]) if form.get("id") else None
+    uid = safe_int(form.get("id"), minimum=1)
     username = (form.get("username") or "").strip().lower()
     if not username or not form.get("full_name"):
         raise BusinessError("Username and full name are required")
-    role = db.get(Role, int(form.get("role_id") or 0))
+    role = db.get(Role, safe_int(form.get("role_id"), 0))
     if not role:
         raise BusinessError("Select a role")
     dup = db.scalar(select(User).where(User.username == username, User.id != (uid or 0)))
     if dup:
         raise BusinessError(f"Username {username} already exists")
-    companies = list(db.scalars(select(Company).where(Company.id.in_([int(x) for x in form.getlist("companies")]))))
-    cfas = list(db.scalars(select(CFA).where(CFA.id.in_([int(x) for x in form.getlist("cfas")]))))
+    companies = list(db.scalars(select(Company).where(Company.id.in_([i for i in (safe_int(x) for x in form.getlist("companies")) if i]))))
+    cfas = list(db.scalars(select(CFA).where(CFA.id.in_([i for i in (safe_int(x) for x in form.getlist("cfas")) if i]))))
     values = {"username": username, "full_name": form.get("full_name").strip(), "email": form.get("email") or None,
               "mobile": form.get("mobile") or None, "role_id": role.id, "is_active": form.get("is_active") == "1",
               "all_companies": form.get("all_companies") == "1", "all_cfas": form.get("all_cfas") == "1"}
     if uid:
         u = db.get(User, uid)
+        if not u:
+            raise BusinessError("User not found")
         if u.id == user.id and (not values["is_active"] or not role.has("admin.users")):
             raise BusinessError("You cannot deactivate yourself or remove your own admin rights")
         changes = audit.diff(u, values)
@@ -83,11 +85,15 @@ def user_save(request: Request, form=Depends(get_form), db: Session = Depends(ge
             changes["companies"] = (old_c, sorted(c.code for c in companies))
         if old_f != sorted(c.code for c in cfas):
             changes["cfas"] = (old_f, sorted(c.code for c in cfas))
+        role_changed = u.role_id != role.id
+        was_active = u.is_active
         for k, v in values.items():
             setattr(u, k, v)
         u.companies, u.cfas = companies, cfas
-        if not values["is_active"]:
-            revoke_user_sessions(db, u.id)
+        if (not values["is_active"] and was_active) or role_changed:
+            # Deactivated or given a different role: sign them out everywhere - browser sessions and API tokens,
+            # for good (re-activating the account later does not revive old tokens). New role from next login.
+            sign_out_everywhere(db, u)
         audit.log_changes(db, user, "USER_UPDATED", "ADMIN", changes, record_type="User", record_id=u.id, ref=u.username)
     else:
         pwd = form.get("password") or ""
@@ -120,7 +126,7 @@ def user_password(uid: int, request: Request, password: str = Form(...), db: Ses
     u.password_changed_at = utcnow()
     u.failed_logins = 0
     u.locked_until = None
-    revoke_user_sessions(db, u.id)
+    sign_out_everywhere(db, u)
     audit.log(db, user, "PASSWORD_RESET", "ADMIN", record_type="User", record_id=u.id, ref=u.username)
     db.commit()
     flash(request, f"Password reset for {u.username}; they must change it at next login.", "success")
@@ -160,7 +166,7 @@ def roles_save(request: Request, form=Depends(get_form), db: Session = Depends(g
 
 
 # ----------------------------------------------------------------------------- settings
-@router.get("/admin/settings")
+@router.get("/admin/settings", dependencies=[Depends(write_transaction)])
 def settings_page(request: Request, db: Session = Depends(get_db), user: User = Depends(require("admin.settings"))):
     rows = cfg.all_settings(db)
     db.commit()
@@ -185,6 +191,8 @@ def settings_save(request: Request, form=Depends(get_form), db: Session = Depend
                     float(new)
                 except ValueError as e:
                     raise BusinessError(f"{s.key}: must be a number") from e
+            if s.value_type == "int" and not new.isdigit():
+                raise BusinessError(f"{s.key}: must be a whole number")
             if s.value_type == "choice" and s.choices and new not in s.choices.split(","):
                 raise BusinessError(f"{s.key}: invalid choice")
         if new != (s.value or ""):
@@ -322,7 +330,7 @@ def export_all(request: Request, db: Session = Depends(get_db), user: User = Dep
             for row in db.execute(select(*[table.c[c] for c in cols])):
                 w.writerow(["" if v is None else v for v in row])
             zf.writestr(f"{table.name}.csv", out.getvalue())
-    audit.log(db, user, "FULL_DATA_EXPORT", "ADMIN", ref="all tables")
-    db.commit()
+    with write_block(db):  # all tables were read from one consistent snapshot, without the write lock
+        audit.log(db, user, "FULL_DATA_EXPORT", "ADMIN", ref="all tables")
     return Response(buf.getvalue(), media_type="application/zip",
                     headers={"Content-Disposition": f'attachment; filename="ctdms-data-{local_now():%Y%m%d-%H%M}.zip"'})

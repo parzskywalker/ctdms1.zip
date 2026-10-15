@@ -33,6 +33,8 @@
     const n = $$('input[type=checkbox][name="ids"]:checked').length;
     bulkCount.textContent = n;
     $$('[data-needs-selection]').forEach((b) => { b.disabled = n === 0; });
+    const bar = bulkCount.closest('.sticky-bar');
+    if (bar) bar.classList.toggle('is-empty', n === 0);
     $$('input[type=checkbox][name="ids"]').forEach((c) => c.closest('tr') && c.closest('tr').classList.toggle('sel', c.checked));
   }
   $$('input[type=checkbox][name="ids"]').forEach((c) => c.addEventListener('change', updateBulk));
@@ -68,11 +70,50 @@
     });
   });
 
-  // Click-to-fill demo credentials on the login page
-  $$('[data-fill-user]').forEach((el) => el.addEventListener('click', () => {
-    const u = $('#username'), p = $('#password');
-    if (u && p) { u.value = el.getAttribute('data-fill-user'); p.value = el.getAttribute('data-fill-pass'); p.focus(); }
+  // Show / hide a block (mobile filter panel)
+  $$('[data-toggle]').forEach((b) => b.addEventListener('click', () => {
+    const t = $(b.getAttribute('data-toggle'));
+    if (t) t.classList.toggle('collapsed');
   }));
+
+  // Buttons that unlock another control once used (bulk print -> enable bulk complete)
+  $$('[data-unlocks]').forEach((b) => b.addEventListener('click', () => {
+    const t = $(b.getAttribute('data-unlocks'));
+    if (t) setTimeout(() => { t.disabled = false; t.removeAttribute('title'); }, 800);
+  }));
+
+  // "Are you sure?" for irreversible actions: <button data-confirm="message">.
+  // Registered after data-require-reason so a missing reason is reported first (no dialog in that case).
+  $$('[data-confirm]').forEach((b) => {
+    b.addEventListener('click', (e) => {
+      if (e.defaultPrevented) return;
+      if (!window.confirm(b.getAttribute('data-confirm'))) { e.preventDefault(); e.stopImmediatePropagation(); }
+    });
+  });
+
+  // Click-to-fill demo credentials on the login page (whole row is clickable / keyboard accessible)
+  $$('[data-fill-user]').forEach((el) => {
+    const fill = () => {
+      const u = $('#username'), p = $('#password');
+      if (u && p) { u.value = el.getAttribute('data-fill-user'); p.value = el.getAttribute('data-fill-pass'); p.focus(); }
+    };
+    el.addEventListener('click', fill);
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fill(); } });
+  });
+
+  // Accessibility: link each <label> to the field that follows it (screen readers, click-to-focus)
+  let autoId = 0;
+  $$('label:not([for])').forEach((lb) => {
+    if (lb.querySelector('input, select, textarea')) return;
+    let fld = null;
+    for (let el = lb.nextElementSibling; el && !fld; el = el.nextElementSibling) {
+      if (el.tagName === 'LABEL') break;
+      fld = el.matches('input:not([type=hidden]), select, textarea') ? el : el.querySelector('input:not([type=hidden]), select, textarea');
+    }
+    if (!fld || fld.labels && fld.labels.length) return;
+    if (!fld.id) fld.id = 'f-auto-' + (++autoId);
+    lb.htmlFor = fld.id;
+  });
 
   // Date range presets in filter bars
   $$('[data-preset]').forEach((a) => a.addEventListener('click', (e) => {

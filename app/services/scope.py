@@ -61,3 +61,37 @@ def visible_cfas(db: Session, user: User, active_only: bool = True) -> list[CFA]
         stmt = stmt.where(CFA.is_active.is_(True))
     stmt = apply_cfa_scope(stmt, user, CFA.id)
     return list(db.scalars(stmt))
+
+
+# --------------------------------------------------------------------------- records that carry company/CFA ids
+# (transporter bills, freight rates, import batches). A NULL company/CFA means "applies to all", so users with a
+# restricted scope may *see* company-wide rows where noted, but may only *change* rows fully inside their scope.
+
+def apply_strict_scope(stmt, user: User, model):
+    """Rows whose company AND CFA are both inside the user's scope (NULLs only for all-scope users)."""
+    cids, fids = user.company_ids, user.cfa_ids
+    if cids is not None:
+        stmt = stmt.where(model.company_id.in_(cids) if cids else false())
+    if fids is not None:
+        stmt = stmt.where(model.cfa_id.in_(fids) if fids else false())
+    return stmt
+
+
+def apply_scope_allow_null_cfa(stmt, user: User, model):
+    """Company in scope; CFA in scope OR NULL (company-wide rows such as default freight rates stay visible)."""
+    from sqlalchemy import or_
+    cids, fids = user.company_ids, user.cfa_ids
+    if cids is not None:
+        stmt = stmt.where(model.company_id.in_(cids) if cids else false())
+    if fids is not None:
+        stmt = stmt.where(or_(model.cfa_id.is_(None), model.cfa_id.in_(fids)) if fids else model.cfa_id.is_(None))
+    return stmt
+
+
+def can_change(user: User, company_id: int | None, cfa_id: int | None) -> bool:
+    """Write check: NULL company/CFA ('all') is only allowed for users with the matching all-scope."""
+    if company_id is None and user.company_ids is not None:
+        return False
+    if cfa_id is None and user.cfa_ids is not None:
+        return False
+    return can_see(user, company_id, cfa_id)

@@ -7,7 +7,7 @@
     <div class="sub">{{ b.file_name or b.source }} · {{ b.total_rows }} rows · {{ b.created_at|dt }} by {{ b.created_by.full_name if b.created_by else 'system' }}{% if b.erp_system %} · ERP {{ b.erp_system.code }}{% endif %}{% if b.template %} · template “{{ b.template.name }}”{% endif %}</div></div>
   <div class="actions">
     {% if not b.committed_at and b.status != 'CANCELLED' %}
-      <form method="post" action="/imports/{{ b.id }}/cancel" class="inline-form"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn btn-danger" type="submit">Cancel batch</button></form>
+      <form method="post" action="/imports/{{ b.id }}/cancel" class="inline-form"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn btn-danger" type="submit" data-confirm="Cancel import batch {{ b.batch_no }}? Nothing from it will be imported.">Cancel batch</button></form>
     {% endif %}
   </div>
 </div>

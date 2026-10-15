@@ -8,6 +8,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -45,10 +46,23 @@ class Settings(BaseSettings):
     currency_symbol: str = "₹"
 
     # Show the demo-credential helper on the login page (turn OFF in production)
-    show_demo_logins: bool = True
+    show_demo_logins: bool | None = None  # default: on in development, OFF in production
+    api_docs_public: bool | None = None  # /api/docs + /api/openapi.json; default: on except in production
 
     # Upload limits
     max_upload_mb: int = 20
+
+    # Reading photographed / scanned transporter bills with Claude (optional; without it lines are typed by hand)
+    anthropic_api_key: str | None = None
+
+    # Customer dispatch alerts: bearer token of the WhatsApp Cloud API / SMS gateway (kept out of the settings page)
+    notify_token: str | None = None
+
+    @model_validator(mode="after")
+    def _environment_defaults(self):
+        if self.show_demo_logins is None:
+            self.show_demo_logins = not self.is_production
+        return self
 
     @property
     def is_sqlite(self) -> bool:

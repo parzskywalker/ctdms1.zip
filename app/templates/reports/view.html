@@ -2,11 +2,11 @@
 {% from "_macros.html" import filter_bar, badge with context %}
 {% macro cellv(r, c) -%}
   {%- set v = r.get(c.key) -%}
-  {%- if c.kind == 'invoice' and r.get('invoice_id') -%}<a href="/invoices/{{ r.invoice_id }}">{{ v }}</a>
+  {%- if c.kind == 'invoice' and r.get('invoice_id') and can('invoice.view') -%}<a href="/invoices/{{ r.invoice_id }}">{{ v }}</a>
   {%- elif c.kind == 'status' and v -%}{{ badge(v) }}
   {%- elif c.key == 'variance' and v is not none and v != '' -%}{% if v > 0 %}<span class="pos">+{{ v|display('money') }}</span>{% elif v < 0 %}<span class="neg">{{ v|display('money') }}</span>{% else %}{{ v|display('money') }}{% endif %}
   {%- elif c.key == 'fix' -%}{% if can('rate.create') %}<a class="btn btn-sm" href="{{ v }}">Add rate</a>{% endif %}
-  {%- elif c.key == 'bill_no' and r.get('bill_id') -%}<a href="/recon/{{ r.bill_id }}">{{ v }}</a>
+  {%- elif c.key == 'bill_no' and r.get('bill_id') and can('recon.view') -%}<a href="/recon/{{ r.bill_id }}">{{ v }}</a>
   {%- else -%}{{ v|display(c.kind) }}{%- endif -%}
 {%- endmacro %}
 {% block content %}

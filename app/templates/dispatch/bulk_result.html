@@ -19,14 +19,14 @@
     {% for i in ok_ids %}<input type="hidden" name="ids" value="{{ i }}">{% endfor %}
     <label class="check"><input type="radio" name="size" value="A5" {% if slip_size == 'A5' %}checked{% endif %}>A5</label>
     <label class="check"><input type="radio" name="size" value="A4" {% if slip_size == 'A4' %}checked{% endif %}>A4</label>
-    <button class="btn btn-primary btn-lg" type="submit" name="mode" value="print">🖨 Print {{ ok_ids|length }} slips</button>
-    <button class="btn" type="submit" name="mode" value="pdf">PDF</button>
+    <button class="btn btn-primary btn-lg" type="submit" name="mode" value="print" data-unlocks="#bulk-complete">🖨 Print {{ ok_ids|length }} slips</button>
+    <button class="btn" type="submit" name="mode" value="pdf" data-unlocks="#bulk-complete">PDF</button>
   </form>
   <form method="post" action="/dispatch/bulk/complete" class="row" style="margin-top:12px">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
     {% for i in ok_ids %}<input type="hidden" name="ids" value="{{ i }}">{% endfor %}
-    <button class="btn btn-ok btn-lg" type="submit">✔ Complete {{ ok_ids|length }} dispatches</button>
-    <span class="muted small">Blocked until each slip is printed (control rule).</span>
+    <button class="btn btn-ok btn-lg" id="bulk-complete" type="submit" {% if rule == 'PRINTED' %}disabled title="Print the slips first"{% endif %} data-confirm="Mark {{ ok_ids|length }} invoice(s) as DISPATCHED? Do this only after the slips are printed and the goods have left. This cannot be undone.">✔ Complete {{ ok_ids|length }} dispatches</button>
+    <span class="muted small">{% if rule == 'PRINTED' %}Enabled after you print the slips (control rule).{% else %}Complete once the goods have left.{% endif %}</span>
   </form>
 </div>
 {% endif %}

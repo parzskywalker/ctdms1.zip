@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Numeric, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Numeric, String, Text  # noqa: F401
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -24,6 +24,9 @@ class RateLevel:
     LOCATION = "LOCATION"          # Company + Location (any CFA)
     DEFAULT = "DEFAULT"            # Explicitly configured default
     MANUAL = "MANUAL"              # Authorised manual override on an invoice
+    TRANSPORTER = "TRANSPORTER"    # Transporter rate card (transporter + area), applied on the gatepass
+    SELF = "SELF"                  # Customer pickup / own delivery: no freight
+    AUTO = "AUTO"                  # Delivered by an outside auto (its per-case / per-trip charge)
     ORDER = [CUSTOMER, CFA_LOCATION, LOCATION, DEFAULT]
     LABELS = {
         CUSTOMER: "1 · Customer-specific (Company+CFA+Customer+Location)",
@@ -31,6 +34,9 @@ class RateLevel:
         LOCATION: "3 · Company + Location (any CFA)",
         DEFAULT: "4 · Configured default",
         MANUAL: "Manual override",
+        TRANSPORTER: "Transporter rate card (per case, per area)",
+        SELF: "Self pickup (no freight)",
+        AUTO: "Outside auto charge",
     }
 
 
@@ -86,6 +92,41 @@ class FreightRate(Base, TimestampMixin):
     @property
     def key(self) -> tuple:
         return (self.company_id, self.cfa_id, self.customer_id, self.location_id, bool(self.is_default))
+
+    def covers(self, d: date) -> bool:
+        return self.effective_from <= d and (self.effective_to is None or self.effective_to >= d)
+
+
+class TransporterRate(Base, TimestampMixin):
+    """Transporter rate card: rate per case for one delivery area, effective-dated and approved like freight rates.
+
+    Approved versions are never edited; a change (typed in, or proposed from a transporter bill) is a new version
+    that ends the previous one the day before it starts.
+    """
+
+    __tablename__ = "transporter_rates"
+    __table_args__ = (Index("ix_trate_lookup", "transporter_id", "location_id", "status"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    transporter_id: Mapped[int] = mapped_column(ForeignKey("transporters.id"))
+    location_id: Mapped[int] = mapped_column(ForeignKey("locations.id"))
+    rate_per_case: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+    effective_from: Mapped[date] = mapped_column(Date)
+    effective_to: Mapped[date | None] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(20), default=RateStatus.PENDING_APPROVAL, index=True)
+    source: Mapped[str] = mapped_column(String(10), default="MANUAL")  # MANUAL / BILL / IMPORT
+    source_bill_id: Mapped[int | None] = mapped_column(ForeignKey("transporter_bills.id"))
+    change_reason: Mapped[str | None] = mapped_column(Text)
+    previous_rate_id: Mapped[int | None] = mapped_column(ForeignKey("transporter_rates.id"))
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    approved_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime)
+    rejected_reason: Mapped[str | None] = mapped_column(Text)
+
+    transporter = relationship("Transporter")
+    location = relationship("Location")
+    created_by = relationship("User", foreign_keys=[created_by_id])
+    approved_by = relationship("User", foreign_keys=[approved_by_id])
 
     def covers(self, d: date) -> bool:
         return self.effective_from <= d and (self.effective_to is None or self.effective_to >= d)

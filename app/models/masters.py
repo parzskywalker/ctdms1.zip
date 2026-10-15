@@ -113,14 +113,24 @@ class Location(Base, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+class CustomerType:
+    STOCKIST = "STOCKIST"
+    RETAILER = "RETAILER"
+    HOSPITAL = "HOSPITAL"
+    ALL = [STOCKIST, RETAILER, HOSPITAL]
+    LABELS = {STOCKIST: "Stockist", RETAILER: "Retailer", HOSPITAL: "Hospital"}
+
+
 class Customer(Base, TimestampMixin):
-    """Customer / Party master."""
+    """Customer / Party master (stockist, retailer or hospital)."""
 
     __tablename__ = "customers"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     code: Mapped[str] = mapped_column(String(40), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(160), index=True)
+    party_type: Mapped[str] = mapped_column(String(12), default=CustomerType.STOCKIST, index=True)
+    whatsapp: Mapped[str | None] = mapped_column(String(20))
     billing_address: Mapped[str | None] = mapped_column(Text)
     delivery_address: Mapped[str | None] = mapped_column(Text)
     city: Mapped[str | None] = mapped_column(String(80))
@@ -139,6 +149,24 @@ class Customer(Base, TimestampMixin):
     companies: Mapped[list[Company]] = relationship(secondary=customer_companies)
     cfas: Mapped[list[CFA]] = relationship(secondary=customer_cfas)
 
+    @property
+    def type_label(self) -> str:
+        return CustomerType.LABELS.get(self.party_type, self.party_type or "")
+
+
+class PaymentMode:
+    CASH = "CASH"   # paid at dispatch, no bill expected
+    TBB = "TBB"     # "to be billed": the transporter sends a periodic bill
+    ALL = [TBB, CASH]
+    LABELS = {CASH: "Cash at dispatch", TBB: "TBB (to be billed)"}
+
+
+class ChargeBasis:
+    PER_TRIP = "PER_TRIP"
+    PER_CASE = "PER_CASE"
+    ALL = [PER_TRIP, PER_CASE]
+    LABELS = {PER_TRIP: "Per trip", PER_CASE: "Per case"}
+
 
 class Transporter(Base, TimestampMixin):
     __tablename__ = "transporters"
@@ -146,6 +174,9 @@ class Transporter(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True)
     code: Mapped[str] = mapped_column(String(30), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(150))
+    payment_mode: Mapped[str] = mapped_column(String(10), default=PaymentMode.TBB)
+    direct_pickup_charge: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    direct_pickup_basis: Mapped[str] = mapped_column(String(10), default=ChargeBasis.PER_TRIP)
     contact_person: Mapped[str | None] = mapped_column(String(100))
     mobile: Mapped[str | None] = mapped_column(String(20))
     email: Mapped[str | None] = mapped_column(String(160))
@@ -160,6 +191,29 @@ class Transporter(Base, TimestampMixin):
     bank_details: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    @property
+    def payment_label(self) -> str:
+        return PaymentMode.LABELS.get(self.payment_mode, self.payment_mode or "")
+
+
+class OutsideAuto(Base, TimestampMixin):
+    """Hired auto / tempo that carries goods (to a transporter's booking office or straight to the customer)."""
+
+    __tablename__ = "outside_autos"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(30), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(120))  # name of the person
+    mobile: Mapped[str | None] = mapped_column(String(20))
+    charge_basis: Mapped[str] = mapped_column(String(10), default=ChargeBasis.PER_TRIP)
+    rate: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=0)
+    notes: Mapped[str | None] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    @property
+    def charge_label(self) -> str:
+        return f"₹{self.rate or 0:,.2f} {ChargeBasis.LABELS.get(self.charge_basis, '').lower()}"
 
 
 class ERPCodeMapping(Base, TimestampMixin):
