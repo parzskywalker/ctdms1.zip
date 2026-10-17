@@ -1,0 +1,584 @@
+[
+ {
+  "id": "s001",
+  "t": 2.98,
+  "text": "Welcome. This video shows CTDMS from the very first login, exactly as the first master user would see it. The database is completely empty. Everything you will see being created is a demonstration entry, marked D M, or Demo, so it can be removed before real use.",
+  "title": "CTDMS - Master's Walkthrough"
+ },
+ {
+  "id": "s002",
+  "t": 26.51,
+  "text": "This is the Management Dashboard. Every figure is zero because nothing has been entered yet. The menu on the left has five groups: Dispatch desk, Operations, Masters, Reports and Administration.",
+  "title": null
+ },
+ {
+  "id": "s003",
+  "t": 42.46,
+  "text": "Step one: tell CTDMS which billing systems exist. CTDMS sits above them. It never replaces them.",
+  "title": "Step 1 - Source systems (ERPs)"
+ },
+ {
+  "id": "s004",
+  "t": 54.87,
+  "text": "Open Administration, Integration Settings. We add four billing systems: SAP, MARG, CBO and Intrect. Each needs a short code, a name, and the way its data arrives.",
+  "title": null
+ },
+ {
+  "id": "s005",
+  "t": 81.2,
+  "text": "Now each one is opened to record its status. SAP is working through an Excel upload.",
+  "title": null
+ },
+ {
+  "id": "s006",
+  "t": 88.69,
+  "text": "Here we write a note so that everybody knows the status of this link.",
+  "title": null
+ },
+ {
+  "id": "s007",
+  "t": 94.83,
+  "text": "MARG is configured, but the direct database link is not filled in yet, so CTDMS shows a warning. Meanwhile its sales register is imported as a file. This is a common real situation.",
+  "title": null
+ },
+ {
+  "id": "s008",
+  "t": 110.41,
+  "text": "For CBO we generate an API key. Company C's IT team can use it to push invoices straight in. The key is shown only once.",
+  "title": null
+ },
+ {
+  "id": "s009",
+  "t": 121.88,
+  "text": "Intrect is planned but not connected, so we leave it inactive.",
+  "title": null
+ },
+ {
+  "id": "s010",
+  "t": 127.41,
+  "text": "The four systems now show four different statuses: working, file only, API key issued, and inactive.",
+  "title": null
+ },
+ {
+  "id": "s011",
+  "t": 137.1,
+  "text": "Step two: master records. These are the permanent facts of the business. Create them once, in this order.",
+  "title": "Step 2 - Master records"
+ },
+ {
+  "id": "s012",
+  "t": 148.66,
+  "text": "First the CFA, which is the warehouse that dispatches the goods. Our demonstration CFA is Raipur.",
+  "title": null
+ },
+ {
+  "id": "s013",
+  "t": 161.44,
+  "text": "Next the five delivery areas. Freight is priced per area, so every town you deliver to must exist here.",
+  "title": null
+ },
+ {
+  "id": "s014",
+  "t": 206.44,
+  "text": "Then the principal companies whose medicines we dispatch. Each is linked to the billing system it uses and to the CFA that serves it.",
+  "title": null
+ },
+ {
+  "id": "s015",
+  "t": 232.71,
+  "text": "Now five transporters. The important choice is the payment mode. To be billed means the transporter sends a bill later, which we check. Cash means we pay at dispatch and no bill is expected.",
+  "title": null
+ },
+ {
+  "id": "s016",
+  "t": 284.0,
+  "text": "One local delivery auto is also recorded, charged per trip.",
+  "title": null
+ },
+ {
+  "id": "s017",
+  "t": 291.62,
+  "text": "Finally the customers: stockists, retailers and a hospital. Each has an area, a mobile number and a GST number. The GST number lets CTDMS recognise the customer from an e-invoice QR code.",
+  "title": null
+ },
+ {
+  "id": "s018",
+  "t": 403.8,
+  "text": "Step three: people. The master creates a login for each person and decides what they may do.",
+  "title": "Step 3 - People who will use the system"
+ },
+ {
+  "id": "s019",
+  "t": 413.06,
+  "text": "Three demonstration users: a checker who approves, a dispatch operator who works at the warehouse desk, and an accounts person. Each gets a role and a password chosen by the master.",
+  "title": null
+ },
+ {
+  "id": "s020",
+  "t": 447.29,
+  "text": "The Roles screen is a grid of tick boxes. A role is only a list of permissions, and the master can change any box.",
+  "title": null
+ },
+ {
+  "id": "s021",
+  "t": 456.91,
+  "text": "The master also sets the rules of the house in System Settings. Every change asks for a reason and is audited.",
+  "title": "Step 3b - System settings"
+ },
+ {
+  "id": "s022",
+  "t": 466.76,
+  "text": "We give the organisation its name, which is printed on every gatepass and report, and switch customer alerts to preview mode, called L O G. In preview mode messages are prepared and shown, but nothing is sent. WhatsApp and S M S are paid services and stay locked.",
+  "title": null
+ },
+ {
+  "id": "s023",
+  "t": 487.31,
+  "text": "One more set-up detail. The same customer has a different code in each billing system. On the customer screen we record what MARG calls this customer, so that imports match automatically.",
+  "title": null
+ },
+ {
+  "id": "s024",
+  "t": 526.2,
+  "text": "Step four: freight rates. Every transporter has a rate per case for each area. A new rate never takes effect until a second person approves it.",
+  "title": "Step 4 - Freight rate cards"
+ },
+ {
+  "id": "s025",
+  "t": 539.6,
+  "text": "For most transporters we upload the whole rate list from a spreadsheet. Here is Alpha Roadlines.",
+  "title": null
+ },
+ {
+  "id": "s026",
+  "t": 561.74,
+  "text": "The fifth transporter, Epsilon, does not serve every area. We type its three rates one by one.",
+  "title": null
+ },
+ {
+  "id": "s027",
+  "t": 579.54,
+  "text": "All rates are now waiting. Until they are approved they are not used.",
+  "title": null
+ },
+ {
+  "id": "s028",
+  "t": 585.62,
+  "text": "Now the checker signs in. This is a different person, so the two-person rule is respected.",
+  "title": null
+ },
+ {
+  "id": "s029",
+  "t": 593.67,
+  "text": "The checker reads each proposed rate and presses Approve. A reason is needed only to reject. The first two are done slowly; the rest follow the same way.",
+  "title": null
+ },
+ {
+  "id": "s030",
+  "t": 610.03,
+  "text": "All twenty rates are approved and now active. Fresh rates start from the effective date.",
+  "title": null
+ },
+ {
+  "id": "s031",
+  "t": 617.17,
+  "text": "Step five: invoices. They come from the billing systems. There are several ways in. We will use all of them.",
+  "title": "Step 5 - Bringing invoices in"
+ },
+ {
+  "id": "s032",
+  "t": 629.36,
+  "text": "First, Company A's SAP export. It is an Excel file with one line per medicine, so CTDMS also learns the SKU detail. We choose the system and company, and press Upload and preview, so nothing is saved before we look.",
+  "title": null
+ },
+ {
+  "id": "s033",
+  "t": 648.47,
+  "text": "CTDMS recognised the columns by their headings. Every row is valid, so we import. The five invoices and their medicine lines are now in the central database.",
+  "title": null
+ },
+ {
+  "id": "s034",
+  "t": 661.89,
+  "text": "Second, Company B's MARG sales register, a plain CSV file. This one contains deliberate mistakes, which is realistic. Watch how CTDMS handles each.",
+  "title": null
+ },
+ {
+  "id": "s035",
+  "t": 676.84,
+  "text": "The Branch column was read as a CFA code, but MARG's branch is only a name. We tell CTDMS it is not a CFA column. We also save this layout under a name, so next time any MARG file is recognised at once.",
+  "title": null
+ },
+ {
+  "id": "s036",
+  "t": 694.68,
+  "text": "CTDMS found three problems and explains each one. First, party code T H dash zero eight is unknown. The system suggests Theta Pharma Mart, which is right, so we map the code once, and every future file will know it.",
+  "title": null
+ },
+ {
+  "id": "s037",
+  "t": 713.81,
+  "text": "Second, invoice 2006 has no case count. It is accepted as an exception, to be filled in at dispatch. Third, invoice 2003 appears twice in the file. The duplicate is refused, so an invoice can never be counted twice. Now we import the valid rows.",
+  "title": null
+ },
+ {
+  "id": "s038",
+  "t": 737.43,
+  "text": "Third, Company C's CBO export. Its customer codes are not known to CTDMS, but the file carries each customer's GST number, and CTDMS recognises the customer from that.",
+  "title": null
+ },
+ {
+  "id": "s039",
+  "t": 753.22,
+  "text": "The import log lists every batch with its result. Three files, three different systems, one central register.",
+  "title": null
+ },
+ {
+  "id": "s040",
+  "t": 762.98,
+  "text": "Fourth, a single invoice typed by hand, for example when no export is available. Choose the stockist, and the area fills itself in. Then company, invoice number, date, amount, taxable amount and cases.",
+  "title": null
+ },
+ {
+  "id": "s041",
+  "t": 780.74,
+  "text": "Invoices can also be captured by scanning the e-invoice QR code at the dispatch desk. We will do that next, together with the gatepass.",
+  "title": null
+ },
+ {
+  "id": "s042",
+  "t": 791.77,
+  "text": "The Invoice Register now holds every invoice from every source. The Status column tells where each one stands.",
+  "title": null
+ },
+ {
+  "id": "s043",
+  "t": 800.79,
+  "text": "Step six: dispatch. One gatepass covers a whole pickup, even when it carries goods of different companies, for different customers, in different towns.",
+  "title": "Step 6 - The gatepass"
+ },
+ {
+  "id": "s044",
+  "t": 815.08,
+  "text": "The warehouse operator scans the e-invoice QR printed on an invoice. This one is not in CTDMS yet, so it is created from the QR. The operator types the number of cases counted.",
+  "title": null
+ },
+ {
+  "id": "s045",
+  "t": 830.36,
+  "text": "The other invoices are waiting in the list below. One press of Add puts each on the same gatepass. This pickup mixes two companies, three customers and two towns.",
+  "title": null
+ },
+ {
+  "id": "s046",
+  "t": 843.46,
+  "text": "Who carries the goods? Alpha Roadlines, a to-be-billed transporter. The panel at the right shows the freight from Alpha's rate card for each area: cases times rate. Nothing is paid now, because Alpha will send a bill later.",
+  "title": null
+ },
+ {
+  "id": "s047",
+  "t": 861.66,
+  "text": "The gatepass is created with its own number. It has not been printed yet, and nothing can leave the gate until it is.",
+  "title": null
+ },
+ {
+  "id": "s048",
+  "t": 870.79,
+  "text": "Print it. The printed page carries a barcode, every customer with invoices, cases and charge, and the transporter's details.",
+  "title": null
+ },
+ {
+  "id": "s049",
+  "t": 881.78,
+  "text": "At the gate, the guard scans the barcode on the printed gatepass, or types its number. CTDMS shows what must leave. The guard counts the cases and confirms gate-out. Every invoice on the gatepass becomes dispatched at that moment.",
+  "title": null
+ },
+ {
+  "id": "s050",
+  "t": 900.51,
+  "text": "Later the transporter gives its receipt numbers, called LR or bilty numbers, one for each customer. They are typed on the gatepass. They can be corrected, with a reason, until the transporter's bill is approved.",
+  "title": null
+ },
+ {
+  "id": "s051",
+  "t": 917.35,
+  "text": "Second gatepass: Beta Cargo Movers carries goods of all three companies to Bilaspur and Durg. First the operator chooses Epsilon Transport by mistake. CTDMS warns at once that Epsilon has no rate for Durg, so the operator switches to Beta Cargo.",
+  "title": null
+ },
+ {
+  "id": "s052",
+  "t": 937.38,
+  "text": "Printed, gone out at the gate, and the LR numbers entered later.",
+  "title": null
+ },
+ {
+  "id": "s053",
+  "t": 949.53,
+  "text": "Third gatepass: Gamma Express Parcel is a cash transporter. It goes to Korba with two companies' goods for the hospital. Because Gamma is paid in cash, the amount shown as paid now equals the full freight, and no bill is expected.",
+  "title": null
+ },
+ {
+  "id": "s054",
+  "t": 969.93,
+  "text": "Fourth gatepass: a local delivery in Raipur using our hired auto, charged per trip, with two invoices to one customer.",
+  "title": null
+ },
+ {
+  "id": "s055",
+  "t": 986.74,
+  "text": "Fifth gatepass: Delta Logistics collects directly from our warehouse, so its direct pickup charge of two hundred rupees is added. We print it, but the goods have not left yet, so it stays in the Printed state.",
+  "title": null
+ },
+ {
+  "id": "s056",
+  "t": 1003.31,
+  "text": "Sixth: a gatepass made on the wrong transporter. Before the goods leave, a gatepass can be voided with a reason. The invoice goes back to the waiting list, and nothing is lost or duplicated.",
+  "title": null
+ },
+ {
+  "id": "s057",
+  "t": 1018.79,
+  "text": "Now the correct gatepass is made, with Epsilon Transport, which does have a Bilaspur rate. We leave it generated but not printed, so you can see that status too.",
+  "title": null
+ },
+ {
+  "id": "s058",
+  "t": 1031.65,
+  "text": "The Gatepass register shows every gatepass with its state: not printed, printed, gone out, or void.",
+  "title": null
+ },
+ {
+  "id": "s059",
+  "t": 1040.68,
+  "text": "Two invoices still need attention. Invoice 2006 arrived without a case count. The master can correct it directly; other users must ask a checker to approve. The change is recorded with a reason.",
+  "title": null
+ },
+ {
+  "id": "s060",
+  "t": 1057.21,
+  "text": "The mistaken invoice 4002 is cancelled. Cancelling needs a reason, and the invoice stays in the register, marked cancelled, so there is a full history.",
+  "title": null
+ },
+ {
+  "id": "s061",
+  "t": 1069.93,
+  "text": "Step seven: the goods reach the customer, and the signed receipt comes back. CTDMS records this as proof of delivery.",
+  "title": "Step 7 - Delivery and proof of delivery"
+ },
+ {
+  "id": "s062",
+  "t": 1081.69,
+  "text": "Deliveries Pending lists everything that has left the warehouse but has no proof yet. Overdue consignments would be highlighted.",
+  "title": null
+ },
+ {
+  "id": "s063",
+  "t": 1091.07,
+  "text": "The signed receipts for Alpha Roadlines' consignments are back, so we tick them and mark them delivered, with the date.",
+  "title": null
+ },
+ {
+  "id": "s064",
+  "t": 1099.66,
+  "text": "For Beta Cargo, Gamma Pharma received only twenty-two of twenty-four cases. This is recorded on the consignment as delivered short, with who received it, a note, and a photo of the signed receipt.",
+  "title": null
+ },
+ {
+  "id": "s065",
+  "t": 1114.88,
+  "text": "The tracking page shows the whole journey of the invoice: order received, gatepass, printed, left the warehouse, LR number, and delivered.",
+  "title": null
+ },
+ {
+  "id": "s066",
+  "t": 1126.3,
+  "text": "The remaining consignments, Beta's other customers and the cash and auto trips, stay on the pending list until their proof comes back.",
+  "title": null
+ },
+ {
+  "id": "s067",
+  "t": 1136.09,
+  "text": "Step eight: money. To-be-billed transporters send a bill. CTDMS checks every line against our own gatepasses before anybody pays.",
+  "title": "Step 8 - Transporter bills"
+ },
+ {
+  "id": "s068",
+  "t": 1152.89,
+  "text": "The accounts person records Alpha Roadlines' bill: number, date, total amount, and the period it covers.",
+  "title": null
+ },
+ {
+  "id": "s069",
+  "t": 1161.27,
+  "text": "Each line of the paper bill is typed in: LR number, date, customer, station, cases, rate and amount.",
+  "title": null
+ },
+ {
+  "id": "s070",
+  "t": 1170.34,
+  "text": "Every line is matched to our gatepass: the LR exists, the cases agree, the rate agrees with Alpha's rate card, and the arithmetic is right. All three lines are matched, and the variance is zero.",
+  "title": null
+ },
+ {
+  "id": "s071",
+  "t": 1185.93,
+  "text": "One more question must be answered: has the transporter changed any rates? Nothing has, so we save the review with nothing ticked.",
+  "title": null
+ },
+ {
+  "id": "s072",
+  "t": 1196.76,
+  "text": "Now Beta Cargo Movers' bill. This transporter sent its statement as a spreadsheet, so we import it. It has mistakes, which is common in real life, and we want to see whether CTDMS catches them.",
+  "title": null
+ },
+ {
+  "id": "s073",
+  "t": 1213.23,
+  "text": "CTDMS flags the lines. The first has a rate of twenty-four, but Beta's rate card says twenty. The Gamma Pharma consignment is billed twice. And one LR number does not exist in our dispatch records at all.",
+  "title": null
+ },
+ {
+  "id": "s074",
+  "t": 1230.65,
+  "text": "The irregularity report lists them all in plain words. It can be printed or sent to Excel, and taken to the transporter before anything is paid.",
+  "title": null
+ },
+ {
+  "id": "s075",
+  "t": 1241.86,
+  "text": "Now the maker-checker rule. The accounts person who typed bill one cannot approve it. The checker signs in.",
+  "title": null
+ },
+ {
+  "id": "s076",
+  "t": 1251.59,
+  "text": "Beta's bill cannot be approved: it carries blocking flags. The checker would reject it, with a reason, and send it back to the transporter.",
+  "title": null
+ },
+ {
+  "id": "s077",
+  "t": 1262.85,
+  "text": "With the bill approved, the accounts person marks it paid and records the bank reference, called the U T R.",
+  "title": null
+ },
+ {
+  "id": "s078",
+  "t": 1271.98,
+  "text": "The bill list now shows one bill paid and one needing follow-up.",
+  "title": null
+ },
+ {
+  "id": "s079",
+  "t": 1277.1,
+  "text": "Step nine: using the data. Customers can be alerted, other software can read and write through the API, and every report can be exported.",
+  "title": "Step 9 - Alerts, API and other ways to use the data"
+ },
+ {
+  "id": "s080",
+  "t": 1289.93,
+  "text": "Customer Alerts shows the messages CTDMS prepared when goods left the gate and when LR numbers were entered. In preview mode they are marked sent without being sent. When the business decides to pay for WhatsApp, only a setting changes.",
+  "title": null
+ },
+ {
+  "id": "s081",
+  "t": 1307.47,
+  "text": "Company C's IT team can push invoices with the API key we generated. Here one invoice arrives directly from CBO, with no file and no typing.",
+  "title": null
+ },
+ {
+  "id": "s082",
+  "t": 1319.74,
+  "text": "The API documentation page lists every call: invoices, tracking, reports, dashboard figures and ERP write-back.",
+  "title": null
+ },
+ {
+  "id": "s083",
+  "t": 1330.81,
+  "text": "Step ten: what management sees. Everything entered so far now appears in the dashboard and in the reports.",
+  "title": "Step 10 - Dashboard, reports and exports"
+ },
+ {
+  "id": "s084",
+  "t": 1341.08,
+  "text": "The dashboard now has figures. Total invoices, how many are dispatched, how many are waiting, sales value, calculated freight, and freight as a percentage of sales.",
+  "title": null
+ },
+ {
+  "id": "s085",
+  "t": 1354.5,
+  "text": "Every report can be exported. The full list is grouped into M I S, operational, reconciliation and control reports.",
+  "title": null
+ },
+ {
+  "id": "s086",
+  "t": 1365.09,
+  "text": "Transporter-wise: trips, cases, cost per case and cost per trip for each transporter. The buttons at the top export it as Excel, C S V or P D F.",
+  "title": null
+ },
+ {
+  "id": "s087",
+  "t": 1379.4,
+  "text": "SKU-wise dispatch shows which medicines went out, in what quantity, to whom.",
+  "title": null
+ },
+ {
+  "id": "s088",
+  "t": 1386.55,
+  "text": "Delivery performance shows on-time delivery and short or damaged deliveries for each transporter and area.",
+  "title": null
+ },
+ {
+  "id": "s089",
+  "t": 1394.18,
+  "text": "The transportation M I S drills down by company, area, customer and transporter.",
+  "title": null
+ },
+ {
+  "id": "s090",
+  "t": 1401.39,
+  "text": "Any report can also be e-mailed automatically every day, week or month. We set up a weekly Excel gatepass register for management. Sending needs the office mail server to be configured.",
+  "title": null
+ },
+ {
+  "id": "s091",
+  "t": 1415.8,
+  "text": "From any gatepass, the printable P D F and one label for every case can be produced. Scanning any case label at the gate opens its gatepass.",
+  "title": null
+ },
+ {
+  "id": "s092",
+  "t": 1427.34,
+  "text": "Finally the master can download a complete copy of all the data, one C S V file per table, as a zip file. Passwords and keys are never included.",
+  "title": null
+ },
+ {
+  "id": "s093",
+  "t": 1439.8,
+  "text": "Last step: control. See what other users see, and who did what.",
+  "title": "Step 11 - Control: roles, audit and what others see"
+ },
+ {
+  "id": "s094",
+  "t": 1451.7,
+  "text": "This is the dispatch operator's view. The menu is shorter, because the master allowed only dispatch work. No rates, no bills, no administration.",
+  "title": null
+ },
+ {
+  "id": "s095",
+  "t": 1465.08,
+  "text": "The audit log records every change: who, what, when, with old and new values. Nobody can edit or erase it from the screen. This is the master's proof of what happened.",
+  "title": null
+ },
+ {
+  "id": "s096",
+  "t": 1479.53,
+  "text": "The final invoice register shows every status side by side: dispatched, printed, waiting, cancelled, and the invoice pushed by API.",
+  "title": null
+ },
+ {
+  "id": "s097",
+  "t": 1489.86,
+  "text": "That completes the walkthrough, from an empty system to dispatch, delivery, bills, reports and control. Every record shown is marked as a demonstration entry, so it can be removed before real use. Thank you.",
+  "title": "End of the demonstration"
+ }
+]

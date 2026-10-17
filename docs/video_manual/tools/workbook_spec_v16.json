@@ -1,0 +1,992 @@
+[
+ {
+  "name": "ERP_Systems",
+  "title": "Source ERP systems",
+  "cols": [
+   {
+    "header": "ERP Code",
+    "required": true,
+    "help": "Short unique code",
+    "choices": [],
+    "kind": "upper",
+    "example": "MARG"
+   },
+   {
+    "header": "ERP Name",
+    "required": true,
+    "help": "Name shown on screens",
+    "choices": [],
+    "kind": "text",
+    "example": "MARG ERP 9+ (Company B)"
+   },
+   {
+    "header": "How data arrives",
+    "required": false,
+    "help": "FILE = Excel/CSV upload (default) \u00b7 FOLDER = drop folder \u00b7 API = pushed by the ERP",
+    "choices": [
+     "FILE",
+     "FOLDER",
+     "API",
+     "MARG",
+     "SAP",
+     "CBO",
+     "DATABASE"
+    ],
+    "kind": "upper",
+    "example": "FILE"
+   },
+   {
+    "header": "Active",
+    "required": false,
+    "help": "Yes / No (default Yes)",
+    "choices": [],
+    "kind": "bool",
+    "example": "Yes"
+   },
+   {
+    "header": "Notes",
+    "required": false,
+    "help": "Status of the link, contact person ...",
+    "choices": [],
+    "kind": "text",
+    "example": "Exported every evening"
+   }
+  ]
+ },
+ {
+  "name": "Locations",
+  "title": "Delivery locations / areas",
+  "cols": [
+   {
+    "header": "Location Code",
+    "required": true,
+    "help": "",
+    "choices": [],
+    "kind": "upper",
+    "example": "RPR-CITY"
+   },
+   {
+    "header": "Location Name",
+    "required": true,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": "Raipur City"
+   },
+   {
+    "header": "City",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": "Raipur"
+   },
+   {
+    "header": "State",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": "Chhattisgarh"
+   },
+   {
+    "header": "PIN Code",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": "492001"
+   },
+   {
+    "header": "Route",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": "Local"
+   },
+   {
+    "header": "Zone",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": "Central"
+   },
+   {
+    "header": "Distance km",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "decimal",
+    "example": "0"
+   },
+   {
+    "header": "Active",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "bool",
+    "example": "Yes"
+   }
+  ]
+ },
+ {
+  "name": "Companies",
+  "title": "Companies (principals)",
+  "cols": [
+   {
+    "header": "Company Code",
+    "required": true,
+    "help": "Existing company code / marking from the ERP",
+    "choices": [],
+    "kind": "upper",
+    "example": "ABC"
+   },
+   {
+    "header": "Company Name",
+    "required": true,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": "ABC Pharma Ltd"
+   },
+   {
+    "header": "Recognition Code",
+    "required": false,
+    "help": "Short code used in the Invoice Recognition Code (blank = the company code)",
+    "choices": [],
+    "kind": "upper",
+    "example": "ABC"
+   },
+   {
+    "header": "Source ERP",
+    "required": false,
+    "help": "ERP Code from the ERP_Systems sheet / system",
+    "choices": [],
+    "kind": "upper",
+    "example": "SAP"
+   },
+   {
+    "header": "Relationship",
+    "required": false,
+    "help": "",
+    "choices": [
+     "PRINCIPAL",
+     "OWN"
+    ],
+    "kind": "upper",
+    "example": "PRINCIPAL"
+   },
+   {
+    "header": "GSTIN",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "upper",
+    "example": ""
+   },
+   {
+    "header": "Contact Person",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": ""
+   },
+   {
+    "header": "Contact Number",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": ""
+   },
+   {
+    "header": "Email",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": ""
+   },
+   {
+    "header": "Address",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": ""
+   },
+   {
+    "header": "Active",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "bool",
+    "example": "Yes"
+   }
+  ]
+ },
+ {
+  "name": "Depots",
+  "title": "Depots (godowns / dispatch locations)",
+  "cols": [
+   {
+    "header": "Depot Code",
+    "required": true,
+    "help": "Unique, also within the same city",
+    "choices": [],
+    "kind": "upper",
+    "example": "GUMA"
+   },
+   {
+    "header": "Depot Name",
+    "required": true,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": "Guma Depot"
+   },
+   {
+    "header": "Locality / Area",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": "Guma"
+   },
+   {
+    "header": "City",
+    "required": true,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": "Raipur"
+   },
+   {
+    "header": "State",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": "Chhattisgarh"
+   },
+   {
+    "header": "PIN Code",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": "493111"
+   },
+   {
+    "header": "Address",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": "Plot 7, Guma"
+   },
+   {
+    "header": "Recognition Code",
+    "required": false,
+    "help": "Blank = the depot code",
+    "choices": [],
+    "kind": "upper",
+    "example": "GUMA"
+   },
+   {
+    "header": "Companies Handled",
+    "required": false,
+    "help": "Company codes separated by commas",
+    "choices": [],
+    "kind": "list",
+    "example": "ABC, XYZ"
+   },
+   {
+    "header": "Source ERP",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "upper",
+    "example": "MARG"
+   },
+   {
+    "header": "GSTIN",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "upper",
+    "example": ""
+   },
+   {
+    "header": "Contact Person",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": ""
+   },
+   {
+    "header": "Contact Number",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": ""
+   },
+   {
+    "header": "Active",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "bool",
+    "example": "Yes"
+   }
+  ]
+ },
+ {
+  "name": "Customer_Types",
+  "title": "Customer types",
+  "cols": [
+   {
+    "header": "Type Key",
+    "required": true,
+    "help": "Used in the Customers sheet",
+    "choices": [],
+    "kind": "upper",
+    "example": "RETAILER"
+   },
+   {
+    "header": "Type Name",
+    "required": true,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": "Retailer"
+   },
+   {
+    "header": "Recognition Code",
+    "required": false,
+    "help": "Short code for the Invoice Recognition Code",
+    "choices": [],
+    "kind": "upper",
+    "example": "RET"
+   },
+   {
+    "header": "Description",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": ""
+   },
+   {
+    "header": "Active",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "bool",
+    "example": "Yes"
+   }
+  ]
+ },
+ {
+  "name": "Customers",
+  "title": "Customers",
+  "cols": [
+   {
+    "header": "Customer Code",
+    "required": true,
+    "help": "Central code",
+    "choices": [],
+    "kind": "upper",
+    "example": "C025"
+   },
+   {
+    "header": "Customer Name",
+    "required": true,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": "Sharma Medical Store"
+   },
+   {
+    "header": "Customer Type",
+    "required": true,
+    "help": "Type Key or Type Name from Customer_Types",
+    "choices": [],
+    "kind": "upper",
+    "example": "RETAILER"
+   },
+   {
+    "header": "Recognition Code",
+    "required": false,
+    "help": "Blank = the customer code",
+    "choices": [],
+    "kind": "upper",
+    "example": "C025"
+   },
+   {
+    "header": "Billing Address",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": ""
+   },
+   {
+    "header": "Delivery Address",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": ""
+   },
+   {
+    "header": "City",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": "Raipur"
+   },
+   {
+    "header": "State",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": "Chhattisgarh"
+   },
+   {
+    "header": "PIN Code",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": ""
+   },
+   {
+    "header": "Delivery Location",
+    "required": true,
+    "help": "Location Code or Location Name",
+    "choices": [],
+    "kind": "text",
+    "example": "RPR-CITY"
+   },
+   {
+    "header": "Companies",
+    "required": false,
+    "help": "Company codes, comma separated",
+    "choices": [],
+    "kind": "list",
+    "example": "ABC"
+   },
+   {
+    "header": "Depots",
+    "required": false,
+    "help": "Depot codes, comma separated",
+    "choices": [],
+    "kind": "list",
+    "example": "GUMA"
+   },
+   {
+    "header": "Source ERP",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "upper",
+    "example": "MARG"
+   },
+   {
+    "header": "Source ERP Customer Code",
+    "required": false,
+    "help": "What that ERP calls the customer",
+    "choices": [],
+    "kind": "upper",
+    "example": "SH025"
+   },
+   {
+    "header": "Contact Person",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": ""
+   },
+   {
+    "header": "Mobile",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": ""
+   },
+   {
+    "header": "WhatsApp",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": ""
+   },
+   {
+    "header": "Email",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": ""
+   },
+   {
+    "header": "GSTIN",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "upper",
+    "example": ""
+   },
+   {
+    "header": "Drug Licence No",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": ""
+   },
+   {
+    "header": "Active",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "bool",
+    "example": "Yes"
+   }
+  ]
+ },
+ {
+  "name": "Transporters",
+  "title": "Transporters (long-distance and local autos)",
+  "cols": [
+   {
+    "header": "Transporter Code",
+    "required": true,
+    "help": "",
+    "choices": [],
+    "kind": "upper",
+    "example": "SRL"
+   },
+   {
+    "header": "Transporter Name",
+    "required": true,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": "Shree Roadlines"
+   },
+   {
+    "header": "Transporter Type",
+    "required": true,
+    "help": "",
+    "choices": [
+     "LONG_DISTANCE",
+     "LOCAL_AUTO"
+    ],
+    "kind": "upper",
+    "example": "LONG_DISTANCE"
+   },
+   {
+    "header": "Payment Mode",
+    "required": false,
+    "help": "Long-distance: TBB = bills later (default) \u00b7 CASH = paid at dispatch",
+    "choices": [
+     "TBB",
+     "CASH"
+    ],
+    "kind": "upper",
+    "example": "TBB"
+   },
+   {
+    "header": "Charging Method",
+    "required": false,
+    "help": "Local auto only",
+    "choices": [
+     "PER_TRIP",
+     "PER_BOX",
+     "BOTH"
+    ],
+    "kind": "upper",
+    "example": "PER_TRIP"
+   },
+   {
+    "header": "Usual Method",
+    "required": false,
+    "help": "Local auto with BOTH",
+    "choices": [
+     "PER_TRIP",
+     "PER_BOX"
+    ],
+    "kind": "upper",
+    "example": ""
+   },
+   {
+    "header": "Usual Trip Charge",
+    "required": false,
+    "help": "Local auto per trip: only a suggestion",
+    "choices": [],
+    "kind": "decimal",
+    "example": "500"
+   },
+   {
+    "header": "Default Rate per Box",
+    "required": false,
+    "help": "Local auto per box",
+    "choices": [],
+    "kind": "decimal",
+    "example": "20"
+   },
+   {
+    "header": "Vehicle No",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "upper",
+    "example": ""
+   },
+   {
+    "header": "Contact Person",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": ""
+   },
+   {
+    "header": "Mobile",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": ""
+   },
+   {
+    "header": "GSTIN",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "upper",
+    "example": ""
+   },
+   {
+    "header": "PAN",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "upper",
+    "example": ""
+   },
+   {
+    "header": "City",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": ""
+   },
+   {
+    "header": "State",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": ""
+   },
+   {
+    "header": "Address",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": ""
+   },
+   {
+    "header": "Areas Served",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": ""
+   },
+   {
+    "header": "Direct Pickup Charge",
+    "required": false,
+    "help": "Long-distance: extra when they collect from our depot",
+    "choices": [],
+    "kind": "decimal",
+    "example": ""
+   },
+   {
+    "header": "Direct Pickup Basis",
+    "required": false,
+    "help": "",
+    "choices": [
+     "PER_TRIP",
+     "PER_BOX"
+    ],
+    "kind": "upper",
+    "example": ""
+   },
+   {
+    "header": "Active",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "bool",
+    "example": "Yes"
+   }
+  ]
+ },
+ {
+  "name": "Local_Auto_Rates",
+  "title": "Local auto box rates",
+  "cols": [
+   {
+    "header": "Rate Code",
+    "required": true,
+    "help": "",
+    "choices": [],
+    "kind": "upper",
+    "example": "LA-B-RPR"
+   },
+   {
+    "header": "Local Auto Code",
+    "required": true,
+    "help": "Transporter Code of a LOCAL_AUTO",
+    "choices": [],
+    "kind": "upper",
+    "example": "LA-B"
+   },
+   {
+    "header": "Location",
+    "required": false,
+    "help": "Location Code or Name (blank = all)",
+    "choices": [],
+    "kind": "text",
+    "example": ""
+   },
+   {
+    "header": "Company",
+    "required": false,
+    "help": "Company Code (blank = all)",
+    "choices": [],
+    "kind": "upper",
+    "example": ""
+   },
+   {
+    "header": "Depot",
+    "required": false,
+    "help": "Depot Code (blank = all)",
+    "choices": [],
+    "kind": "upper",
+    "example": ""
+   },
+   {
+    "header": "Rate per Box",
+    "required": true,
+    "help": "",
+    "choices": [],
+    "kind": "decimal",
+    "example": "20"
+   },
+   {
+    "header": "Effective From",
+    "required": true,
+    "help": "",
+    "choices": [],
+    "kind": "date",
+    "example": "01-10-2026"
+   },
+   {
+    "header": "Effective To",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "date",
+    "example": ""
+   },
+   {
+    "header": "Remarks",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": ""
+   }
+  ]
+ },
+ {
+  "name": "Freight_Rates",
+  "title": "Transporter freight rates (rate cards)",
+  "cols": [
+   {
+    "header": "Transporter Code",
+    "required": true,
+    "help": "",
+    "choices": [],
+    "kind": "upper",
+    "example": "SRL"
+   },
+   {
+    "header": "Location",
+    "required": true,
+    "help": "Location Code or Name",
+    "choices": [],
+    "kind": "text",
+    "example": "BSP-CITY"
+   },
+   {
+    "header": "Rate per Case",
+    "required": true,
+    "help": "",
+    "choices": [],
+    "kind": "decimal",
+    "example": "22"
+   },
+   {
+    "header": "Effective From",
+    "required": true,
+    "help": "",
+    "choices": [],
+    "kind": "date",
+    "example": "01-10-2026"
+   }
+  ]
+ },
+ {
+  "name": "Invoice_Code_Mappings",
+  "title": "Invoice code mappings (existing ERP invoice markings)",
+  "cols": [
+   {
+    "header": "Mapping Code",
+    "required": true,
+    "help": "",
+    "choices": [],
+    "kind": "upper",
+    "example": "MARG-XYZ"
+   },
+   {
+    "header": "Source ERP",
+    "required": false,
+    "help": "Blank = any ERP",
+    "choices": [],
+    "kind": "upper",
+    "example": "MARG"
+   },
+   {
+    "header": "Marking",
+    "required": true,
+    "help": "e.g. XY/ at the start of the ERP invoice number",
+    "choices": [],
+    "kind": "upper",
+    "example": "XY/"
+   },
+   {
+    "header": "Where",
+    "required": false,
+    "help": "",
+    "choices": [
+     "PREFIX",
+     "CONTAINS"
+    ],
+    "kind": "upper",
+    "example": "PREFIX"
+   },
+   {
+    "header": "Company",
+    "required": true,
+    "help": "",
+    "choices": [],
+    "kind": "upper",
+    "example": "XYZ"
+   },
+   {
+    "header": "Depot",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "upper",
+    "example": ""
+   },
+   {
+    "header": "Customer Type",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "upper",
+    "example": ""
+   },
+   {
+    "header": "Notes",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": ""
+   }
+  ]
+ },
+ {
+  "name": "ERP_Mappings",
+  "title": "ERP code mappings",
+  "cols": [
+   {
+    "header": "Source ERP",
+    "required": true,
+    "help": "",
+    "choices": [],
+    "kind": "upper",
+    "example": "CBO"
+   },
+   {
+    "header": "Entity",
+    "required": true,
+    "help": "",
+    "choices": [
+     "CUSTOMER",
+     "COMPANY",
+     "DEPOT",
+     "LOCATION",
+     "TRANSPORTER"
+    ],
+    "kind": "upper",
+    "example": "CUSTOMER"
+   },
+   {
+    "header": "ERP Code",
+    "required": true,
+    "help": "",
+    "choices": [],
+    "kind": "upper",
+    "example": "CB-0025"
+   },
+   {
+    "header": "Name in ERP",
+    "required": false,
+    "help": "",
+    "choices": [],
+    "kind": "text",
+    "example": ""
+   },
+   {
+    "header": "Central Code",
+    "required": true,
+    "help": "Code of the record in this system",
+    "choices": [],
+    "kind": "upper",
+    "example": "C025"
+   }
+  ]
+ }
+]

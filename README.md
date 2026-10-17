@@ -4,10 +4,15 @@ A web application that sits **above** MARG, SAP, CBO, Intrect (and any other bil
 transportation and dispatch layer for a pharmaceutical distribution / CFA business.
 
 ```
-ERP invoice ─► central invoice DB ─► Company ─► Customer ─► CFA ─► Location ─► Boxes × Rate/Box
+ERP invoice ─► central invoice DB ─► Company ─► Customer ─► Depot ─► Location ─► Boxes × Rate/Box
            ─► Transportation expense ─► Pending Dispatch ─► Transporter / LR / Vehicle
            ─► Dispatch Slip (generate + print, mandatory) ─► Complete Dispatch ─► MIS & reconciliation
 ```
+
+**v1.6** (see CHANGELOG): one-time **Initial Master Upload** workbook, **Depots** instead of CFA (several per city),
+configurable **Customer Types**, the **Invoice Recognition Code** beside the unchanged ERP invoice number
+(e.g. `ABC-RET-C025-GUMA-001245`), and **Local Autos** charged per trip (one amount per trip, shared by boxes) or per box.
+The v1.6 guide (video, transcript, manual) is in `docs/video_manual/v1.6/`.
 
 It does not replace the ERPs. Invoices come in by Excel/CSV import, REST push or ERP adapters, are normalised into one
 schema, priced with an effective-dated freight-rate engine, dispatched through a controlled workflow and reported in

@@ -1,0 +1,15 @@
+﻿Date,Company,Depot,City,Customer,Customer Type,Location,Original ERP Invoice No,Invoice Recognition Code,Boxes,Rate/Box,Transportation Expense,Sales Value,Taxable Amount,Dispatch Status,ERP
+16-10-2026,ABC Pharma Ltd (Demo),Guma Depot (Demo),Raipur,Sharma Medical Store (Demo),Retailer,Raipur City,001245,ABC-RET-C025-GUMA-001245,5,16.67,83.34,18450.0,,Dispatched,SAP
+16-10-2026,ABC Pharma Ltd (Demo),Guma Depot (Demo),Raipur,Raipur Medical Agencies (Demo),Stockist,Raipur City,001246,ABC-STK-C031-GUMA-001246,15,16.67,250.01,52300.0,,Dispatched,SAP
+16-10-2026,ABC Pharma Ltd (Demo),Guma Depot (Demo),Raipur,City Care Hospital (Demo),Hospital,Raipur City,001247,ABC-HSP-C040-GUMA-001247,6,16.67,100.0,21600.0,,Dispatched,SAP
+16-10-2026,ABC Pharma Ltd (Demo),Bilaspur Depot (Demo),Bilaspur,WellCare Pharmacy Chain (Demo),Chain Pharmacy,Bilaspur City,001248,ABC-CHN-C071-BSP-001248,12,22.0,264.0,39900.0,,Dispatched,SAP
+16-10-2026,XYZ Healthcare Ltd (Demo),Guma Depot (Demo),Raipur,Sharma Medical Store (Demo),Retailer,Raipur City,XY/G/2601,XYZ-RET-C025-GUMA-002601,4,16.66,66.66,14200.0,,Dispatched,MARG
+17-10-2026,ABC Pharma Ltd (Demo),Bilaspur Depot (Demo),Bilaspur,Bilaspur Super Stockist (Demo),Super Stockist,Bilaspur City,001249,ABC-SST-C080-BSP-001249,20,22.0,440.0,68200.0,,Dispatched,SAP
+17-10-2026,ABC Pharma Ltd (Demo),Bilaspur Depot (Demo),Bilaspur,District Govt Store Korba (Demo),Government Supply,Korba,001250,ABC-GOV-C090-BSP-001250,8,,,27750.0,,Pending,SAP
+17-10-2026,PQR Lifesciences Ltd (Demo),Bilaspur Depot (Demo),Bilaspur,WellCare Pharmacy Chain (Demo),Chain Pharmacy,Bilaspur City,PQR/B/0313,PQR-CHN-C071-BSP-000313,10,22.0,220.0,31200.0,,Dispatched,CBO
+17-10-2026,PQR Lifesciences Ltd (Demo),Kamal Vihar Depot (Demo),Raipur,Raipur Medical Agencies (Demo),Stockist,Raipur City,PQR/K/0311,PQR-STK-C031-KVR-000311,6,22.0,132.0,19800.0,,Dispatched,CBO
+17-10-2026,PQR Lifesciences Ltd (Demo),Kamal Vihar Depot (Demo),Raipur,Bhilai Chemists (Demo),Retailer,Bhilai,PQR/K/0312,PQR-RET-C052-KVR-000312,7,,,24100.0,,Pending,CBO
+17-10-2026,XYZ Healthcare Ltd (Demo),Guma Depot (Demo),Raipur,Bhilai Chemists (Demo),Retailer,Bhilai,XY/G/2602,XYZ-RET-C052-GUMA-002602,10,60.0,600.01,33500.0,,Slip Printed,MARG
+17-10-2026,XYZ Healthcare Ltd (Demo),Kamal Vihar Depot (Demo),Raipur,Raipur Medical Agencies (Demo),Stockist,Raipur City,XY/K/2603,XYZ-STK-C031-KVR-002603,15,20.0,300.0,47800.0,,Dispatched,MARG
+17-10-2026,XYZ Healthcare Ltd (Demo),Kamal Vihar Depot (Demo),Raipur,Durg Distributors (Demo),Distributor,Durg,XY/K/2604,XYZ-DST-C063-KVR-002604,9,,,29900.0,,Pending,MARG
+TOTAL,,,,,,,,,127,19.34,2456.02,428700.0,0.0,,
