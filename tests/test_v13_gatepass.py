@@ -147,7 +147,7 @@ def test_gatepass_rules_cases_cfa_and_operator_box_change(api, db):
     rgh.cfa_id = db.scalar(select(CFA).where(CFA.code == "BSP")).id   # pretend: other warehouse
     _, _, problems = ds.plan_gatepass(db, adm, [db.get(Invoice, b.id), rgh],
                                       ds.GatepassRequest(transporter_id=_tr(db, "OSHO").id))
-    assert any("same CFA" in p for p in problems)
+    assert any("same depot" in p for p in problems)
     db.rollback()
 
 
@@ -356,6 +356,8 @@ def test_bill_scan_with_reader_creates_lines(web, db, monkeypatch):
 
 # ----------------------------------------------------------------------------- 5 imports without re-typing
 def test_item_wise_export_groups_rows_and_adds_skus_to_scanned_invoice(db):
+    from app.services import settings_service as cfg
+    cfg.set_value(db, "features.sku_lines", True)  # v1.6: SKU lines are postponed; the provision can be switched on
     adm = _u(db, "admin")
     rpr = db.scalar(select(CFA).where(CFA.code == "RPR"))
     co = db.scalar(select(Company).where(Company.code == "COA"))
@@ -420,7 +422,7 @@ def test_pages_render(web, url):
     assert r.status_code == 200, url
 
 
-@pytest.mark.parametrize("code", ["gatepass-register", "customer-type", "sku-dispatch", "mode-of-dispatch",
+@pytest.mark.parametrize("code", ["gatepass-register", "customer-type", "mode-of-dispatch",
                                   "transporter-area", "outside-auto", "bill-irregularities"])
 def test_new_reports(web, code):
     w = web("management")
@@ -459,10 +461,14 @@ def test_master_save_defaults_choice_fields(web, db):
     w.post("/masters/customers/save", {"code": "C-T13X", "name": "Test Hospital", "location_id": str(lo.id),
                                        "party_type": "HOSPITAL", "is_active": "1"})
     assert _cu(db, "C-T13X").party_type == "HOSPITAL"
-    w.post("/masters/autos/save", {"code": "AUTO-T13", "name": "Test Auto", "rate": "300", "is_active": "1"})
+    w.post("/masters/autos/save", {"code": "AUTO-T13", "name": "Test Auto", "default_trip_charge": "300",
+                                   "is_active": "1"})
     a = db.scalar(select(OutsideAuto).where(OutsideAuto.code == "AUTO-T13"))
-    assert a.charge_basis == "PER_TRIP" and a.rate == Decimal("300.00")
+    assert a.allowed_methods == "PER_TRIP" and a.charge_basis == "PER_TRIP"
+    assert a.default_trip_charge == Decimal("300.00") and a.rate == Decimal("300.00")  # v1.5 field kept in step
 
 
-def test_items_present_from_itemwise_demo_import(db):
-    assert db.scalar(select(func.count(InvoiceItem.id))) > 0
+def test_item_wise_demo_import_keeps_no_sku_lines_in_v16(db):
+    """v1.6: product / SKU lines are postponed - item-wise exports are grouped into invoices, lines not stored."""
+    assert db.scalar(select(func.count(InvoiceItem.id))) == 0
+    assert db.scalar(select(func.count(Invoice.id)).where(Invoice.source_erp_id.isnot(None))) > 0

@@ -21,7 +21,7 @@
 <form class="filters collapsible {{ '' if filtered else 'collapsed' }}" method="get" id="pending-filters">
   <input type="hidden" name="tab" value="{{ tab }}">
   <div class="f"><label>Company</label>{{ select('company_id', opts.companies, f.company_id) }}</div>
-  <div class="f"><label>CFA</label>{{ select('cfa_id', opts.cfas, f.cfa_id) }}</div>
+  <div class="f"><label>Depot</label>{{ select('cfa_id', opts.cfas, f.cfa_id) }}</div>
   <div class="f"><label>Location</label>{{ select('location_id', opts.locations, f.location_id) }}</div>
   <div class="f wide"><label>Customer</label>{{ select('customer_id', opts.customers, f.customer_id) }}</div>
   <div class="f narrow"><label>Invoice from</label><input type="date" name="date_from" value="{{ f.date_from.isoformat() if f.date_from else '' }}"></div>
@@ -35,7 +35,7 @@
     <table class="data">
       <thead><tr>
         <th style="width:28px"><input type="checkbox" data-check-all="ids" aria-label="Select all"></th>
-        <th>Invoice</th><th class="num">Age</th><th>Company · CFA</th><th>Customer</th><th>Location</th>
+        <th>Invoice</th><th class="num">Age</th><th>Company · Depot</th><th>Customer</th><th>Location</th>
         <th class="num">Boxes</th><th class="num">Rate/Box</th><th class="num">Freight</th><th>Status</th><th>Transporter / LR</th><th class="num sticky-col">Action</th>
       </tr></thead>
       <tbody>

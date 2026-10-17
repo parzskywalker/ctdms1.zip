@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge with context %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Initial Master Upload</h1>
+    <div class="sub">First-day set-up: upload ONE cleaned master workbook compiled from MARG, SAP, CBO, Intrect and other ERPs. It creates the Companies, Depots, Customers, Customer Types, Locations, Transporters, Local Auto charging and code mappings in one go. After that, add or edit single records under Master Settings.</div></div>
+  <div class="actions"><a class="btn" href="/masters/upload/template.xlsx">Download the blank workbook (with instructions)</a></div>
+</div>
+{% if done %}
+<div class="alert alert-info">The master workbook <b>{{ done.file_name }}</b> was imported on {{ done.committed_at|dt }} by {{ done.committed_by.full_name if done.committed_by else '' }}. New companies, depots, customers or transporters are added one by one under <b>Master Settings</b> — the complete workbook does not need to be uploaded again.</div>
+{% endif %}
+<div class="grid g-side">
+  <form method="post" action="/masters/upload" enctype="multipart/form-data" class="card stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <h2 style="margin:0">Upload the master workbook</h2>
+    <div class="row"><input type="file" name="file" accept=".xlsx,.xlsm" required style="flex:1"><button class="btn btn-primary btn-lg" type="submit">Check workbook</button></div>
+    <ol class="small" style="padding-left:18px;margin:0">
+      <li><b>Check</b> — every row is validated: mandatory fields, values, duplicates inside the file and against CTDMS, and links between sheets (e.g. a customer's delivery location, a depot's companies).</li>
+      <li><b>Preview</b> — accepted and rejected counts per sheet, every problem with its reason. Nothing is saved yet.</li>
+      <li><b>Import</b> — only the valid new records are created. Codes already in CTDMS are skipped, never duplicated or overwritten. Freight rates go to the checker for approval.</li>
+      <li><b>History &amp; error report</b> — every upload stays listed below; rejected rows can be downloaded as Excel, corrected and uploaded again.</li>
+    </ol>
+  </form>
+  <div class="card">
+    <h3>Sheets in the workbook</h3>
+    <table class="data compact"><tbody>
+    {% for s in sheets %}<tr><td class="nowrap"><b>{{ s.name }}</b></td><td class="small">{{ s.purpose }}</td></tr>{% endfor %}
+    </tbody></table>
+    <p class="small muted" style="margin-top:8px">Product / SKU sheets are not part of v1.6 (postponed until ERP integration).</p>
+  </div>
+</div>
+<div class="card flush">
+  <div class="card-head"><h3>Upload history</h3></div>
+  <div class="table-wrap"><table class="data compact">
+    <thead><tr><th>#</th><th>File</th><th>Uploaded</th><th>Status</th><th class="num">Rows</th><th class="num">New</th><th class="num">Already in CTDMS</th><th class="num">Rejected</th><th></th></tr></thead>
+    <tbody>
+    {% for u in history %}{% set t = totals(u) %}
+      <tr><td>{{ u.id }}</td><td><a href="/masters/upload/{{ u.id }}">{{ u.file_name }}</a></td><td class="small">{{ u.uploaded_at|dt }} · {{ u.uploaded_by.full_name if u.uploaded_by else '' }}</td>
+        <td>{{ badge({'IMPORTED': 'COMPLETED', 'PREVIEW': 'VALIDATED', 'CANCELLED': 'CANCELLED'}[u.status], {'IMPORTED': 'Imported', 'PREVIEW': 'Checked, not imported', 'CANCELLED': 'Cancelled'}[u.status]) }}</td>
+        <td class="num">{{ t.rows }}</td><td class="num">{{ t.new }}</td><td class="num">{{ t.exists }}</td><td class="num {{ 'pos' if t.rejected }}">{{ t.rejected }}</td>
+        <td><a class="btn btn-sm" href="/masters/upload/{{ u.id }}/errors.xlsx">Error report</a></td></tr>
+    {% else %}<tr><td colspan="9" class="empty">No workbook uploaded yet.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endblock %}

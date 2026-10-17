@@ -3,7 +3,11 @@
 PENDING -> VERIFIED -> SLIP_GENERATED -> SLIP_PRINTED -> DISPATCHED
 (RATE_MISSING / EXCEPTION block verification; CANCELLED is terminal unless reinstated.)
 
-v1.3: a dispatch slip is a **gatepass** - one pickup (transporter, transporter direct pickup, outside auto or
+v1.6: LOCAL AUTOS (local delivery vehicles) are charged PER TRIP (one amount for the whole trip, entered on the
+gatepass, shared over the invoices by boxes - never multiplied by the number of invoices) or PER BOX (boxes x rate
+from Local Auto Box Rates). Long-distance transporters keep the v1.3-v1.5 rate-card workflow unchanged.
+
+v1.3: a dispatch slip is a **gatepass** - one pickup (transporter, transporter direct pickup, local auto or
 self pickup) carrying one or more invoices for one or more customers. The charge per invoice is frozen on the
 gatepass (transporter rate card per case per area, or the principal rate card when `freight.source` = COMPANY).
 LR numbers are not needed to print it; they are entered later (audited) until the transporter's bill is approved.
@@ -27,6 +31,7 @@ from app.models import (
 from app.models.masters import ChargeBasis
 from app.models.recon import BillStatus
 from app.services import audit, notify_service
+from app.services import local_auto_service as las
 from app.services import settings_service as cfg
 from app.services import transporter_rate_service as trs
 from app.services.errors import BusinessError
@@ -154,6 +159,9 @@ class GatepassRequest:
     cases: dict | None = None            # {invoice_id: cases} entered on the gatepass
     amount_paid: Decimal | None = None   # None -> default from payment mode
     remarks: str | None = None
+    auto_method: str | None = None       # v1.6 local auto: PER_TRIP / PER_CASE (None = the auto's default)
+    trip_charge: Decimal | None = None   # v1.6 per-trip amount for this trip (None = the auto's suggestion)
+    vehicle_no: str | None = None
 
 
 @dataclass
@@ -178,12 +186,12 @@ def _alloc(total: Decimal, weights: list[int]) -> list[Decimal]:
     return shares
 
 
-def _auto_charge(auto: OutsideAuto | None, cases: int) -> Decimal:
-    if not auto:
-        return ZERO
-    if auto.charge_basis == ChargeBasis.PER_CASE:
-        return money(Decimal(cases) * (auto.rate or ZERO))
-    return money(auto.rate or ZERO)
+def _trip_amount(auto: OutsideAuto | None, req: "GatepassRequest") -> Decimal | None:
+    if auto is None:
+        return None
+    if req.trip_charge is not None:
+        return money(req.trip_charge)
+    return money(auto.default_trip_charge) if auto.default_trip_charge else None
 
 
 def _pickup_charge(tr: Transporter | None, cases: int) -> Decimal:
@@ -202,7 +210,7 @@ def plan_gatepass(db: Session, user: User | None, invs: list[Invoice], req: Gate
         return [], {}, ["Add at least one invoice"]
     mode = req.mode if req.mode in DispatchMode.ALL else None
     if not mode:
-        problems.append("Choose how the goods leave (transporter / direct pickup / outside auto / self)")
+        problems.append("Choose how the goods leave (transporter / direct pickup / local auto / self)")
         mode = DispatchMode.TRANSPORTER
     tr = db.get(Transporter, req.transporter_id) if req.transporter_id else None
     auto = db.get(OutsideAuto, req.outside_auto_id) if req.outside_auto_id else None
@@ -210,15 +218,25 @@ def plan_gatepass(db: Session, user: User | None, invs: list[Invoice], req: Gate
         if not tr or not tr.is_active:
             problems.append("Transporter not selected")
         if req.pickup_mode == PickupMode.OUTSIDE_AUTO and (not auto or not auto.is_active):
-            problems.append("Select the outside auto that takes the goods to the transporter")
+            problems.append("Select the local auto that takes the goods to the transporter")
     if mode == DispatchMode.OUTSIDE_AUTO and (not auto or not auto.is_active):
-        problems.append("Select the outside auto")
+        problems.append("Select the local auto")
+    uses_auto = auto is not None and (mode == DispatchMode.OUTSIDE_AUTO or (
+        mode in (DispatchMode.TRANSPORTER, DispatchMode.DIRECT) and req.pickup_mode == PickupMode.OUTSIDE_AUTO))
+    auto_method, method_problem = las.method_for(auto, req.auto_method) if uses_auto else (None, None)
+    if method_problem:
+        problems.append(method_problem)
+    trip = _trip_amount(auto, req) if auto_method == ChargeBasis.PER_TRIP else None
+    if auto_method == ChargeBasis.PER_TRIP and (trip is None or trip <= 0):
+        problems.append(f"Enter the trip charge for {auto.name} (one amount for the whole trip)")
+    elif trip is not None and trip > Decimal("100000"):
+        problems.append(f"Trip charge ₹{trip:,.2f} looks wrong")
     d = req.dispatch_date or local_today()
     if d > local_today() and not cfg.get(db, "dispatch.allow_future_date"):
         problems.append("Dispatch date cannot be in the future")
     cfa_ids = {i.cfa_id for i in invs}
     if len(cfa_ids) > 1:
-        problems.append("All invoices on one gatepass must be from the same CFA / warehouse")
+        problems.append("All invoices on one gatepass must be from the same depot")
     if len({i.id for i in invs}) != len(invs):
         problems.append("The same invoice is listed twice")
     company_mode = freight_source(db) == "COMPANY"
@@ -227,7 +245,7 @@ def plan_gatepass(db: Session, user: User | None, invs: list[Invoice], req: Gate
     for inv in invs:
         tag = f"Invoice {inv.invoice_no}"
         if user is not None and not can_see_invoice(user, inv):
-            problems.append(f"{tag}: not in your company / CFA scope")
+            problems.append(f"{tag}: not in your company / depot scope")
             continue
         if inv.status == S.CANCELLED:
             problems.append(f"{tag}: cancelled")
@@ -260,9 +278,16 @@ def plan_gatepass(db: Session, user: User | None, invs: list[Invoice], req: Gate
         if mode == DispatchMode.SELF:
             rate, freight, level = ZERO, ZERO, RateLevel.SELF
         elif mode == DispatchMode.OUTSIDE_AUTO:
-            rate = (auto.rate if auto and auto.charge_basis == ChargeBasis.PER_CASE else None)
-            freight = money(Decimal(cases) * rate) if rate is not None else ZERO  # per trip: allocated below
-            level = RateLevel.AUTO
+            rate, freight, level = None, ZERO, RateLevel.AUTO  # per trip: the trip amount is shared out below
+            if auto and auto_method == ChargeBasis.PER_CASE:
+                br = las.box_rate(db, auto, location_id=inv.location_id, company_id=inv.company_id,
+                                  cfa_id=inv.cfa_id, on=d)
+                if br.rate is None:
+                    problems.append(f"{tag}: no per-box rate for {auto.name} ({inv.location.name}, {inv.company.code})"
+                                    " - add it under Master Settings > Local Auto Box Rates")
+                    continue
+                rate = br.rate
+                freight = money(Decimal(cases) * rate)
         elif company_mode or inv.freight_basis in ("MANUAL_RATE", "MANUAL_AMOUNT"):
             if inv.freight_amount is None:
                 problems.append(f"{tag}: {inv.exception_reason or 'freight not calculated'}")
@@ -286,14 +311,24 @@ def plan_gatepass(db: Session, user: User | None, invs: list[Invoice], req: Gate
     total_cases = sum(p.cases for p in planned)
     weights = [p.cases for p in planned]
     pickup = auto_ch = ZERO
-    if mode == DispatchMode.OUTSIDE_AUTO and auto and auto.charge_basis == ChargeBasis.PER_TRIP:
-        for p, share in zip(planned, _alloc(auto.rate or ZERO, weights)):
+    if mode == DispatchMode.OUTSIDE_AUTO and auto and auto_method == ChargeBasis.PER_TRIP and trip:
+        # ONE amount for the trip, however many invoices: shared by boxes for MIS (the shares add up to the trip)
+        for p, share in zip(planned, _alloc(trip, weights)):
             p.freight = share
             p.rate = (share / p.cases).quantize(Decimal("0.01")) if p.cases else None
     if mode == DispatchMode.DIRECT:
         pickup = _pickup_charge(tr, total_cases)
-    if mode in (DispatchMode.TRANSPORTER, DispatchMode.DIRECT) and req.pickup_mode == PickupMode.OUTSIDE_AUTO:
-        auto_ch = _auto_charge(auto, total_cases)
+    if mode in (DispatchMode.TRANSPORTER, DispatchMode.DIRECT) and req.pickup_mode == PickupMode.OUTSIDE_AUTO and auto:
+        if auto_method == ChargeBasis.PER_TRIP:
+            auto_ch = trip or ZERO
+        else:
+            for p in planned:
+                br = las.box_rate(db, auto, location_id=p.inv.location_id, company_id=p.inv.company_id,
+                                  cfa_id=p.inv.cfa_id, on=d)
+                if br.rate is None:
+                    problems.append(f"Invoice {p.inv.invoice_no}: no per-box rate for {auto.name}")
+                else:
+                    auto_ch += money(Decimal(p.cases) * br.rate)
     for p, share in zip(planned, _alloc(pickup + auto_ch, weights)):
         p.extra = share
     freight_total = sum((p.freight for p in planned), ZERO)
@@ -315,7 +350,8 @@ def plan_gatepass(db: Session, user: User | None, invs: list[Invoice], req: Gate
     status = "NIL" if total == 0 else ("PAID" if paid >= total else ("PARTIAL" if paid > 0 else "TBB"))
     totals = {"invoices": len(planned), "cases": total_cases, "freight": freight_total, "pickup": pickup,
               "auto": auto_ch, "total": total, "paid": paid, "balance": total - paid, "payment_status": status,
-              "mode": mode, "transporter": tr, "auto_obj": auto, "date": d}
+              "mode": mode, "transporter": tr, "auto_obj": auto, "date": d,
+              "auto_method": auto_method, "trip_charge": trip}
     return planned, totals, problems
 
 
@@ -332,7 +368,8 @@ def _gatepass_snapshot(db: Session, slip: DispatchSlip, planned: list[PlannedLin
                          "gstin": cu.gstin},
             "location": {"code": lo.code, "name": lo.name, "route": lo.route, "zone": lo.zone},
             "invoices": [], "cases": 0, "freight": ZERO, "extra": ZERO})
-        g["invoices"].append({"invoice_no": inv.invoice_no, "invoice_date": inv.invoice_date.strftime("%d-%m-%Y"),
+        g["invoices"].append({"invoice_no": inv.invoice_no, "recognition_code": inv.recognition_code,
+                              "invoice_date": inv.invoice_date.strftime("%d-%m-%Y"),
                               "company_code": inv.company.code, "company": inv.company.name,
                               "sales_value": str(inv.sales_value), "cases": p.cases,
                               "rate": str(p.rate) if p.rate is not None else None, "freight": str(p.freight),
@@ -356,13 +393,18 @@ def _gatepass_snapshot(db: Session, slip: DispatchSlip, planned: list[PlannedLin
         "dispatch_date": totals["date"].strftime("%d-%m-%Y"),
         "dispatch_time": None,  # filled in by create_gatepass
         "cfa": {"code": f.code, "name": f.name, "address": f.address, "city": f.city, "state": f.state,
-                "phone": f.contact_phone},
+                "phone": f.contact_phone, "locality": f.locality},
         "mode": totals["mode"], "mode_label": slip.mode_label, "pickup_mode": slip.pickup_mode,
         "transporter": {"code": tr.code, "name": tr.name, "contact": tr.contact_person, "mobile": tr.mobile,
                         "gstin": tr.gstin, "address": tr.address, "city": tr.city,
                         "payment_mode": tr.payment_mode, "payment_label": tr.payment_label} if tr else None,
         "outside_auto": {"code": auto.code, "name": auto.name, "mobile": auto.mobile,
-                         "charge_basis": auto.charge_basis, "rate": str(auto.rate)} if auto else None,
+                         "vehicle_no": slip.vehicle_no or auto.vehicle_no,
+                         "method": totals.get("auto_method"),
+                         "trip_charge": str(totals["trip_charge"]) if totals.get("trip_charge") is not None else None,
+                         "charge_basis": totals.get("auto_method") or auto.charge_basis,
+                         "rate": str(totals["trip_charge"] if totals.get("trip_charge") is not None
+                                     else auto.default_box_rate or auto.rate)} if auto else None,
         "rate_basis": freight_source(db),
         "groups": group_list,
         "totals": {k: (str(v) if isinstance(v, Decimal) else v) for k, v in totals.items()
@@ -404,8 +446,13 @@ def create_gatepass(db: Session, user: User, invs: list[Invoice], req: GatepassR
         pickup_charge=totals["pickup"], auto_charge=totals["auto"], total_charge=totals["total"],
         amount_paid=totals["paid"], payment_status=totals["payment_status"],
         remarks=(req.remarks or "").strip() or None, generated_by_id=user.id)
+    if slip.outside_auto_id is not None:
+        slip.auto_method = totals.get("auto_method")
+        slip.trip_charge = totals.get("trip_charge")
+        slip.vehicle_no = norm_vehicle(req.vehicle_no) or auto.vehicle_no
     if slip.outside_auto_id is None:
         totals["auto_obj"] = None
+        totals["auto_method"] = totals["trip_charge"] = None
     if slip.transporter_id is None:
         totals["transporter"] = None
     db.add(slip)
@@ -464,6 +511,7 @@ def create_gatepass(db: Session, user: User, invs: list[Invoice], req: GatepassR
               details={"invoices": len(planned), "cases": totals["cases"], "mode": mode,
                        "transporter": tr.code if slip.transporter_id else None,
                        "auto": auto.code if slip.outside_auto_id else None, "total": str(totals["total"]),
+                       "auto_method": slip.auto_method, "trip_charge": audit._s(slip.trip_charge),
                        "paid": str(totals["paid"])})
     return slip
 

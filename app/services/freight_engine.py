@@ -90,7 +90,7 @@ def find_rate(db: Session, *, company_id: int, cfa_id: int | None, customer_id: 
                                           FreightRate.location_id.is_(None))))
     cfa_defaults = [r for r in defaults if cfa_id and r.cfa_id == cfa_id]
     co_defaults = [r for r in defaults if r.cfa_id is None]
-    for pool, label in ((cfa_defaults, "CFA default"), (co_defaults, "Company default")):
+    for pool, label in ((cfa_defaults, "Depot default"), (co_defaults, "Company default")):
         if len(pool) == 1:
             trace.append(f"DEFAULT: matched {label} #{pool[0].id}")
             return RateLookup(pool[0], RateLevel.DEFAULT, None,
@@ -100,4 +100,4 @@ def find_rate(db: Session, *, company_id: int, cfa_id: int | None, customer_id: 
                               f"{len(pool)} overlapping default rates", trace)
     trace.append("DEFAULT: none configured")
     return RateLookup(None, None, ExceptionCode.RATE_MISSING,
-                      "No approved freight rate effective on the invoice date for this Company/CFA/Location", trace)
+                      "No approved freight rate effective on the invoice date for this Company/Depot/Location", trace)

@@ -5,7 +5,7 @@
 <div class="crumbs"><a href="/recon">Transporter bills</a> › {{ b.bill_no }}</div>
 <div class="page-head">
   <div><h1>Bill {{ b.bill_no }} · {{ b.transporter.name }} {{ badge(b.status) }}</h1>
-    <div class="sub">{{ {'SCAN': 'Scanned', 'FILE': 'Imported statement', 'MANUAL': 'Typed / linked'}.get(b.source, b.source) }} · bill date {{ b.bill_date|date }} · period {{ b.period_from|date }} – {{ b.period_to|date }} · {{ b.company.name if b.company else 'all companies' }} · {{ b.cfa.name if b.cfa else 'all CFAs' }} · entered by {{ b.created_by.full_name if b.created_by else '' }}</div></div>
+    <div class="sub">{{ {'SCAN': 'Scanned', 'FILE': 'Imported statement', 'MANUAL': 'Typed / linked'}.get(b.source, b.source) }} · bill date {{ b.bill_date|date }} · period {{ b.period_from|date }} – {{ b.period_to|date }} · {{ b.company.name if b.company else 'all companies' }} · {{ b.cfa.name if b.cfa else 'all Depots' }} · entered by {{ b.created_by.full_name if b.created_by else '' }}</div></div>
   <div class="actions"><a class="btn" href="/recon/{{ b.id }}/report">Irregularity report</a>{% if can('data.export') %}<a class="btn" href="/recon/{{ b.id }}/report?export=xlsx">Excel</a>{% endif %}</div>
 </div>
 <div class="kpis" style="grid-template-columns:repeat(6,minmax(0,1fr))">

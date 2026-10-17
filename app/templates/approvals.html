@@ -30,7 +30,7 @@
 <div class="card flush">
   <div class="card-head"><h2>Freight rate changes <span class="pill-count">{{ rates|length }}</span></h2></div>
   <div class="table-wrap"><table class="data">
-    <thead><tr><th>#</th><th>Company</th><th>CFA</th><th>Customer</th><th>Location</th><th class="num">Current</th><th class="num">Proposed</th><th>Effective from</th><th>Reason</th><th>By</th><th class="sticky-col" style="min-width:230px">Decision</th></tr></thead>
+    <thead><tr><th>#</th><th>Company</th><th>Depot</th><th>Customer</th><th>Location</th><th class="num">Current</th><th class="num">Proposed</th><th>Effective from</th><th>Reason</th><th>By</th><th class="sticky-col" style="min-width:230px">Decision</th></tr></thead>
     <tbody>
     {% for r in rates %}
       <tr><td><a href="/rates/{{ r.id }}">#{{ r.id }}</a></td><td>{{ r.company.code }}</td><td>{{ r.cfa.code if r.cfa else 'Any' }}</td><td>{{ r.customer.name if r.customer else '' }}</td><td>{{ r.location.name if r.location else 'DEFAULT' }}</td>
@@ -52,7 +52,8 @@
 
 {% if can('rate.approve') %}
 <div class="card flush">
-  <div class="card-head"><h2>Transporter rate-card changes <span class="pill-count">{{ trates|length }}</span></h2></div>
+  <div class="card-head"><h2>Transporter rate-card changes <span class="pill-count">{{ trates|length }}</span></h2>
+    {% if trates|length > 1 and can('rate.approve') %}<form method="post" action="/rate-cards/approve-all" class="row" style="margin:0"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="text" name="remarks" placeholder="Remarks (optional)" style="width:200px"><button class="btn btn-ok" type="submit" data-confirm="Approve all {{ trates|length }} rate-card changes shown (except your own)?">Approve all</button></form>{% endif %}</div>
   <div class="table-wrap"><table class="data">
     <thead><tr><th>Transporter</th><th>Area</th><th class="num">Current</th><th class="num">Proposed</th><th>From</th><th>Source</th><th>Reason</th><th>By</th><th class="sticky-col" style="min-width:230px">Decision</th></tr></thead>
     <tbody>

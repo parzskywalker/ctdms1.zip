@@ -1,5 +1,41 @@
 # Changelog
 
+## v1.6.0 — 18 Oct 2026 (management feedback: masters, depots, codification, local autos)
+
+Migration 0007 (applied automatically; all data kept): depot locality / recognition code, customer types master,
+customer / company recognition codes, source ERP + ERP customer code on customers, invoice markings, local-auto box
+rates, local-auto charging fields, Invoice Recognition Code columns on invoices, master upload history.
+
+- **Initial Master Upload** (Master Settings): one cleaned workbook for the first-day set-up — ERP_Systems, Locations,
+  Companies, Depots, Customer_Types, Customers, Transporters (long-distance and local autos), Local_Auto_Rates,
+  Freight_Rates, Invoice_Code_Mappings, ERP_Mappings, with an Instructions sheet. Validate → preview (new / already
+  in CTDMS / rejected per sheet, every reason shown) → import valid rows → history + Excel error report. Existing
+  codes are never duplicated or overwritten; freight rates go to the checker. Later additions: Master Settings.
+- **CFA → Depot** on every screen, print, report and export (Depot Master, Depot Manager, Depot-wise report, depot
+  selection). Several depots per city (Raipur: Guma, Kamal Vihar), each with its own code, locality and city.
+  Database names unchanged. No business-type split.
+- **Customer Types** are a master (Retailer, Stockist, Distributor, Hospital, Institution, Chain Pharmacy, Other —
+  editable, each with a short code). Customers get Source ERP + Source ERP customer code (kept as an ERP mapping).
+- **Invoice Recognition Code** (provision, switchable): Company + Customer Type + Customer + Depot + numeric part of
+  the ERP number, e.g. `ABC-RET-C025-GUMA-001245`; pattern, padding and fallback configurable (Master Settings ›
+  Invoice Recognition Code). Stored beside the **original ERP invoice number, which is never changed**; shown on the
+  register, invoice, gatepass, dispatch slip, reports, exports and API; searchable. Missing master codes give a clear
+  "code not generated" reason; dispatch never depends on it; Regenerate codes after master changes.
+- **Invoice Code Mappings**: existing ERP invoice markings (e.g. `MB/` = Company B, optionally depot / customer type)
+  recognise the company / depot of an incoming invoice when the file does not say.
+- **Local Auto Transporters** (was Outside Autos): allowed charging Per Trip / Per Box / Both, usual trip charge,
+  default rate per box, vehicle no. **Per trip** = one amount for the whole trip, entered / confirmed on the gatepass,
+  shared over the invoices by boxes for MIS (4 invoices at ₹500 = ₹500, never ₹2,000). **Per box** = boxes × rate from
+  the new **Local Auto Box Rates** (auto + location / company / depot + effective date; most specific wins).
+  Long-distance transporter workflow unchanged.
+- **Reports / search**: City-wise and Depot-wise freight, Local Auto Trips (amount owed vs share on invoices), filters
+  for city, depot, customer type, recognition code and local-auto charging; reports show "Original ERP Invoice No" and
+  "Invoice Recognition Code" separately. Approvals: **Approve all** rate-card changes (maker-checker kept).
+- **Product / SKU lines postponed**: item-wise ERP exports are still accepted (rows combined into one invoice) but
+  lines are not stored or shown; SKU report hidden. Setting `features.sku_lines` (off) keeps the provision.
+- Demo seed: Guma / Bilaspur / Durg / Kamal Vihar depots, customer types with codes, a local auto charged either way.
+- Tests: `tests/test_v16.py` (21); v1.5 tests updated for the new wording; date-dependent reconciliation test fixed.
+
 ## v1.5.1 — 15 Oct 2026 (office server, no paid services)
 
 - **Paid services locked**: automatic bill reading (Anthropic API) and WhatsApp / SMS sending stay locked unless

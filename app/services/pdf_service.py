@@ -103,7 +103,7 @@ def _slip_flowables(snap: dict, width: float, base: float, print_label: str, pri
     c, f, cu, lo = snap["company"], snap["cfa"], snap["customer"], snap["location"]
     out.append(grid([
         ("Company / Principal", f"{c['name']} ({c['code']})"),
-        ("CFA", f"{f['name']} ({f['code']})"),
+        ("Depot", f"{f['name']} ({f['code']})"),
         ("Invoice No", snap["invoice_no"]),
         ("Invoice Date", snap["invoice_date"]),
     ]))
@@ -182,9 +182,14 @@ def _gatepass_flowables(snap: dict, width: float, base: float, print_label: str,
              P("From", st["lbl"]), P(_esc(f"{snap['cfa']['name']} ({snap['cfa']['code']})"), st["val"])],
             [P("Mode", st["lbl"]), P(_esc(snap.get("mode_label")), st["val"]), P("Carrier", st["lbl"]), P(_esc(carrier), st["val"])]]
     if auto:
-        basis = "per case" if auto.get("charge_basis") == "PER_CASE" else "per trip"
-        info.append([P("Outside auto", st["lbl"]), P(_esc(f"{auto.get('name')} {auto.get('mobile') or ''}"), st["val"]),
-                     P("Auto charge", st["lbl"]), P(f"₹{Decimal(auto.get('rate') or 0):,.2f} {basis}", st["val"])])
+        method = auto.get("method") or auto.get("charge_basis")
+        if method == "PER_CASE":
+            charge = "per box (boxes × rate)"
+        else:
+            charge = f"₹{Decimal(auto.get('trip_charge') or auto.get('rate') or 0):,.2f} for the whole trip"
+        veh = f" · vehicle {auto['vehicle_no']}" if auto.get("vehicle_no") else ""
+        info.append([P("Local auto", st["lbl"]), P(_esc(f"{auto.get('name')} {auto.get('mobile') or ''}{veh}"), st["val"]),
+                     P("Auto charge", st["lbl"]), P(_esc(charge), st["val"])])
     t = Table(info, colWidths=[width * 0.14, width * 0.32, width * 0.12, width * 0.42])
     t.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.6, LINE), ("INNERGRID", (0, 0), (-1, -1), 0.4, LINE),
                            ("VALIGN", (0, 0), (-1, -1), "TOP")]))
@@ -201,7 +206,8 @@ def _gatepass_flowables(snap: dict, width: float, base: float, print_label: str,
         styles.append(("BACKGROUND", (0, len(rows) - 1), (-1, len(rows) - 1), colors.HexColor("#f7f9fc")))
         styles.append(("SPAN", (0, len(rows) - 1), (2, len(rows) - 1)))
         for i in g["invoices"]:
-            rows.append([P(f"&nbsp;&nbsp;{_esc(i['invoice_no'])}", st["reg"]), P(_esc(i["invoice_date"]), st["small"]),
+            rc = f"<br/>&nbsp;&nbsp;<font size={base - 2}>{_esc(i['recognition_code'])}</font>" if i.get("recognition_code") else ""
+            rows.append([P(f"&nbsp;&nbsp;{_esc(i['invoice_no'])}{rc}", st["reg"]), P(_esc(i["invoice_date"]), st["small"]),
                          P(_esc(i["company_code"]), st["small"]), P(str(i["cases"]), st["right"]),
                          P(fmt_money(Decimal(i["rate"])) if i.get("rate") is not None else "trip", st["right"]),
                          P(fmt_money(Decimal(i["freight"])), st["right"])])

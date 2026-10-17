@@ -70,9 +70,11 @@ ERPS = [
 ]
 
 CFAS = [
-    ("RPR", "Raipur CFA", "Raipur Central Warehouse", "Plot 14, Urla Industrial Area", "Raipur", "Chhattisgarh", "493221"),
-    ("BSP", "Bilaspur CFA", "Bilaspur Depot", "Vyapar Vihar, Link Road", "Bilaspur", "Chhattisgarh", "495001"),
-    ("DRG", "Durg CFA", "Durg Depot", "GE Road, Industrial Estate", "Durg", "Chhattisgarh", "491001"),
+    ("RPR", "Guma Depot", "Raipur Central Warehouse", "Plot 14, Guma", "Raipur", "Chhattisgarh", "493221"),
+    ("BSP", "Bilaspur Depot", "Bilaspur Depot", "Vyapar Vihar, Link Road", "Bilaspur", "Chhattisgarh", "495001"),
+    ("DRG", "Durg Depot", "Durg Depot", "GE Road, Industrial Estate", "Durg", "Chhattisgarh", "491001"),
+    # v1.6: a second depot in the same city (one city -> several depots)
+    ("KVR", "Kamal Vihar Depot", "Kamal Vihar Godown", "Sector 4, Kamal Vihar", "Raipur", "Chhattisgarh", "492001"),
 ]
 
 LOCATIONS = [  # code, name, state, pincode, route, zone, km (from Raipur)
@@ -94,7 +96,7 @@ LOCATIONS = [  # code, name, state, pincode, route, zone, km (from Raipur)
 
 COMPANIES = [  # code, name, erp, type, cfas
     ("COA", "Company A Pharma Ltd", "SAP", "PRINCIPAL", ["RPR", "BSP", "DRG"]),
-    ("COB", "Company B Healthcare Ltd", "MARG", "PRINCIPAL", ["RPR", "BSP"]),
+    ("COB", "Company B Healthcare Ltd", "MARG", "PRINCIPAL", ["RPR", "BSP", "KVR"]),
     ("COC", "Company C Lifesciences Ltd", "CBO", "PRINCIPAL", ["RPR", "DRG"]),
     ("OWN", "Own Distribution Division", "INTRECT", "OWN", ["RPR"]),
 ]
@@ -193,6 +195,8 @@ TRANSPORTER_RATES = {
 }
 AUTOS = [("AUTO-RAM", "Ramesh Yadav (auto)", "9826230011", "PER_TRIP", "250.00", "Raipur local deliveries"),
          ("AUTO-SONU", "Sonu Tempo", "9826230012", "PER_CASE", "12.00", "To transporter booking offices")]
+# v1.6: a local delivery vehicle that may be charged either way (chosen on the gatepass) + its per-box rates
+AUTO_BOTH = ("AUTO-KISH", "Kishore Mini Truck", "9826230013", "CG04-LT-5521", "600.00", "18.00")
 
 # (company, cfa, location, rate) - standard CFA-location rates, effective from FY start
 RATES = [
@@ -261,8 +265,18 @@ def seed_core(db: Session) -> dict:
             db.add(r)
         roles[code] = r
     cfg.ensure_defaults(db)
+    ensure_customer_types(db)
     db.flush()
     return roles
+
+
+def ensure_customer_types(db: Session) -> None:
+    """v1.6: the configurable customer types (Retailer, Stockist, Distributor, ...) with their recognition codes."""
+    from app.models import CustomerType, CustomerTypeMaster
+    have = {c.code for c in db.scalars(select(CustomerTypeMaster))}
+    for n, (code, name, marking) in enumerate(CustomerType.DEFAULTS, 1):
+        if code not in have:
+            db.add(CustomerTypeMaster(code=code, name=name, marking=marking, sort_order=n, is_active=True))
 
 
 def seed_masters(db: Session, today: date) -> Ctx:
@@ -277,6 +291,8 @@ def seed_masters(db: Session, today: date) -> Ctx:
     cfas = {}
     for code, name, wh, addr, city, state, pin in CFAS:
         c = CFA(code=code, name=name, warehouse=wh, address=addr, city=city, state=state, pincode=pin,
+                locality={"RPR": "Guma", "BSP": "Vyapar Vihar", "DRG": "Industrial Estate", "KVR": "Kamal Vihar"}[code],
+                marking={"RPR": "GUMA", "KVR": "KVIHAR"}.get(code),
                 contact_person="Warehouse In-charge", contact_phone="0771-40" + str(RND.randint(10000, 99999)))
         db.add(c)
         cfas[code] = c
@@ -341,6 +357,17 @@ def seed_masters(db: Session, today: date) -> Ctx:
         transporters[code] = t
     for code, name, mobile, basis, rate, notes in AUTOS:
         db.add(OutsideAuto(code=code, name=name, mobile=mobile, charge_basis=basis, rate=Decimal(rate), notes=notes))
+    code, name, mobile, veh, trip, box = AUTO_BOTH
+    kish = OutsideAuto(code=code, name=name, mobile=mobile, vehicle_no=veh, allowed_methods="BOTH",
+                       charge_basis="PER_TRIP", default_trip_charge=Decimal(trip), default_box_rate=Decimal(box),
+                       notes="Bigger local deliveries; per trip or per box")
+    kish.sync_legacy()
+    db.add(kish)
+    db.flush()
+    from app.models import LocalAutoRate
+    db.add(LocalAutoRate(code="KISH-BHL", outside_auto_id=kish.id, location_id=locations["BHL"].id,
+                         rate_per_box=Decimal("22.00"), effective_from=date(today.year if today.month >= 4 else today.year - 1, 4, 1),
+                         remarks="Bhilai is further"))
     users = {}
     for uname, full, role, cfa_codes, pwd in USERS:
         u = User(username=uname, full_name=full, role=roles[role], password_hash=hash_password(pwd),

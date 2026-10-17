@@ -79,6 +79,28 @@ def propose(tid: int, request: Request, form=Depends(get_form), db: Session = De
     return redirect(f"/rate-cards/{t.id}")
 
 
+@router.post("/rate-cards/approve-all")
+def approve_all(request: Request, remarks: str = Form(""), db: Session = Depends(get_db),
+                user: User = Depends(require("rate.approve"))):
+    """v1.6: approve every waiting rate-card change the user may approve (e.g. after the initial master upload).
+    The maker-checker rule still applies: changes the user proposed are left for someone else."""
+    from sqlalchemy import select as _select
+    from app.models import RateStatus
+    from app.services import settings_service as cfg
+    ok = skipped = 0
+    for r in db.scalars(_select(TransporterRate).where(TransporterRate.status == RateStatus.PENDING_APPROVAL)
+                        .order_by(TransporterRate.effective_from, TransporterRate.id)):
+        if r.created_by_id == user.id and not cfg.get(db, "rate.allow_self_approval"):
+            skipped += 1
+            continue
+        trs.approve(db, user, r, (remarks or "").strip() or "Approved together (approve all)")
+        ok += 1
+    db.commit()
+    flash(request, f"{ok} rate-card change(s) approved." + (f" {skipped} proposed by you were left for another "
+                                                            "approver." if skipped else ""), "success")
+    return redirect(back_url(request, "/approvals"))
+
+
 @router.post("/rate-cards/rate/{rid:int}/decide")
 def decide(rid: int, request: Request, decision: str = Form(...), remarks: str = Form(""),
            db: Session = Depends(get_db), user: User = Depends(require("rate.approve"))):

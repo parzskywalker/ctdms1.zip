@@ -19,7 +19,7 @@
       <select name="company_id" required><option value="">— select —</option>
         {% for c in companies %}<option value="{{ c.id }}" {% if form.company_id|string == c.id|string or companies|length == 1 %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
       </select></div>
-    <div><label>CFA / warehouse <span class="req">*</span></label>
+    <div><label>Depot <span class="req">*</span></label>
       <select name="cfa_id" required><option value="">— select —</option>
         {% for c in cfas %}<option value="{{ c.id }}" {% if form.cfa_id|string == c.id|string or cfas|length == 1 %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
       </select></div>

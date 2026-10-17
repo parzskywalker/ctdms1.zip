@@ -19,7 +19,7 @@
     <div><label>Period from</label><input type="date" name="period_from"></div>
     <div><label>Period to</label><input type="date" name="period_to"></div>
     <div><label>Company</label>{{ select('company_id', opts.companies, none, blank='All companies') }}</div>
-    <div><label>CFA</label>{{ select('cfa_id', opts.cfas, none, blank='All CFAs') }}</div>
+    <div><label>Depot</label>{{ select('cfa_id', opts.cfas, none, blank='All Depots') }}</div>
   </div>
   <div class="form-actions">
     <button class="btn btn-primary btn-lg" type="submit" id="scan-go">{{ 'Read the bill' if ai_ready else 'Upload and type the lines' }}</button>

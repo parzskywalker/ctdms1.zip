@@ -14,15 +14,15 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import (
-    CFA, Company, Customer, ERPCodeMapping, ERPFieldMapping, ERPSystem, FreightRate, ImportTemplate, Invoice,
-    Location, OutsideAuto, Transporter, User,
+    CFA, Company, Customer, CustomerTypeMaster, ERPCodeMapping, ERPFieldMapping, ERPSystem, FreightRate, ImportTemplate,
+    Invoice, InvoiceMarking, LocalAutoRate, Location, OutsideAuto, Transporter, User,
 )
 from app.security.auth import csrf_protect, require
-from app.services import audit
+from app.services import audit, recognition
 from app.services.errors import BusinessError
-from app.services.import_service import TARGET_FIELDS, add_code_mapping
+from app.services.import_service import TARGET_FIELDS, add_code_mapping, find_code_mapping
 from app.services.scope import apply_cfa_scope, apply_company_scope, can_see
-from app.services.utils import csv_safe, parse_decimal, parse_int, safe_int
+from app.services.utils import csv_safe, parse_date, parse_decimal, parse_int, safe_int
 from app.web.templating import back_url, flash, get_form, redirect, render, safe_path
 
 router = APIRouter(dependencies=[Depends(csrf_protect)], include_in_schema=False)
@@ -32,7 +32,7 @@ router = APIRouter(dependencies=[Depends(csrf_protect)], include_in_schema=False
 class F:
     name: str
     label: str
-    kind: str = "text"  # text textarea int decimal bool select multi email
+    kind: str = "text"  # text textarea int decimal bool select multi email date
     required: bool = False
     options: str | None = None  # erp / location / company / cfa / choice:<a,b>
     list: bool = False
@@ -52,33 +52,49 @@ class MasterDef:
 
 
 MASTERS: dict[str, MasterDef] = {
-    "companies": MasterDef("companies", Company, "Companies / Principals", "Company", [
+    "companies": MasterDef("companies", Company, "Company Master (principals)", "Company", [
         F("code", "Company code", required=True, list=True, upper=True),
         F("name", "Company name", required=True, list=True),
+        F("marking", "Recognition code", list=True, upper=True,
+          help="Short code used in the Invoice Recognition Code, e.g. ABC (blank = the company code)"),
         F("relationship_type", "Relationship", "select", options="choice:PRINCIPAL,OWN", list=True,
-          help="PRINCIPAL = CFA principal · OWN = own distribution business"),
+          help="PRINCIPAL = company we dispatch for · OWN = own distribution business"),
         F("erp_system_id", "Source ERP", "select", options="erp", list=True),
-        F("cfas", "Applicable CFA locations", "multi", options="cfa", list=True),
+        F("cfas", "Depots handling this company", "multi", options="cfa", list=True),
         F("gstin", "GSTIN", upper=True), F("contact_person", "Contact person"), F("contact_phone", "Contact number"),
         F("email", "Email", "email"), F("address", "Address", "textarea"), F("notes", "Reference notes", "textarea"),
         F("is_active", "Active", "bool", list=True),
     ], scope="company"),
-    "cfas": MasterDef("cfas", CFA, "CFA Master", "CFA", [
-        F("code", "CFA code", required=True, list=True, upper=True),
-        F("name", "CFA name", required=True, list=True),
-        F("warehouse", "Warehouse / location", list=True),
-        F("address", "Address", "textarea"), F("city", "City", list=True), F("state", "State", list=True),
-        F("pincode", "PIN code"), F("gstin", "GSTIN", upper=True), F("contact_person", "Contact person"),
+    "depots": MasterDef("depots", CFA, "Depot Master (godowns / dispatch locations)", "Depot", [
+        F("code", "Depot code", required=True, list=True, upper=True,
+          help="Unique for every depot, also when several depots are in the same city"),
+        F("name", "Depot name", required=True, list=True),
+        F("locality", "Locality / area", list=True, help="e.g. Guma, Kamal Vihar"),
+        F("city", "City", required=True, list=True), F("state", "State", list=True), F("pincode", "PIN code"),
+        F("address", "Address", "textarea"),
+        F("marking", "Recognition code", list=True, upper=True,
+          help="Short code used in the Invoice Recognition Code, e.g. GUMA (blank = the depot code)"),
+        F("companies", "Companies handled", "multi", options="company", list=True),
+        F("default_erp_id", "Source ERP (usual)", "select", options="erp", list=True),
+        F("warehouse", "Godown / building"), F("gstin", "GSTIN", upper=True), F("contact_person", "Contact person"),
         F("contact_phone", "Contact number"),
-        F("default_erp_id", "Default source ERP", "select", options="erp", list=True),
-        F("companies", "Company / Principal mapping", "multi", options="company", list=True),
         F("is_active", "Active", "bool", list=True),
-    ], scope="cfa"),
-    "customers": MasterDef("customers", Customer, "Customer Master (stockists, retailers, hospitals)", "Customer", [
+    ], search=["code", "name", "city", "locality"], scope="cfa"),
+    "customer-types": MasterDef("customer-types", CustomerTypeMaster, "Customer Types", "Customer type", [
+        F("code", "Type key", required=True, list=True, upper=True, help="e.g. RETAILER, CHAIN_PHARMACY"),
+        F("name", "Name shown", required=True, list=True),
+        F("marking", "Recognition code", list=True, upper=True,
+          help="Short code used in the Invoice Recognition Code, e.g. RET"),
+        F("description", "Description"), F("sort_order", "Order in lists", "int", list=True),
+        F("is_active", "Active", "bool", list=True),
+    ]),
+    "customers": MasterDef("customers", Customer, "Customer Master", "Customer", [
         F("code", "Customer code (central)", required=True, list=True, upper=True),
         F("name", "Customer / Party name", required=True, list=True),
-        F("party_type", "Customer type", "select", options="choice:STOCKIST,RETAILER,HOSPITAL", required=True,
-          list=True, help="Stockist / Retailer / Hospital - reports can be split by type"),
+        F("party_type", "Customer type", "select", options="ctype", required=True, list=True,
+          help="From Master Settings > Customer Types"),
+        F("marking", "Recognition code", list=True, upper=True,
+          help="Short code used in the Invoice Recognition Code, e.g. C025 (blank = the customer code)"),
         F("billing_address", "Billing address", "textarea"), F("delivery_address", "Delivery address", "textarea"),
         F("city", "City", list=True), F("state", "State"), F("pincode", "PIN code"),
         F("location_id", "Delivery area / location", "select", options="location", required=True, list=True),
@@ -89,9 +105,12 @@ MASTERS: dict[str, MasterDef] = {
           help="Needed for e-invoice QR scanning: the buyer GSTIN on the QR finds this customer"),
         F("drug_license_no", "Drug licence no"),
         F("companies", "Company mapping", "multi", options="company", list=True),
-        F("cfas", "CFA mapping", "multi", options="cfa"),
+        F("cfas", "Depot mapping", "multi", options="cfa"),
+        F("source_erp_id", "Source ERP", "select", options="erp"),
+        F("source_erp_code", "Source ERP customer code", upper=True,
+          help="The customer's code in that ERP - recorded as an ERP mapping so imports find this customer"),
         F("is_active", "Active", "bool", list=True),
-    ], search=["code", "name", "city"]),
+    ], search=["code", "name", "city", "marking"]),
     "locations": MasterDef("locations", Location, "Location / Route Master", "Location", [
         F("code", "Location code", required=True, list=True, upper=True),
         F("name", "Location name", required=True, list=True),
@@ -100,33 +119,66 @@ MASTERS: dict[str, MasterDef] = {
         F("distance_km", "Distance (km, optional)", "decimal", list=True),
         F("is_active", "Active", "bool", list=True),
     ], search=["code", "name", "city", "route"]),
-    "transporters": MasterDef("transporters", Transporter, "Transporter Master", "Transporter", [
+    "transporters": MasterDef("transporters", Transporter, "Transporter Master (regular / long-distance)", "Transporter", [
         F("code", "Transporter code", required=True, list=True, upper=True),
         F("name", "Transporter name", required=True, list=True),
         F("contact_person", "Contact person", list=True), F("mobile", "Mobile number", list=True),
         F("email", "Email", "email"), F("address", "Address", "textarea"), F("city", "City"), F("state", "State"),
         F("gstin", "GST number", upper=True, list=True), F("pan", "PAN", upper=True),
-        F("service_area", "Areas served", list=True, help="Rates per area: Masters › Transporter Rate Cards"),
+        F("service_area", "Areas served", list=True, help="Rates per area: Master Settings › Transporter Rate Cards"),
         F("payment_mode", "Mode of payment", "select", options="choice:TBB,CASH", required=True, list=True,
           help="TBB = to be billed (periodic bill, reconciled) · CASH = paid at dispatch, no bill expected"),
         F("direct_pickup_charge", "Direct pickup charge (extra, ₹)", "decimal",
-          help="Added when the transporter collects directly from our warehouse"),
+          help="Added when the transporter collects directly from our depot"),
         F("direct_pickup_basis", "Direct pickup charged", "select", options="choice:PER_TRIP,PER_CASE"),
         F("payment_terms", "Payment terms"),
         F("credit_days", "Credit days", "int"), F("bank_details", "Bank details", "textarea"),
         F("notes", "Other commercial details", "textarea"),
         F("is_active", "Active", "bool", list=True),
     ]),
-    "autos": MasterDef("autos", OutsideAuto, "Outside Autos", "Outside auto", [
+    "autos": MasterDef("autos", OutsideAuto, "Local Auto Transporters", "Local auto", [
         F("code", "Code", required=True, list=True, upper=True),
-        F("name", "Name of person", required=True, list=True),
+        F("name", "Name (owner / driver)", required=True, list=True),
         F("mobile", "Mobile number", list=True),
-        F("charge_basis", "Charge by", "select", options="choice:PER_TRIP,PER_CASE", required=True, list=True),
-        F("rate", "Rate (₹ per trip / per case)", "decimal", required=True, list=True),
-        F("notes", "Notes (vehicle, usual routes…)", "textarea"),
+        F("vehicle_no", "Vehicle number", upper=True, list=True),
+        F("allowed_methods", "Allowed charging", "select", options="choice:PER_TRIP,PER_CASE,BOTH", required=True,
+          list=True, help="Per trip = one amount for the whole trip · Per box = boxes × rate · Both = chosen on the gatepass"),
+        F("charge_basis", "Usual method", "select", options="choice:PER_TRIP,PER_CASE",
+          help="Pre-selected on the gatepass when both are allowed"),
+        F("default_trip_charge", "Usual trip charge (₹)", "decimal", list=True,
+          help="Only a suggestion - the actual amount of each trip is entered or confirmed on the gatepass"),
+        F("default_box_rate", "Default rate per box (₹)", "decimal", list=True,
+          help="Used when no matching Local Auto Box Rate exists"),
+        F("notes", "Notes (usual routes …)", "textarea"),
         F("is_active", "Active", "bool", list=True),
-    ], search=["code", "name", "mobile"]),
+    ], search=["code", "name", "mobile", "vehicle_no"]),
+    "local-auto-rates": MasterDef("local-auto-rates", LocalAutoRate, "Local Auto Box Rates", "Box rate", [
+        F("code", "Rate code", required=True, list=True, upper=True),
+        F("outside_auto_id", "Local auto", "select", options="auto", required=True, list=True),
+        F("location_id", "Location (blank = all)", "select", options="location", list=True),
+        F("company_id", "Company (blank = all)", "select", options="company", list=True),
+        F("cfa_id", "Depot (blank = all)", "select", options="cfa", list=True),
+        F("rate_per_box", "Rate per box (₹)", "decimal", required=True, list=True),
+        F("effective_from", "Effective from", "date", required=True, list=True),
+        F("effective_to", "Effective to (optional)", "date", list=True),
+        F("remarks", "Remarks"),
+        F("is_active", "Active", "bool", list=True),
+    ], search=["code", "remarks"]),
+    "invoice-markings": MasterDef("invoice-markings", InvoiceMarking, "Invoice Code Mappings (existing ERP invoice markings)",
+                                  "Invoice marking", [
+        F("code", "Mapping code", required=True, list=True, upper=True),
+        F("erp_system_id", "Source ERP (blank = any)", "select", options="erp", list=True),
+        F("marking", "Marking in the ERP invoice number", required=True, list=True, upper=True,
+          help="e.g. MB/ - the part of the ERP invoice number that shows the company"),
+        F("match_type", "Where", "select", options="choice:PREFIX,CONTAINS", list=True),
+        F("company_id", "Means company", "select", options="company", required=True, list=True),
+        F("cfa_id", "Means depot (optional)", "select", options="cfa", list=True),
+        F("customer_type", "Customer type (optional)", "select", options="ctype"),
+        F("notes", "Notes"),
+        F("is_active", "Active", "bool", list=True),
+    ], search=["code", "marking"]),
 }
+MASTERS["cfas"] = MASTERS["depots"]  # v1.5 links
 
 
 def _options(db: Session, user: User) -> dict:
@@ -134,7 +186,11 @@ def _options(db: Session, user: User) -> dict:
         "erp": list(db.scalars(select(ERPSystem).order_by(ERPSystem.code))),
         "location": list(db.scalars(select(Location).order_by(Location.name))),
         "company": list(db.scalars(select(Company).order_by(Company.code))),
-        "cfa": list(db.scalars(select(CFA).order_by(CFA.code))),
+        "cfa": list(db.scalars(select(CFA).order_by(CFA.city, CFA.code))),
+        "auto": list(db.scalars(select(OutsideAuto).order_by(OutsideAuto.name))),
+        "ctype": [{"id": t.code, "code": t.marking or t.code, "name": t.name} for t in db.scalars(
+            select(CustomerTypeMaster).where(CustomerTypeMaster.is_active.is_(True))
+            .order_by(CustomerTypeMaster.sort_order, CustomerTypeMaster.name))],
     }
 
 
@@ -145,6 +201,10 @@ def _get_def(key: str) -> MasterDef:
     if key not in MASTERS:
         raise HTTPException(404)
     return MASTERS[key]
+
+
+SELECT_REL = {"erp_system_id": "erp_system", "default_erp_id": "default_erp", "location_id": "location",
+              "source_erp_id": "source_erp", "outside_auto_id": "outside_auto", "company_id": "company", "cfa_id": "cfa"}
 
 
 def _scoped(stmt, md: MasterDef, user: User):
@@ -268,15 +328,18 @@ def _cell(obj, f: F):
     v = getattr(obj, f.name, None)
     if f.kind == "multi":
         return ", ".join(x.code for x in (v or []))
-    if f.kind == "select" and f.options in ("erp", "location"):
-        rel = getattr(obj, f.name.replace("_id", ""), None) if f.name.endswith("_id") else None
-        if f.name == "erp_system_id":
-            rel = obj.erp_system
-        elif f.name == "default_erp_id":
-            rel = obj.default_erp
-        elif f.name == "location_id":
-            rel = obj.location
-        return (rel.code if f.options == "erp" else rel.name) if rel else ""
+    if f.kind == "select" and f.options in ("erp", "location", "company", "cfa", "auto"):
+        rel = getattr(obj, SELECT_REL.get(f.name, ""), None)
+        if rel is None:
+            return "" if f.options != "location" or f.required else "all"
+        return rel.name if f.options in ("location", "auto") else rel.code
+    if f.kind == "select" and f.options == "ctype":
+        ct = getattr(obj, "customer_type", None)
+        if isinstance(ct, str) or ct is None:
+            return getattr(obj, "type_label", None) or (v or "")
+        return ct.name
+    if f.kind == "select" and (f.options or "").startswith("choice:"):
+        return CHOICE_LABELS.get(v, (v or "").replace("_", " ").title())
     if f.kind == "bool":
         return "Yes" if v else "No"
     return "" if v is None else v
@@ -325,6 +388,11 @@ def master_edit(key: str, obj_id: int, request: Request, db: Session = Depends(g
                                                  "back": "", **extra})
 
 
+CHOICE_LABELS = {"TBB": "TBB (to be billed)", "CASH": "Cash at dispatch", "PER_TRIP": "Per trip", "PER_CASE": "Per box",
+                 "BOTH": "Per trip or per box", "PREFIX": "Starts with", "CONTAINS": "Contains",
+                 "PRINCIPAL": "Principal", "OWN": "Own"}
+
+
 def _parse(db: Session, md: MasterDef, form) -> tuple[dict, dict]:
     values, m2m = {}, {}
     for f in md.fields:
@@ -339,6 +407,10 @@ def _parse(db: Session, md: MasterDef, form) -> tuple[dict, dict]:
         raw = (raw or "").strip()
         if not raw and f.kind == "select" and (f.options or "").startswith("choice:"):
             raw = f.options[7:].split(",")[0]  # fixed lists default to their first choice
+        if not raw and f.kind == "select" and f.options == "ctype" and f.required:
+            first = db.scalar(select(CustomerTypeMaster.code).where(CustomerTypeMaster.is_active.is_(True))
+                              .order_by(CustomerTypeMaster.sort_order, CustomerTypeMaster.name).limit(1))
+            raw = first or ""
         if f.required and not raw:
             raise BusinessError(f"{f.label} is required", field=f.name)
         if not raw:
@@ -346,11 +418,18 @@ def _parse(db: Session, md: MasterDef, form) -> tuple[dict, dict]:
             continue
         if f.kind == "select" and (f.options or "").startswith("choice:") and raw not in f.options[7:].split(","):
             raise BusinessError(f"{f.label}: choose one of the listed values", field=f.name)
+        if f.kind == "select" and f.options == "ctype":
+            if not db.scalar(select(CustomerTypeMaster.id).where(CustomerTypeMaster.code == raw.upper())):
+                raise BusinessError(f"{f.label}: '{raw}' is not in Master Settings > Customer Types", field=f.name)
+            values[f.name] = raw.upper()
+            continue
         try:
-            if f.kind == "int" or (f.kind == "select" and f.options in ("erp", "location", "company", "cfa")):
+            if f.kind == "int" or (f.kind == "select" and f.options in ("erp", "location", "company", "cfa", "auto")):
                 values[f.name] = parse_int(raw)
             elif f.kind == "decimal":
                 values[f.name] = parse_decimal(raw)
+            elif f.kind == "date":
+                values[f.name] = parse_date(raw)
             else:
                 values[f.name] = raw.upper() if f.upper else raw
         except ValueError as e:
@@ -382,6 +461,7 @@ def master_save(key: str, request: Request, form=Depends(get_form), db: Session 
             setattr(obj, k, v)
         for k, v in m2m.items():
             setattr(obj, k, v)
+        _after_save(db, user, md, obj, changes)
         reason = (form.get("change_reason") or "").strip() or None
         n = audit.log_changes(db, user, "MASTER_UPDATED", "MASTER", changes, record_type=md.model.__name__,
                               record_id=obj.id, ref=f"{md.singular} {obj.code}", reason=reason)
@@ -393,6 +473,7 @@ def master_save(key: str, request: Request, form=Depends(get_form), db: Session 
             setattr(obj, k, v)
         db.add(obj)
         db.flush()
+        _after_save(db, user, md, obj, None)
         audit.log(db, user, "MASTER_CREATED", "MASTER", record_type=md.model.__name__, record_id=obj.id,
                   ref=f"{md.singular} {obj.code}", details={k: audit._s(v) for k, v in values.items()})
         db.commit()
@@ -401,6 +482,22 @@ def master_save(key: str, request: Request, form=Depends(get_form), db: Session 
         if safe_path(back, ""):
             return redirect(safe_path(back))
     return redirect(f"/masters/{key}/{obj.id}")
+
+
+def _after_save(db: Session, user: User, md: MasterDef, obj, changes: dict | None) -> None:
+    """v1.6 follow-ups of a master save: local auto legacy fields, ERP code of a customer, recognition codes."""
+    if md.model is OutsideAuto:
+        obj.sync_legacy()
+    if md.model is LocalAutoRate and obj.effective_to and obj.effective_to < obj.effective_from:
+        raise BusinessError("Effective to is before effective from")
+    if md.model is Customer and obj.source_erp_id and obj.source_erp_code:
+        if not find_code_mapping(db, obj.source_erp_id, "CUSTOMER", obj.source_erp_code):
+            add_code_mapping(db, user, erp_system_id=obj.source_erp_id, entity_type="CUSTOMER",
+                             source_code=obj.source_erp_code, source_name=obj.name, target_id=obj.id)
+    if md.model in (Company, CFA, Customer, CustomerTypeMaster) and (
+            changes is None or {"marking", "party_type", "code"} & set(changes)):
+        db.flush()
+        recognition.after_master_change(db, md.model, obj)
 
 
 @router.post("/masters/customers/{cid:int}/merge")
@@ -425,6 +522,8 @@ def merge_customer(cid: int, request: Request, source_id: int = Form(...), reaso
             target.companies.append(c)
     source.is_active = False
     source.name = f"{source.name} [merged into {target.code}]"[:160]
+    db.flush()
+    recognition.after_master_change(db, Customer, target)
     audit.log(db, user, "CUSTOMER_MERGED", "MASTER", record_type="Customer", record_id=target.id,
               ref=f"{source.code} → {target.code}", reason=reason,
               details={"invoices": n_inv, "rates": n_rate, "mappings": n_map})

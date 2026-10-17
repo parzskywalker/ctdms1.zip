@@ -1,5 +1,22 @@
 # User guide (day-to-day)
 
+## What changed in v1.6
+
+* **Depot** replaces "CFA" everywhere: a depot is the physical godown goods leave from. One city may have several
+  depots (Raipur: Guma, Kamal Vihar); each has its own code. Reports work by City and by Depot.
+* **First-day set-up**: Master Settings › **Initial Master Upload** — download the workbook, fill every sheet once
+  (instructions inside), upload, read the preview, import. Afterwards add single records under Master Settings.
+* **Customer Types** (Retailer, Stockist, Distributor, Hospital, Institution, Chain Pharmacy, Other) are a master with
+  short codes; Company, Depot and Customer also have a short "Recognition code".
+* **Invoice Recognition Code** (e.g. `ABC-RET-C025-GUMA-001245`) is made automatically beside the original ERP invoice
+  number, which never changes. Pattern and switch: Master Settings › Invoice Recognition Code. A missing master code
+  shows "code not generated" with the reason; fix the master and press *Regenerate codes*.
+* **Local autos**: choose the local auto on the gatepass. *Per trip* — type or confirm the one amount for the whole
+  trip (it is shared over the invoices by boxes, never multiplied). *Per box* — boxes × rate from Local Auto Box Rates.
+  Long-distance transporters work as before.
+* Product / SKU lines are not used in v1.6.
+
+
 ## Dispatch desk (warehouse operator) — v1.3 gatepass flow
 
 1. **Scan & Gatepass** (menu *Dispatch desk*). Point the 2D barcode scanner at the **e-invoice QR** printed on each

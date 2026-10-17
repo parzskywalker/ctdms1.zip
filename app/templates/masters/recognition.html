@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Invoice Recognition Code</h1>
+    <div class="sub">A provision for one standard internal invoice reference across CFA, Distribution and Super Stockist work. It is built from the codes in the masters and stored <b>beside</b> the original ERP invoice number — the ERP number is never changed. Daily dispatch does not depend on it.</div></div>
+</div>
+<div class="grid g2">
+  <div class="card">
+    <h3>How a code is made</h3>
+    <table class="data compact"><thead><tr><th>Part</th><th>From the master</th><th>Code</th></tr></thead><tbody>
+    {% for label, src, code in example.parts %}<tr><td>{{ label }}</td><td>{{ src }}</td><td class="mono"><b>{{ code }}</b></td></tr>{% endfor %}
+    </tbody></table>
+    {% if example.invoice %}
+    <div style="margin-top:10px"><div class="small muted">Example from invoice in the system</div>
+      <div>Original ERP invoice number: <b class="mono">{{ example.invoice.invoice_no }}</b> <span class="tag">unchanged</span></div>
+      <div>Invoice Recognition Code: <b class="mono">{{ example.invoice.recognition_code }}</b></div></div>
+    {% else %}
+    <div style="margin-top:10px">Original invoice number <b class="mono">001245</b> → Invoice Recognition Code <b class="mono">ABC-RET-C025-GUMA-001245</b></div>
+    {% endif %}
+    <p class="small muted">Prefix <b>ABC-RET-C025-GUMA</b> tells company, customer type, customer and depot; <b>001245</b> is the numeric part of the ERP invoice number. Each code part is set on the master records (field "Recognition code").</p>
+  </div>
+  <div class="card">
+    <h3>Status</h3>
+    <dl class="dl tight">
+      <dt>Invoices</dt><dd><b>{{ stats.total }}</b></dd>
+      <dt>With a code</dt><dd><b class="neg">{{ stats.with_code }}</b></dd>
+      <dt>Code not generated</dt><dd><b class="{{ 'pos' if stats.missing }}">{{ stats.missing }}</b> <span class="small muted">a master code is missing - see the list below</span></dd>
+    </dl>
+    {% if can('master.edit') %}
+    <form method="post" action="/masters/recognition/regenerate" class="row" style="margin-top:12px">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <select name="scope" style="width:240px"><option value="open">Open invoices (not yet dispatched)</option><option value="missing">Only invoices without a code</option><option value="all">All invoices</option></select>
+      <button class="btn" type="submit">Regenerate codes</button>
+    </form>
+    <div class="field-hint">Use after changing a recognition code in the masters or the pattern below. Dispatched invoices keep their code unless you choose "All".</div>
+    {% endif %}
+  </div>
+</div>
+<div class="grid g2">
+  <form method="post" action="/masters/recognition" class="card">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <h3>Settings</h3>
+    <div class="form-grid">
+      <div class="full"><label class="check"><input type="checkbox" name="invoice_code.enabled" value="1" {% if vals['invoice_code.enabled'] %}checked{% endif %} {% if not can_settings %}disabled{% endif %}> Make an Invoice Recognition Code for incoming invoices</label></div>
+      <div class="full"><label>Pattern</label><input type="text" name="invoice_code.format" value="{{ vals['invoice_code.format'] }}" class="mono" {% if not can_settings %}readonly{% endif %}>
+        <div class="field-hint">Parts: {% for t in tokens %}<code>{{ '{' ~ t ~ '}' }}</code> {% endfor %}— ctype = customer type, serial = numeric part of the ERP number. Any order, any separator, e.g. <code>{company}/{depot}/{serial}</code>.</div></div>
+      <div><label>Numeric part taken as</label><select name="invoice_code.serial_source" {% if not can_settings %}disabled{% endif %}>
+        {% for k, l in [('LAST_DIGITS', 'Last group of digits (MB/26/001245 → 001245)'), ('ALL_DIGITS', 'All digits (MB/26/001245 → 26001245)'), ('FULL', 'The whole ERP number')] %}<option value="{{ k }}" {% if vals['invoice_code.serial_source'] == k %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+      <div><label>Pad the numeric part to (digits)</label><input type="text" inputmode="numeric" name="invoice_code.serial_digits" value="{{ vals['invoice_code.serial_digits'] }}" {% if not can_settings %}readonly{% endif %}></div>
+      <div class="full"><label class="check"><input type="checkbox" name="invoice_code.use_master_code" value="1" {% if vals['invoice_code.use_master_code'] %}checked{% endif %} {% if not can_settings %}disabled{% endif %}> When a company / depot / customer has no recognition code, use its master code</label>
+        <div class="field-hint">Untick to insist on short codes: invoices then show "code not generated" until the code is filled in. A customer type always needs its own short code.</div></div>
+      <div class="full"><label>Reason for change (audited)</label><input type="text" name="reason" {% if not can_settings %}readonly{% endif %}></div>
+    </div>
+    {% if can_settings %}<div class="form-actions"><button class="btn btn-primary" type="submit">Save settings</button></div>{% endif %}
+  </form>
+  <div class="card flush">
+    <div class="card-head"><h3>Customer types and their codes</h3><a class="btn btn-sm" href="/masters/customer-types">Edit</a></div>
+    <div class="table-wrap"><table class="data compact"><thead><tr><th>Type</th><th>Key</th><th>Recognition code</th><th>Active</th></tr></thead><tbody>
+    {% for t in types %}<tr><td>{{ t.name }}</td><td class="mono small">{{ t.code }}</td><td class="mono">{% if t.marking %}<b>{{ t.marking }}</b>{% else %}<span class="pos">missing</span>{% endif %}</td><td>{{ 'Yes' if t.is_active else 'No' }}</td></tr>{% endfor %}
+    </tbody></table></div>
+  </div>
+</div>
+<div class="card flush">
+  <div class="card-head"><h3>Invoices without a code ({{ missing|length }})</h3><span class="small muted">The reason says which master code to fill in</span></div>
+  <div class="table-wrap"><table class="data compact"><thead><tr><th>ERP invoice no</th><th>Company</th><th>Depot</th><th>Customer</th><th>Why no code</th></tr></thead><tbody>
+  {% for i in missing %}<tr><td><a href="/invoices/{{ i.id }}">{{ i.invoice_no }}</a></td><td>{{ i.company.code }}</td><td>{{ i.cfa.code }}</td><td>{{ i.customer.name }}</td><td class="small pos">{{ i.recognition_note }}</td></tr>
+  {% else %}<tr><td colspan="5" class="empty">Every invoice has its code.</td></tr>{% endfor %}
+  </tbody></table></div>
+</div>
+<div class="card flush">
+  <div class="card-head"><h3>Latest codes</h3></div>
+  <div class="table-wrap"><table class="data compact"><thead><tr><th>Original ERP invoice no</th><th>Invoice Recognition Code</th><th>Company</th><th>Customer type</th><th>Customer</th><th>Depot</th></tr></thead><tbody>
+  {% for i in recent %}<tr><td class="mono">{{ i.invoice_no }}</td><td class="mono"><b>{{ i.recognition_code }}</b></td><td>{{ i.company.name }}</td><td>{{ i.customer.type_label }}</td><td>{{ i.customer.name }}</td><td>{{ i.cfa.name }}</td></tr>
+  {% else %}<tr><td colspan="6" class="empty">No codes yet.</td></tr>{% endfor %}
+  </tbody></table></div>
+</div>
+{% endblock %}

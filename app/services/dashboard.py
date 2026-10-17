@@ -46,6 +46,10 @@ def dashboard_data(db: Session, user: User, f: Filters) -> dict:
     company = _group(db, user, f, Company.id, Company.name, [Company])
     customers = _group(db, user, f, Customer.id, Customer.name, [Customer], limit=10)
     cfas = _group(db, user, f, CFA.id, CFA.name, [CFA])
+    cities = {c.id: c.city for c in db.scalars(select(CFA))}
+    for r in cfas:  # v1.6: one city may have several depots - show the city with the depot
+        if cities.get(r["id"]) and cities[r["id"]].lower() not in (r["label"] or "").lower():
+            r["label"] = f"{r['label']} ({cities[r['id']]})"
     locations = _group(db, user, f, Location.id, Location.name, [(Location, Invoice.location_id == Location.id)], limit=10)
     transporters = _group(db, user, f, Transporter.id, Transporter.name,
                           [(Transporter, Invoice.transporter_id == Transporter.id)])

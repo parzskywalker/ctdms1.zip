@@ -11,7 +11,7 @@
     <div class="card">
       <dl class="dl">
         <dt>Company</dt><dd>{{ r.company.name }}</dd>
-        <dt>CFA</dt><dd>{{ r.cfa.name if r.cfa else 'Any CFA' }}</dd>
+        <dt>Depot</dt><dd>{{ r.cfa.name if r.cfa else 'Any depot' }}</dd>
         <dt>Customer</dt><dd>{{ r.customer.name if r.customer else 'All customers' }}</dd>
         <dt>Location</dt><dd>{{ r.location.name if r.location else ('Default rate' if r.is_default else '—') }}</dd>
         <dt>Rate per box</dt><dd><b>{{ r.rate_per_box|rate }}</b></dd>

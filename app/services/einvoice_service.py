@@ -27,7 +27,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import CFA, Invoice, InvoiceStatus, User, utcnow
-from app.services import audit
+from app.services import audit, recognition
 from app.services import settings_service as cfg
 from app.services.errors import BusinessError
 from app.services.import_service import company_by_gstin, customer_by_gstin
@@ -214,7 +214,7 @@ def scan(db: Session, user: User, text: str, *, cfa_id: int | None = None, cases
         existing = db.scalar(select(Invoice).where(Invoice.irn == qr.irn))
         if existing:
             if not can_see(user, existing.company_id, existing.cfa_id):
-                raise BusinessError("This invoice belongs to a company / CFA outside your scope")
+                raise BusinessError("This invoice belongs to a company / depot outside your scope")
             return ScanResult(existing, False, f"Invoice {existing.invoice_no} already captured", qr)
     company = company_by_gstin(db, qr.seller_gstin)
     if not company:
@@ -229,9 +229,9 @@ def scan(db: Session, user: User, text: str, *, cfa_id: int | None = None, cases
         mine = [c for c in company.cfas if can_see(user, company.id, c.id)]
         cfa = mine[0] if len(mine) == 1 else None
     if cfa is None:
-        raise BusinessError(f"Select the CFA / warehouse for {company.name} before scanning")
+        raise BusinessError(f"Select the depot for {company.name} before scanning")
     if cfa not in company.cfas:
-        raise BusinessError(f"CFA {cfa.code} is not mapped to company {company.code}")
+        raise BusinessError(f"Depot {cfa.code} does not handle company {company.code}")
     if not can_see(user, company.id, cfa.id):
         raise BusinessError(f"You are not authorised for {company.code}/{cfa.code}")
     fy = fiscal_year(qr.doc_date)
@@ -261,6 +261,7 @@ def scan(db: Session, user: User, text: str, *, cfa_id: int | None = None, cases
                   irn=qr.irn, item_count=qr.item_count, qr_signature=sig)
     db.add(inv)
     db.flush()
+    recognition.assign(db, inv)
     apply_freight(db, inv)
     audit.log(db, user, "INVOICE_SCANNED", MODULE, record_type="Invoice", record_id=inv.id, ref=inv.invoice_no,
               details={"irn": qr.irn, "seller": qr.seller_gstin, "buyer": qr.buyer_gstin, "value": str(qr.value),

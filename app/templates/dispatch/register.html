@@ -11,7 +11,7 @@
 {{ filter_bar(f, opts, ['date','company','cfa','customer','location','transporter','invoice_no'], action='/dispatch/register') }}
 <div class="card flush">
   <div class="table-wrap"><table class="data">
-    <thead><tr><th>Dispatch No</th><th>Date / time</th><th>Invoice</th><th>Company</th><th>CFA</th><th>Customer</th><th>Location</th><th class="num">Boxes</th><th class="num">Freight</th><th>Transporter</th><th>Vehicle</th><th>LR</th><th class="num">Prints</th><th>Status</th></tr></thead>
+    <thead><tr><th>Dispatch No</th><th>Date / time</th><th>Invoice</th><th>Company</th><th>Depot</th><th>Customer</th><th>Location</th><th class="num">Boxes</th><th class="num">Freight</th><th>Transporter</th><th>Vehicle</th><th>LR</th><th class="num">Prints</th><th>Status</th></tr></thead>
     <tbody>
     {% for i in rows %}
       <tr><td class="mono nowrap"><a href="/dispatch/{{ i.id }}">{{ i.dispatch_no }}</a></td><td class="nowrap">{{ i.dispatch_date|date }} {{ i.dispatch_time|time }}</td>

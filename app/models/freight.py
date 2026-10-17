@@ -29,9 +29,9 @@ class RateLevel:
     AUTO = "AUTO"                  # Delivered by an outside auto (its per-case / per-trip charge)
     ORDER = [CUSTOMER, CFA_LOCATION, LOCATION, DEFAULT]
     LABELS = {
-        CUSTOMER: "1 · Customer-specific (Company+CFA+Customer+Location)",
-        CFA_LOCATION: "2 · Company + CFA + Location",
-        LOCATION: "3 · Company + Location (any CFA)",
+        CUSTOMER: "1 · Customer-specific (Company+Depot+Customer+Location)",
+        CFA_LOCATION: "2 · Company + Depot + Location",
+        LOCATION: "3 · Company + Location (any depot)",
         DEFAULT: "4 · Configured default",
         MANUAL: "Manual override",
         TRANSPORTER: "Transporter rate card (per case, per area)",

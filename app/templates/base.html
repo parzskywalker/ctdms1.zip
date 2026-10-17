@@ -36,7 +36,7 @@
       <div class="spacer"></div>
       <div class="who">
         <b>{{ user.full_name }}</b>
-        <small>{{ user.role.name }}{% if not user.all_cfas %} · {{ user.cfas|map(attribute='code')|join(', ') or 'no CFA assigned' }}{% endif %}</small>
+        <small>{{ user.role.name }}{% if not user.all_cfas %} · {{ user.cfas|map(attribute='code')|join(', ') or 'no depot assigned' }}{% endif %}</small>
       </div>
       <a class="btn btn-sm" href="/account/password">Password</a>
       <form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn btn-sm" type="submit">Sign out</button></form>

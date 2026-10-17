@@ -23,7 +23,7 @@
 {%- endmacro %}
 
 {% macro filter_bar(f, opts, show, action="", extra_statuses=None, status_choices=None) -%}
-{# show: list of filter keys: date company customer cfa location transporter erp status invoice_no module q #}
+{# show: list of filter keys: date company customer city cfa ctype location transporter erp status invoice_no rcode auto_method module q #}
 <form class="filters" method="get" action="{{ action }}">
   {% if 'date' in show %}
   <div class="f narrow"><label>From</label><input type="date" name="date_from" value="{{ f.date_from.isoformat() if f.date_from else '' }}"></div>
@@ -31,7 +31,9 @@
   {% endif %}
   {% if 'company' in show %}<div class="f"><label>Company</label>{{ select('company_id', opts.companies, f.company_id) }}</div>{% endif %}
   {% if 'customer' in show %}<div class="f wide"><label>Customer</label>{{ select('customer_id', opts.customers, f.customer_id) }}</div>{% endif %}
-  {% if 'cfa' in show %}<div class="f"><label>CFA</label>{{ select('cfa_id', opts.cfas, f.cfa_id) }}</div>{% endif %}
+  {% if 'city' in show and opts.cities %}<div class="f narrow"><label>City</label><select name="city"><option value="">All</option>{% for c in opts.cities %}<option value="{{ c }}" {% if f.city == c %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></div>{% endif %}
+  {% if 'cfa' in show %}<div class="f"><label>Depot</label><select name="cfa_id"><option value="">All</option>{% for c in opts.cfas %}<option value="{{ c.id }}" {% if f.cfa_id == c.id %}selected{% endif %}>{{ c.name }}{% if c.city and c.city.lower() not in c.name.lower() %} ({{ c.city }}){% endif %}</option>{% endfor %}</select></div>{% endif %}
+  {% if 'ctype' in show and opts.ctypes %}<div class="f narrow"><label>Customer type</label><select name="ctype"><option value="">All</option>{% for c in opts.ctypes %}<option value="{{ c.code }}" {% if f.ctype == c.code %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select></div>{% endif %}
   {% if 'location' in show %}<div class="f"><label>Location</label>{{ select('location_id', opts.locations, f.location_id) }}</div>{% endif %}
   {% if 'transporter' in show %}<div class="f"><label>Transporter</label>{{ select('transporter_id', opts.transporters, f.transporter_id) }}</div>{% endif %}
   {% if 'erp' in show %}<div class="f narrow"><label>ERP</label>{{ select('erp_id', opts.erps, f.erp_id, label_attr='code') }}</div>{% endif %}
@@ -41,7 +43,9 @@
       {% for s in (status_choices or opts.statuses) %}<option value="{{ s }}" {% if f.status == s %}selected{% endif %}>{{ s|status_label }}</option>{% endfor %}
     </select></div>
   {% endif %}
-  {% if 'invoice_no' in show %}<div class="f narrow"><label>Invoice No</label><input type="text" name="invoice_no" value="{{ f.invoice_no or '' }}"></div>{% endif %}
+  {% if 'invoice_no' in show %}<div class="f narrow"><label>ERP Invoice No</label><input type="text" name="invoice_no" value="{{ f.invoice_no or '' }}"></div>{% endif %}
+  {% if 'rcode' in show %}<div class="f"><label>Recognition code</label><input type="text" name="rcode" value="{{ f.rcode or '' }}" placeholder="e.g. ABC-RET or GUMA" class="mono"></div>{% endif %}
+  {% if 'auto_method' in show %}<div class="f narrow"><label>Local auto charging</label><select name="auto_method"><option value="">All</option><option value="PER_TRIP" {% if f.auto_method == 'PER_TRIP' %}selected{% endif %}>Per trip</option><option value="PER_CASE" {% if f.auto_method == 'PER_CASE' %}selected{% endif %}>Per box</option></select></div>{% endif %}
   {% if 'module' in show %}
   <div class="f"><label>Module</label>
     <select name="module"><option value="">All</option>

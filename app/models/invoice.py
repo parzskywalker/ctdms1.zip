@@ -117,6 +117,12 @@ class Invoice(Base, TimestampMixin):
     irn: Mapped[str | None] = mapped_column(String(70), index=True)
     item_count: Mapped[int | None] = mapped_column(Integer)
     qr_signature: Mapped[str | None] = mapped_column(String(12))  # VERIFIED / UNVERIFIED / INVALID (QR scans only)
+    # v1.6 Invoice Recognition Code: an ADDITIONAL internal reference (company + customer type + customer + depot +
+    # numeric part). The ERP invoice number above is never changed.
+    recognition_code: Mapped[str | None] = mapped_column(String(100), index=True)
+    serial_no: Mapped[str | None] = mapped_column(String(30))
+    recognition_note: Mapped[str | None] = mapped_column(String(255))  # why no code could be made
+    marking_id: Mapped[int | None] = mapped_column(ForeignKey("invoice_markings.id"))
     eway_bill_no: Mapped[str | None] = mapped_column(String(20), index=True)
     eway_valid_until: Mapped[date | None] = mapped_column(Date)
 
@@ -174,6 +180,7 @@ class Invoice(Base, TimestampMixin):
     lr_updated_by = relationship("User", foreign_keys=[lr_updated_by_id])
     pod_by = relationship("User", foreign_keys=[pod_by_id])
     outside_auto = relationship("OutsideAuto")
+    marking = relationship("InvoiceMarking")
     dispatch_slip = relationship("DispatchSlip", primaryjoin="foreign(Invoice.dispatch_slip_id) == DispatchSlip.id",
                                  viewonly=True)
     items: Mapped[list["InvoiceItem"]] = relationship(back_populates="invoice", cascade="all, delete-orphan",
@@ -274,17 +281,17 @@ class InvoiceItem(Base):
 class DispatchMode:
     TRANSPORTER = "TRANSPORTER"    # booked with a transporter (we take the goods to them)
     DIRECT = "DIRECT"              # transporter picks up directly from our warehouse (direct-pickup extra applies)
-    OUTSIDE_AUTO = "OUTSIDE_AUTO"  # hired auto delivers straight to the customer (local)
+    OUTSIDE_AUTO = "OUTSIDE_AUTO"  # local auto delivers straight to the customer (local)
     SELF = "SELF"                  # customer collects / own delivery - no freight
     ALL = [TRANSPORTER, DIRECT, OUTSIDE_AUTO, SELF]
-    LABELS = {TRANSPORTER: "Transporter", DIRECT: "Transporter - direct pickup", OUTSIDE_AUTO: "Outside auto",
-              SELF: "Self pickup"}
+    LABELS = {TRANSPORTER: "Transporter (long distance)", DIRECT: "Transporter - direct pickup",
+              OUTSIDE_AUTO: "Local auto", SELF: "Self pickup"}
 
 
 class PickupMode:
     REGULAR = "REGULAR"            # our regular arrangement to the transporter's booking office
-    OUTSIDE_AUTO = "OUTSIDE_AUTO"  # an outside auto carries the goods to the transporter (auto charge added)
-    LABELS = {REGULAR: "Regular", OUTSIDE_AUTO: "Outside auto"}
+    OUTSIDE_AUTO = "OUTSIDE_AUTO"  # a local auto carries the goods to the transporter (auto charge added)
+    LABELS = {REGULAR: "Regular", OUTSIDE_AUTO: "Local auto"}
 
 
 class DispatchSlip(Base):
@@ -304,6 +311,9 @@ class DispatchSlip(Base):
     pickup_mode: Mapped[str] = mapped_column(String(15), default=PickupMode.REGULAR)
     transporter_id: Mapped[int | None] = mapped_column(ForeignKey("transporters.id"), index=True)
     outside_auto_id: Mapped[int | None] = mapped_column(ForeignKey("outside_autos.id"))
+    auto_method: Mapped[str | None] = mapped_column(String(10))       # v1.6 local auto: PER_TRIP / PER_CASE
+    trip_charge: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))  # v1.6: the one amount for a per-trip auto
+    vehicle_no: Mapped[str | None] = mapped_column(String(20))
     dispatch_date: Mapped[date | None] = mapped_column(Date, index=True)
     invoice_count: Mapped[int] = mapped_column(Integer, default=0)
     total_cases: Mapped[int] = mapped_column(Integer, default=0)
@@ -339,7 +349,9 @@ class DispatchSlip(Base):
     def mode_label(self) -> str:
         label = DispatchMode.LABELS.get(self.dispatch_mode, self.dispatch_mode)
         if self.pickup_mode == PickupMode.OUTSIDE_AUTO and self.dispatch_mode == DispatchMode.TRANSPORTER:
-            label += " (via outside auto)"
+            label += " (via local auto)"
+        if self.auto_method and self.outside_auto_id:
+            label += " - per trip" if self.auto_method == "PER_TRIP" else " - per box"
         return label
 
     @property

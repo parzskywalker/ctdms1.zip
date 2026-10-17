@@ -5,7 +5,7 @@
 <div class="page-head"><div><h1>Rate finder</h1><div class="sub">See exactly which rate the engine will apply for a combination and date — and why.</div></div></div>
 <form class="filters" method="get">
   <div class="f"><label>Company *</label>{{ select('company_id', opts.companies, qp.get('company_id'), blank='— select —', code=True) }}</div>
-  <div class="f"><label>CFA</label>{{ select('cfa_id', opts.cfas, qp.get('cfa_id'), blank='—') }}</div>
+  <div class="f"><label>Depot</label>{{ select('cfa_id', opts.cfas, qp.get('cfa_id'), blank='—') }}</div>
   <div class="f wide"><label>Customer</label>{{ select('customer_id', opts.customers, qp.get('customer_id'), blank='—') }}</div>
   <div class="f"><label>Location</label>{{ select('location_id', opts.locations, qp.get('location_id'), blank='—') }}</div>
   <div class="f narrow"><label>Invoice date</label><input type="date" name="on_date" value="{{ qp.get('on_date') or today.isoformat() }}"></div>

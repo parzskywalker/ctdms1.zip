@@ -5,7 +5,7 @@
   <div class="actions">{% if can('admin.integrations') %}<a class="btn" href="/admin/integrations">ERP systems &amp; invoice-field mapping</a>{% endif %}</div>
 </div>
 <div class="tabs">
-  {% for e in ['CUSTOMER','LOCATION','COMPANY','CFA','TRANSPORTER'] %}<a class="{% if ent == e %}on{% endif %}" href="?entity={{ e }}{% if erp_id %}&erp_id={{ erp_id }}{% endif %}">{{ e.title() }}<span class="count">{{ counts[e] }}</span></a>{% endfor %}
+  {% for e in ['CUSTOMER','LOCATION','COMPANY','CFA','TRANSPORTER'] %}<a class="{% if ent == e %}on{% endif %}" href="?entity={{ e }}{% if erp_id %}&erp_id={{ erp_id }}{% endif %}">{{ 'Depot' if e == 'CFA' else e.title() }}<span class="count">{{ counts[e] }}</span></a>{% endfor %}
 </div>
 <div class="grid g-side">
   <div class="card flush">

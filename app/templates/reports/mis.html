@@ -2,7 +2,7 @@
 {% from "_macros.html" import filter_bar with context %}
 {% block content %}
 <div class="page-head">
-  <div><h1>Transportation MIS</h1><div class="sub">Drill down: Company / Principal → Customer → CFA → Location → Invoice → Dispatch → Transportation expense · {{ f.describe() }} (invoice date)</div></div>
+  <div><h1>Transportation MIS</h1><div class="sub">Drill down: Company / Principal → Customer → Depot → Location → Invoice → Dispatch → Transportation expense · {{ f.describe() }} (invoice date)</div></div>
   <div class="actions"><a class="btn" href="/reports/monthly-mis?{{ qs }}">Monthly MIS</a><a class="btn" href="/reports/company-freight?{{ qs }}">Company-wise</a></div>
 </div>
 {{ filter_bar(f, opts, ['date','company','customer','cfa','location','transporter','erp','status'], action='/mis') }}
@@ -21,7 +21,7 @@
 <script>
 (function () {
   const LEVELS = ['company', 'customer', 'cfa', 'location', 'invoice'];
-  const NAMES = {company: 'Company', customer: 'Customer', cfa: 'CFA', location: 'Location', invoice: 'Invoice'};
+  const NAMES = {company: 'Company', customer: 'Customer', cfa: 'Depot', location: 'Location', invoice: 'Invoice'};
   const QS = {{ qs|jsdata|safe }};
   const body = document.getElementById('mis-body');
   const inr = (v) => v === null || v === undefined || v === '' ? '—' : '₹' + Number(v).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});

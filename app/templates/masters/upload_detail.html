@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge with context %}
+{% block content %}
+<div class="crumbs"><a href="/masters/upload">Initial Master Upload</a> › #{{ up.id }}</div>
+<div class="page-head">
+  <div><h1>{{ up.file_name }} {{ badge({'IMPORTED': 'COMPLETED', 'PREVIEW': 'VALIDATED', 'CANCELLED': 'CANCELLED'}[up.status], {'IMPORTED': 'Imported', 'PREVIEW': 'Checked - not imported yet', 'CANCELLED': 'Cancelled'}[up.status]) }}</h1>
+    <div class="sub">Uploaded {{ up.uploaded_at|dt }} by {{ up.uploaded_by.full_name if up.uploaded_by else '' }}{% if up.committed_at %} · imported {{ up.committed_at|dt }}{% endif %}</div></div>
+  <div class="actions">
+    <a class="btn" href="/masters/upload/{{ up.id }}/errors.xlsx">Error report (Excel)</a>
+    {% if up.status == 'PREVIEW' %}
+    <form method="post" action="/masters/upload/{{ up.id }}/cancel" class="inline-form"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn" type="submit">Cancel</button></form>
+    {% endif %}
+  </div>
+</div>
+<div class="kpis">
+  <div class="kpi"><div class="lbl">Rows in the workbook</div><div class="val">{{ totals.rows }}</div></div>
+  <div class="kpi good"><div class="lbl">{{ 'Imported' if up.status == 'IMPORTED' else 'Accepted (new)' }}</div><div class="val">{{ totals.new }}</div></div>
+  <div class="kpi"><div class="lbl">Already in CTDMS</div><div class="val">{{ totals.exists }}</div><div class="hint">skipped, not duplicated</div></div>
+  <div class="kpi {{ "alert" if totals.rejected }}"><div class="lbl">Rejected</div><div class="val">{{ totals.rejected }}</div><div class="hint">not imported - see reasons</div></div>
+  <div class="kpi"><div class="lbl">Rows with warnings</div><div class="val">{{ totals.warnings }}</div></div>
+</div>
+<div class="card flush">
+  <div class="card-head"><h3>Per sheet</h3>
+    {% if up.status == 'PREVIEW' and totals.new %}
+    <form method="post" action="/masters/upload/{{ up.id }}/commit" class="inline-form"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn btn-ok btn-lg" type="submit" data-confirm="Create {{ totals.new }} master records? Rejected rows are left out.">Import {{ totals.new }} valid records</button></form>
+    {% endif %}</div>
+  <div class="table-wrap"><table class="data compact">
+    <thead><tr><th>Sheet</th><th class="num">Rows</th><th class="num">{{ 'Imported' if up.status == 'IMPORTED' else 'New (accepted)' }}</th><th class="num">Already in CTDMS</th><th class="num">Rejected</th><th class="num">Warnings</th><th></th></tr></thead>
+    <tbody>
+    {% for s in order %}{% set c = up.counts[s] %}
+      <tr><td><b>{{ s }}</b><div class="small muted">{{ titles[s] }}</div></td><td class="num">{{ c.rows }}</td><td class="num neg">{{ c.imported if up.status == 'IMPORTED' else c.new }}</td><td class="num">{{ c.exists }}</td><td class="num {{ 'pos' if c.rejected }}">{{ c.rejected }}</td><td class="num">{{ c.warnings }}</td>
+        <td><a class="btn btn-sm" href="?show=all&sheet={{ s }}">Rows</a></td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+<div class="card flush">
+  <div class="card-head"><h3>{{ {'problems': 'Rows needing attention', 'all': 'All rows'}.get(show, show|title) }}{% if sheet %} · {{ sheet }}{% endif %} ({{ rows|length }})</h3>
+    <div class="row small"><a href="?show=problems">Problems</a> · <a href="?show=all">All</a> · <a href="?show={{ 'IMPORTED' if up.status == 'IMPORTED' else 'NEW' }}">{{ 'Imported' if up.status == 'IMPORTED' else 'Accepted' }}</a> · <a href="?show=REJECTED">Rejected</a> · <a href="?show=EXISTS">Already in CTDMS</a></div></div>
+  <div class="table-wrap"><table class="data compact">
+    <thead><tr><th>Sheet</th><th class="num">Row</th><th>Code</th><th>Result</th><th>Reason / message</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td>{{ r.sheet }}</td><td class="num">{{ r.row }}</td><td class="mono">{{ r.key or '' }}</td>
+        <td>{{ badge({'NEW': 'VALID', 'IMPORTED': 'IMPORTED', 'EXISTS': 'WARNING', 'REJECTED': 'REJECTED', 'DUPLICATE': 'DUPLICATE'}[r.status], {'NEW': 'Accepted', 'IMPORTED': 'Imported', 'EXISTS': 'Already in CTDMS', 'REJECTED': 'Rejected', 'DUPLICATE': 'Duplicate'}[r.status]) }}</td>
+        <td class="small">{% for e in r.errors %}<div class="pos">✖ {{ e }}</div>{% endfor %}{% for w in r.warnings %}<div class="muted">⚠ {{ w }}</div>{% endfor %}</td></tr>
+    {% else %}<tr><td colspan="5" class="empty">Nothing to show.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endblock %}

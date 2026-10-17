@@ -13,6 +13,7 @@ from app.models import (
 )
 from app.security.auth import PermissionDenied, csrf_protect, require
 from app.services import invoice_service
+from app.services import settings_service as cfg
 from app.services.dispatch_service import actions_for
 from app.services.freight_engine import find_rate
 from app.services.reports import Filters, filtered_invoices
@@ -29,7 +30,7 @@ def get_invoice(db: Session, user: User, invoice_id: int) -> Invoice:
     if not inv:
         raise HTTPException(404)
     if not can_see_invoice(user, inv):
-        raise PermissionDenied(message="This invoice belongs to a company/CFA you are not assigned to")
+        raise PermissionDenied(message="This invoice belongs to a company/depot you are not assigned to")
     return inv
 
 
@@ -39,12 +40,14 @@ def register(request: Request, db: Session = Depends(get_db), user: User = Depen
     if q:
         stmt = apply_invoice_scope(select(Invoice), user).where(or_(
             func.upper(Invoice.invoice_no) == q.upper(), func.upper(Invoice.lr_no) == q.upper(),
-            func.upper(Invoice.dispatch_no) == q.upper(), Invoice.source_invoice_id == q))
+            func.upper(Invoice.dispatch_no) == q.upper(), Invoice.source_invoice_id == q,
+            func.upper(Invoice.recognition_code) == q.upper()))
         hits = list(db.scalars(stmt.limit(2)))
         if len(hits) == 1:
             return redirect(f"/invoices/{hits[0].id}")
         stmt = apply_invoice_scope(select(Invoice), user).where(or_(
-            Invoice.invoice_no.ilike(f"%{q}%"), Invoice.lr_no.ilike(f"%{q}%"), Invoice.dispatch_no.ilike(f"%{q}%")))
+            Invoice.invoice_no.ilike(f"%{q}%"), Invoice.lr_no.ilike(f"%{q}%"), Invoice.dispatch_no.ilike(f"%{q}%"),
+            Invoice.recognition_code.ilike(f"%{q}%")))
         f = Filters()
     else:
         f = Filters.from_params(request.query_params, default_range="quarter")
@@ -82,7 +85,7 @@ def detail(invoice_id: int, request: Request, db: Session = Depends(get_db),
     return render(request, "invoices/detail.html", {
         "title": f"Invoice {inv.invoice_no}", "inv": inv, "overrides": overrides, "slips": slips, "prints": prints,
         "history": history, "bill_lines": bill_lines, "current": current, "acts": actions_for(db, user, inv),
-        "fields": OverrideField.LABELS})
+        "fields": OverrideField.LABELS, "sku_lines": cfg.get(db, "features.sku_lines")})
 
 
 @router.post("/invoices/{invoice_id:int}/override")
@@ -152,7 +155,7 @@ def new_invoice_save(request: Request, form=Depends(get_form), db: Session = Dep
     if not co:
         errors.append("Select the company")
     if not cfa:
-        errors.append("Select the CFA / warehouse")
+        errors.append("Select the depot")
     if not cu:
         errors.append("Select the stockist / customer")
     for k, label in (("invoice_no", "Invoice number"), ("invoice_date", "Invoice date"),

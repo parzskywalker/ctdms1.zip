@@ -16,7 +16,7 @@
     <div><label>&nbsp;</label><label class="check"><input type="checkbox" name="is_active" value="1" {% if not u or u.is_active %}checked{% endif %}>Active</label></div>
     <div class="full"><label class="check"><input type="checkbox" name="all_companies" value="1" {% if u and u.all_companies %}checked{% endif %}>All companies</label>
       <div class="checks" style="margin-top:6px">{% for c in companies %}<label class="check"><input type="checkbox" name="companies" value="{{ c.id }}" {% if u and c in u.companies %}checked{% endif %}>{{ c.code }} <span class="muted">· {{ c.name }}</span></label>{% endfor %}</div></div>
-    <div class="full"><label class="check"><input type="checkbox" name="all_cfas" value="1" {% if u and u.all_cfas %}checked{% endif %}>All CFAs</label>
+    <div class="full"><label class="check"><input type="checkbox" name="all_cfas" value="1" {% if u and u.all_cfas %}checked{% endif %}>All Depots</label>
       <div class="checks" style="margin-top:6px">{% for c in cfas %}<label class="check"><input type="checkbox" name="cfas" value="{{ c.id }}" {% if u and c in u.cfas %}checked{% endif %}>{{ c.code }} <span class="muted">· {{ c.name }}</span></label>{% endfor %}</div></div>
   </div>
   <div class="form-actions"><button class="btn btn-primary" type="submit">Save user</button><a class="btn" href="/admin/users">Back</a></div>

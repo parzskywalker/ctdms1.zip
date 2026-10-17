@@ -16,7 +16,8 @@ from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session, aliased, selectinload
 
 from app.models import (
-    CFA, AuditLog, Company, Customer, CustomerType, DispatchMode, DispatchSlip, DispatchSlipLine, ERPSystem,
+    CFA, AuditLog, Company, Customer, CustomerType, CustomerTypeMaster, DispatchMode, DispatchSlip, DispatchSlipLine,
+    ERPSystem,
     FreightRate, Invoice, InvoiceItem, InvoiceOverride, InvoiceStatus, Location, OutsideAuto, RateLevel,
     SlipPrintLog, Transporter, TransporterBill, TransporterBillLine, User,
 )
@@ -42,9 +43,14 @@ class Filters:
     invoice_no: str | None = None
     module: str | None = None
     q: str | None = None
+    # v1.6
+    city: str | None = None          # depot city (one city may have several depots)
+    ctype: str | None = None         # customer type key
+    rcode: str | None = None         # Invoice Recognition Code (part of it, e.g. ABC-RET)
+    auto_method: str | None = None   # local auto PER_TRIP / PER_CASE
 
     KEYS = ["date_from", "date_to", "company_id", "customer_id", "cfa_id", "location_id", "transporter_id",
-            "erp_id", "status", "invoice_no", "module", "q"]
+            "erp_id", "status", "invoice_no", "module", "q", "city", "ctype", "rcode", "auto_method"]
 
     @classmethod
     def from_params(cls, params, default_range: str = "month") -> "Filters":
@@ -61,7 +67,10 @@ class Filters:
                 customer_id=i("customer_id"), cfa_id=i("cfa_id"), location_id=i("location_id"),
                 transporter_id=i("transporter_id"), erp_id=i("erp_id"),
                 status=(params.get("status") or None), invoice_no=(params.get("invoice_no") or "").strip() or None,
-                module=(params.get("module") or None), q=(params.get("q") or "").strip() or None)
+                module=(params.get("module") or None), q=(params.get("q") or "").strip() or None,
+                city=(params.get("city") or "").strip() or None, ctype=(params.get("ctype") or "").strip() or None,
+                rcode=(params.get("rcode") or "").strip().upper() or None,
+                auto_method=params.get("auto_method") if params.get("auto_method") in ("PER_TRIP", "PER_CASE") else None)
         if "date_from" not in params and "date_to" not in params:
             today = local_today()
             if default_range == "month":
@@ -85,7 +94,7 @@ class Filters:
         if self.date_from or self.date_to:
             parts.append(f"{self.date_from:%d-%m-%Y}" if self.date_from else "…")
             parts[-1] += " to " + (f"{self.date_to:%d-%m-%Y}" if self.date_to else "…")
-        for k in ("status", "invoice_no", "module", "q"):
+        for k in ("status", "invoice_no", "module", "q", "city", "ctype", "rcode", "auto_method"):
             if getattr(self, k):
                 parts.append(f"{k}={getattr(self, k)}")
         return " · ".join(parts) or "All dates"
@@ -112,6 +121,15 @@ def _apply_filters(stmt, f: Filters, date_col, statuses=None, include_cancelled=
             stmt = stmt.where(col == v)
     if f.invoice_no:
         stmt = stmt.where(Invoice.invoice_no.ilike(f"%{f.invoice_no}%"))
+    if f.rcode:
+        stmt = stmt.where(Invoice.recognition_code.ilike(f"%{f.rcode}%"))
+    if f.city:
+        stmt = stmt.where(Invoice.cfa_id.in_(select(CFA.id).where(func.upper(CFA.city) == f.city.upper())))
+    if f.ctype:
+        stmt = stmt.where(Invoice.customer_id.in_(select(Customer.id).where(Customer.party_type == f.ctype)))
+    if f.auto_method:
+        stmt = stmt.where(Invoice.dispatch_slip_id.in_(select(DispatchSlip.id).where(
+            DispatchSlip.auto_method == f.auto_method, DispatchSlip.outside_auto_id.isnot(None))))
     if statuses:
         stmt = stmt.where(Invoice.status.in_(statuses))
     if f.status:
@@ -152,8 +170,9 @@ class ReportDef:
     group: str
     description: str
     run: Callable[[Session, User, Filters], ReportResult]
-    filters: list[str] = field(default_factory=lambda: ["date", "company", "customer", "cfa", "location",
-                                                        "transporter", "erp", "status", "invoice_no"])
+    filters: list[str] = field(default_factory=lambda: ["date", "company", "customer", "cfa", "city", "ctype",
+                                                        "location", "transporter", "erp", "status", "invoice_no",
+                                                        "rcode"])
     perm: str = "report.view"
     default_range: str = "month"
 
@@ -222,28 +241,31 @@ def _grouped(db, user, f, keys: list[tuple[str, object]], joins: list, order_by=
 
 # ----------------------------------------------------------------------------- report implementations
 def rpt_invoice_freight(db, user, f):
-    cols = [Col("invoice_date", "Date", "date"), Col("company", "Company"), Col("cfa", "CFA"),
-            Col("customer", "Customer"), Col("location", "Location"), Col("invoice_no", "Invoice No", "invoice"),
+    cols = [Col("invoice_date", "Date", "date"), Col("company", "Company"), Col("cfa", "Depot"), Col("city", "City"),
+            Col("customer", "Customer"), Col("ctype", "Customer Type"), Col("location", "Location"),
+            Col("invoice_no", "Original ERP Invoice No", "invoice"), Col("rcode", "Invoice Recognition Code"),
             Col("boxes", "Boxes", "int", True), Col("rate", "Rate/Box", "rate"),
             Col("freight", "Transportation Expense", "money", True), Col("sales", "Sales Value", "money", True),
             Col("taxable", "Taxable Amount", "money", True),
             Col("status", "Dispatch Status", "status"), Col("erp", "ERP")]
     stmt = (select(Invoice.id, Invoice.invoice_date, Company.name, CFA.name, Customer.name, Location.name,
                    Invoice.invoice_no, Invoice.boxes, Invoice.rate_per_box, Invoice.freight_amount,
-                   Invoice.sales_value, Invoice.status, ERPSystem.code, Invoice.taxable_value)
+                   Invoice.sales_value, Invoice.status, ERPSystem.code, Invoice.taxable_value, CFA.city,
+                   Customer.party_type, Invoice.recognition_code, Invoice.extra_charge)
             .select_from(Invoice).join(Company).join(CFA).join(Customer).join(Location, Invoice.location_id == Location.id)
             .outerjoin(ERPSystem, Invoice.source_erp_id == ERPSystem.id))
     stmt = _apply_filters(apply_invoice_scope(stmt, user), f, Invoice.invoice_date)
     stmt = stmt.order_by(Invoice.invoice_date, Invoice.invoice_no)
+    tl = type_labels(db)
     rows = [dict(invoice_id=r[0], invoice_date=r[1], company=r[2], cfa=r[3], customer=r[4], location=r[5],
-                 invoice_no=r[6], boxes=r[7], rate=r[8], freight=r[9], sales=r[10], status=r[11],
-                 erp=r[12], taxable=r[13])
+                 invoice_no=r[6], boxes=r[7], rate=r[8], freight=r[9], sales=r[10], status=r[11], erp=r[12], taxable=r[13], city=r[14], ctype=tl.get(r[15], r[15]),
+                 rcode=r[16] or "")
             for r in db.execute(stmt)]
     return ReportResult(cols, rows, _totals(cols, rows, {"rate": AGG_DERIVED["rate"]}), date_basis="Invoice date")
 
 
 def rpt_customer(db, user, f):
-    cols = [Col("company", "Company"), Col("cfa", "CFA"), Col("customer_code", "Customer Code"),
+    cols = [Col("company", "Company"), Col("cfa", "Depot"), Col("customer_code", "Customer Code"),
             Col("customer", "Customer Name"), Col("location", "Customer Location"),
             Col("invoices", "Invoices", "int", True), Col("boxes", "Boxes", "int", True),
             Col("sales", "Sales Value", "money", True), Col("rate", "Rate/Box (avg)", "rate"),
@@ -258,7 +280,7 @@ def rpt_customer(db, user, f):
 
 
 def rpt_company(db, user, f):
-    cols = [Col("company", "Company"), Col("cfa", "CFA"), Col("invoices", "Invoices", "int", True),
+    cols = [Col("company", "Company"), Col("cfa", "Depot"), Col("invoices", "Invoices", "int", True),
             Col("boxes", "Boxes", "int", True), Col("sales", "Sales", "money", True),
             Col("freight", "Transportation Expense", "money", True), Col("freight_per_box", "Freight / Box", "rate"),
             Col("freight_pct", "Freight % of Sales", "pct")]
@@ -268,14 +290,33 @@ def rpt_company(db, user, f):
 
 
 def rpt_cfa(db, user, f):
-    cols = [Col("cfa", "CFA"), Col("company", "Principal"), Col("dispatched", "Dispatch Count", "int", True),
+    cols = [Col("city", "City"), Col("cfa", "Depot"), Col("company", "Principal"), Col("dispatched", "Dispatch Count", "int", True),
             Col("boxes", "Boxes", "int", True), Col("sales", "Sales", "money", True),
             Col("freight", "Calculated Freight", "money", True), Col("actual", "Actual Freight (billed)", "money", True),
             Col("billed_calc", "Calculated (billed inv.)", "money", True), Col("variance", "Variance", "money")]
-    rows = _grouped(db, user, f, [("cfa", CFA.name), ("company", Company.name)], [Company, CFA],
-                    order_by=[CFA.name, Company.name])
+    rows = _grouped(db, user, f, [("city", CFA.city), ("cfa", CFA.name), ("company", Company.name)], [Company, CFA],
+                    order_by=[CFA.city, CFA.name, Company.name])
     return ReportResult(cols, rows, _totals(cols, rows, AGG_DERIVED), date_basis="Invoice date",
-                        note="Variance = Actual billed − Calculated freight of the billed invoices (unbilled invoices excluded).")
+                        note="One city may have several depots (e.g. Raipur: Guma, Kamal Vihar) - each depot is a row. "
+                             "Variance = Actual billed − Calculated freight of the billed invoices (unbilled excluded).")
+
+
+def rpt_city(db, user, f):
+    """v1.6: freight by the CITY of the dispatching depot - all depots of a city together."""
+    cols = [Col("city", "City"), Col("depots", "Depots"), Col("invoices", "Invoices", "int", True),
+            Col("dispatched", "Dispatched", "int", True), Col("boxes", "Boxes", "int", True),
+            Col("sales", "Sales", "money", True), Col("freight", "Calculated Freight", "money", True),
+            Col("freight_per_box", "Freight / Box", "rate"), Col("freight_pct", "Freight % of Sales", "pct")]
+    rows = _grouped(db, user, f, [("city", CFA.city)], [CFA], order_by=[CFA.city])
+    depot_rows = _grouped(db, user, f, [("city", CFA.city), ("cfa", CFA.name)], [CFA])
+    names: dict = defaultdict(list)
+    for r in depot_rows:
+        names[r["city"]].append(r["cfa"])
+    for r in rows:
+        r["depots"] = ", ".join(sorted(names.get(r["city"], []))) or ""
+        r["city"] = r["city"] or "(city not set)"
+    return ReportResult(cols, rows, _totals(cols, rows, AGG_DERIVED), date_basis="Invoice date",
+                        note="See Depot-wise for each depot separately.")
 
 
 def rpt_location(db, user, f):
@@ -324,14 +365,15 @@ def rpt_transporter(db, user, f):
 
 
 def rpt_dispatch_register(db, user, f):
-    cols = [Col("dispatch_no", "Dispatch No"), Col("invoice_no", "Invoice", "invoice"), Col("company", "Company"),
-            Col("cfa", "CFA"), Col("customer", "Customer"), Col("location", "Location"),
+    cols = [Col("dispatch_no", "Dispatch No"), Col("invoice_no", "Original ERP Invoice No", "invoice"),
+            Col("rcode", "Invoice Recognition Code"), Col("company", "Company"),
+            Col("cfa", "Depot"), Col("customer", "Customer"), Col("location", "Location"),
             Col("boxes", "Boxes", "int", True), Col("freight", "Freight", "money", True),
             Col("transporter", "Transporter"), Col("vehicle", "Vehicle"), Col("lr", "LR"),
             Col("status", "Status", "status"), Col("dispatched_at", "Dispatch Date/Time")]
     stmt = (select(Invoice.id, Invoice.dispatch_no, Invoice.invoice_no, Company.name, CFA.name, Customer.name,
                    Location.name, Invoice.boxes, Invoice.freight_amount, Transporter.name, Invoice.vehicle_no,
-                   Invoice.lr_no, Invoice.status, Invoice.dispatch_date, Invoice.dispatch_time)
+                   Invoice.lr_no, Invoice.status, Invoice.dispatch_date, Invoice.dispatch_time, Invoice.recognition_code)
             .select_from(Invoice).join(Company).join(CFA).join(Customer).join(Location, Invoice.location_id == Location.id)
             .outerjoin(Transporter, Invoice.transporter_id == Transporter.id)
             .where(Invoice.dispatch_no.isnot(None)))
@@ -340,14 +382,14 @@ def rpt_dispatch_register(db, user, f):
     stmt = stmt.order_by(Invoice.dispatch_date, Invoice.dispatch_time, Invoice.dispatch_no)
     rows = [dict(invoice_id=r[0], dispatch_no=r[1], invoice_no=r[2], company=r[3], cfa=r[4], customer=r[5],
                  location=r[6], boxes=r[7], freight=r[8], transporter=r[9], vehicle=r[10], lr=r[11], status=r[12],
-                 dispatched_at=f"{r[13]:%d-%m-%Y} {r[14]:%H:%M}" if r[13] and r[14] else "")
+                 dispatched_at=f"{r[13]:%d-%m-%Y} {r[14]:%H:%M}" if r[13] and r[14] else "", rcode=r[15] or "")
             for r in db.execute(stmt)]
     return ReportResult(cols, rows, _totals(cols, rows), date_basis="Dispatch date")
 
 
 def rpt_pending(db, user, f):
     cols = [Col("invoice_no", "Invoice", "invoice"), Col("invoice_date", "Inv. Date", "date"),
-            Col("age", "Age (days)", "int"), Col("company", "Company"), Col("cfa", "CFA"),
+            Col("age", "Age (days)", "int"), Col("company", "Company"), Col("cfa", "Depot"),
             Col("customer", "Customer"), Col("location", "Location"), Col("boxes", "Boxes", "int", True),
             Col("rate", "Rate/Box", "rate"), Col("freight", "Freight", "money", True),
             Col("sales", "Sales", "money", True), Col("status", "Status", "status"), Col("reason", "Exception")]
@@ -400,7 +442,7 @@ def _bill_base(user, f):
 
 def rpt_freight_vs_actual(db, user, f):
     cols = [Col("bill_no", "Bill No"), Col("bill_date", "Bill Date", "date"), Col("transporter", "Transporter"),
-            Col("company", "Company"), Col("cfa", "CFA"), Col("period", "Billing Period"),
+            Col("company", "Company"), Col("cfa", "Depot"), Col("period", "Billing Period"),
             Col("lines", "Lines", "int", True), Col("calculated", "System Freight", "money", True),
             Col("actual", "Actual Bill", "money", True), Col("variance", "Variance", "money", True),
             Col("variance_pct", "Variance %", "pct"), Col("status", "Status", "status")]
@@ -446,7 +488,7 @@ def rpt_variance(db, user, f):
 
 def rpt_exceptions(db, user, f):
     cols = [Col("invoice_no", "Invoice", "invoice"), Col("invoice_date", "Inv. Date", "date"),
-            Col("age", "Age (days)", "int"), Col("company", "Company"), Col("cfa", "CFA"), Col("customer", "Customer"),
+            Col("age", "Age (days)", "int"), Col("company", "Company"), Col("cfa", "Depot"), Col("customer", "Customer"),
             Col("location", "Location"), Col("boxes", "Boxes", "int"), Col("status", "Status", "status"),
             Col("code", "Exception"), Col("reason", "Details")]
     stmt = (select(Invoice.id, Invoice.invoice_no, Invoice.invoice_date, Company.name, CFA.name, Customer.name,
@@ -461,7 +503,7 @@ def rpt_exceptions(db, user, f):
 
 
 def rpt_rate_missing(db, user, f):
-    cols = [Col("company", "Company"), Col("cfa", "CFA"), Col("location", "Location"),
+    cols = [Col("company", "Company"), Col("cfa", "Depot"), Col("location", "Location"),
             Col("invoices", "Invoices", "int", True), Col("boxes", "Boxes", "int", True),
             Col("sales", "Sales", "money", True), Col("first_date", "Earliest Invoice", "date"),
             Col("fix", "Action")]
@@ -507,7 +549,7 @@ def rpt_audit(db, user, f):
 
 
 def rpt_rate_changes(db, user, f):
-    cols = [Col("created", "Created", "datetime"), Col("company", "Company"), Col("cfa", "CFA"),
+    cols = [Col("created", "Created", "datetime"), Col("company", "Company"), Col("cfa", "Depot"),
             Col("customer", "Customer"), Col("location", "Location"), Col("level", "Level"),
             Col("old_rate", "Previous Rate", "rate"), Col("new_rate", "Rate", "rate"), Col("change_pct", "Change %", "pct"),
             Col("effective_from", "Effective From", "date"), Col("effective_to", "Effective To", "date"),
@@ -547,7 +589,7 @@ def rpt_rate_changes(db, user, f):
 
 def rpt_overrides(db, user, f):
     cols = [Col("requested_at", "Requested", "datetime"), Col("invoice_no", "Invoice", "invoice"),
-            Col("company", "Company"), Col("cfa", "CFA"), Col("customer", "Customer"), Col("field", "Field"),
+            Col("company", "Company"), Col("cfa", "Depot"), Col("customer", "Customer"), Col("field", "Field"),
             Col("old", "Old Value"), Col("new", "New Value"), Col("reason", "Reason"),
             Col("requested_by", "Requested By"), Col("status", "Status", "status"), Col("decided_by", "Decided By"),
             Col("decided_at", "Decided", "datetime"), Col("remarks", "Decision Remarks")]
@@ -579,7 +621,7 @@ def rpt_overrides(db, user, f):
 
 def rpt_reprints(db, user, f):
     cols = [Col("printed_at", "Printed", "datetime"), Col("dispatch_no", "Dispatch No"),
-            Col("invoice_no", "Invoice", "invoice"), Col("company", "Company"), Col("cfa", "CFA"),
+            Col("invoice_no", "Invoice", "invoice"), Col("company", "Company"), Col("cfa", "Depot"),
             Col("print_no", "Print #", "int"), Col("output", "Output"), Col("reason", "Reason"),
             Col("printed_by", "Printed By"), Col("ip", "IP")]
     stmt = (select(SlipPrintLog, Invoice, Company.name, CFA.name, User.full_name)
@@ -604,7 +646,7 @@ def rpt_reprints(db, user, f):
 
 def rpt_cancelled(db, user, f):
     cols = [Col("cancelled_at", "Cancelled", "datetime"), Col("invoice_no", "Invoice", "invoice"),
-            Col("invoice_date", "Inv. Date", "date"), Col("company", "Company"), Col("cfa", "CFA"),
+            Col("invoice_date", "Inv. Date", "date"), Col("company", "Company"), Col("cfa", "Depot"),
             Col("customer", "Customer"), Col("location", "Location"), Col("boxes", "Boxes", "int", True),
             Col("freight", "Freight", "money", True), Col("dispatch_no", "Voided Slip"), Col("reason", "Reason"),
             Col("cancelled_by", "Cancelled By")]
@@ -630,6 +672,12 @@ def rpt_cancelled(db, user, f):
 COST = func.coalesce(Invoice.freight_amount, 0) + func.coalesce(Invoice.extra_charge, 0)
 
 
+def type_labels(db) -> dict:
+    labels = dict(CustomerType.LABELS)
+    labels.update({c: n for c, n in db.execute(select(CustomerTypeMaster.code, CustomerTypeMaster.name))})
+    return labels
+
+
 def rpt_customer_type(db, user, f):
     """Stockists vs retailers vs hospitals: volume, value and what it costs to serve them."""
     cols = [Col("type", "Customer type"), Col("customers", "Customers", "int", True),
@@ -643,7 +691,7 @@ def rpt_customer_type(db, user, f):
     stmt = _apply_filters(apply_invoice_scope(stmt, user), f, Invoice.invoice_date).group_by(Customer.party_type)
     rows = []
     for t, cu, n, cases, sales, cost in db.execute(stmt):
-        rows.append(dict(type=CustomerType.LABELS.get(t, t), customers=cu, invoices=n, boxes=int(cases),
+        rows.append(dict(type=type_labels(db).get(t, t), customers=cu, invoices=n, boxes=int(cases),
                          sales=money(sales), cost=money(cost), cost_per_case=_ratio(cost, cases),
                          cost_pct=_ratio(cost, sales, 100)))
     rows.sort(key=lambda r: -r["sales"])
@@ -728,27 +776,47 @@ def rpt_mode(db, user, f):
 
 
 def rpt_outside_auto(db, user, f):
-    cols = [Col("auto", "Outside auto"), Col("mobile", "Mobile"), Col("trips", "Trips (gatepasses)", "int", True),
-            Col("cases", "Cases", "int", True), Col("charged", "Charged", "money", True),
-            Col("paid", "Paid at dispatch", "money", True), Col("per_trip", "Average / trip", "rate")]
+    """v1.6 Local Auto Trips: one row per trip. Per trip = ONE amount however many invoices; the share booked on the
+    invoices (for MIS) always adds up to the trip amount - nothing is counted twice."""
+    cols = [Col("dispatch_date", "Date", "date"), Col("dispatch_no", "Gatepass"), Col("depot", "Depot"),
+            Col("auto", "Local auto"), Col("method", "Charging"), Col("invoices", "Invoices", "int", True),
+            Col("cases", "Boxes", "int", True), Col("trip_charge", "Trip / box charge (owed to the auto)", "money", True),
+            Col("allocated", "Booked on the invoices (MIS)", "money", True), Col("per_box", "Cost / box", "rate"),
+            Col("paid", "Paid at dispatch", "money", True), Col("state", "State")]
     from app.services.scope import apply_cfa_scope
-    charge = case((DispatchSlip.dispatch_mode == DispatchMode.OUTSIDE_AUTO, DispatchSlip.freight_total),
-                  else_=DispatchSlip.auto_charge)
-    stmt = (select(OutsideAuto.name, OutsideAuto.mobile, func.count(DispatchSlip.id),
-                   func.coalesce(func.sum(DispatchSlip.total_cases), 0), func.coalesce(func.sum(charge), 0),
-                   func.coalesce(func.sum(DispatchSlip.amount_paid), 0))
-            .select_from(DispatchSlip).join(OutsideAuto, DispatchSlip.outside_auto_id == OutsideAuto.id)
-            .where(DispatchSlip.is_void.is_(False)))
+    stmt = (select(DispatchSlip).where(DispatchSlip.is_void.is_(False), DispatchSlip.outside_auto_id.isnot(None)))
     stmt = apply_cfa_scope(stmt, user, DispatchSlip.cfa_id)
     if f.date_from:
         stmt = stmt.where(DispatchSlip.dispatch_date >= f.date_from)
     if f.date_to:
         stmt = stmt.where(DispatchSlip.dispatch_date <= f.date_to)
-    rows = [dict(auto=a, mobile=m, trips=n, cases=int(c), charged=money(ch), paid=money(p), per_trip=_ratio(ch, n))
-            for a, m, n, c, ch, p in db.execute(stmt.group_by(OutsideAuto.name, OutsideAuto.mobile))]
-    return ReportResult(cols, rows, _totals(cols, rows), date_basis="Dispatch date",
-                        note="Paid at dispatch includes the transporter's cash share when an auto took goods to a "
-                             "CASH transporter.")
+    if f.cfa_id:
+        stmt = stmt.where(DispatchSlip.cfa_id == f.cfa_id)
+    if f.auto_method:
+        stmt = stmt.where(DispatchSlip.auto_method == f.auto_method)
+    rows = []
+    for s in db.scalars(stmt.order_by(DispatchSlip.dispatch_date, DispatchSlip.id)):
+        direct = s.dispatch_mode == DispatchMode.OUTSIDE_AUTO
+        owed = s.freight_total if direct else s.auto_charge
+        if direct:
+            allocated = sum((ln.freight for ln in s.lines), ZERO)
+        else:  # goods taken to a transporter: the auto's share sits with the pickup charge in the invoices' extra
+            allocated = sum((ln.extra_charge for ln in s.lines), ZERO) - (s.pickup_charge or ZERO)
+        method = s.auto_method or (s.outside_auto.charge_basis if s.outside_auto else None)
+        label = "Per trip" if method == "PER_TRIP" else "Per box"
+        if not direct:
+            label += " (to transporter)"
+        rows.append(dict(dispatch_date=s.dispatch_date, dispatch_no=s.dispatch_no, depot=s.cfa.name if s.cfa else "",
+                         auto=s.outside_auto.name if s.outside_auto else "", method=label, invoices=s.invoice_count,
+                         cases=s.total_cases, trip_charge=money(owed), allocated=money(allocated),
+                         per_box=_ratio(owed, s.total_cases),
+                         paid=s.amount_paid, state={"DISPATCHED": "Gone out", "SLIP_PRINTED": "Printed",
+                                                    "SLIP_GENERATED": "Not printed"}.get(s.state, s.state)))
+    return ReportResult(cols, rows, _totals(cols, rows, {"per_box": lambda t: _ratio(t.get("trip_charge"), t.get("cases"))}),
+                        date_basis="Dispatch date",
+                        note="Per trip: the auto is owed ONE amount for the trip, however many invoices it carries "
+                             "(4 invoices at ₹500 = ₹500, not ₹2,000). It is shared over the invoices by boxes for "
+                             "the MIS; the two money columns are always equal.")
 
 
 def rpt_transporter_area(db, user, f):
@@ -884,19 +952,20 @@ REPORTS: dict[str, ReportDef] = {r.code: r for r in [
     ReportDef("gatepass-register", "Gatepass Register", "Operational",
               "Every gatepass: mode, carrier, invoices, cases, charges, cash paid, to be billed, LR still missing.",
               rpt_gatepass, filters=["date", "cfa", "transporter"]),
-    ReportDef("customer-type", "Stockists / Retailers / Hospitals", "MIS",
+    ReportDef("customer-type", "Customer-type-wise (Retailer / Stockist / Hospital ...)", "MIS",
               "Volume, sales and cost to serve by customer type.", rpt_customer_type, default_range="fy"),
     ReportDef("sku-dispatch", "SKU-wise Dispatch (per company)", "MIS",
               "Quantity and value dispatched per company and SKU.", rpt_sku,
               filters=["date", "company", "customer", "cfa", "location"], default_range="fy"),
     ReportDef("mode-of-dispatch", "Mode of Dispatch", "MIS",
-              "Transporter / direct pickup / outside auto / self pickup: volume and cost per case.", rpt_mode,
+              "Transporter / direct pickup / local auto / self pickup: volume and cost per case.", rpt_mode,
               filters=["date", "company", "customer", "cfa", "location", "transporter"], default_range="fy"),
     ReportDef("transporter-area", "Transporter × Area Cost per Case", "MIS",
               "Average cost per case by transporter and area vs the rate card - for rate negotiation and planning.",
               rpt_transporter_area, filters=["date", "company", "cfa", "location", "transporter"], default_range="fy"),
-    ReportDef("outside-auto", "Outside Auto Expense", "MIS", "Trips, cases and charges per outside auto.",
-              rpt_outside_auto, filters=["date"], default_range="fy"),
+    ReportDef("outside-auto", "Local Auto Trips (per trip / per box)", "MIS",
+              "Every local auto trip: charging method, invoices, boxes, the amount owed and its share on the invoices.",
+              rpt_outside_auto, filters=["date", "cfa", "auto_method"], default_range="fy"),
     ReportDef("bill-irregularities", "Transporter Bill Irregularities", "Reconciliation",
               "Every billed line that did not match our gatepasses or rate card, across bills.",
               rpt_bill_irregularities, filters=["date", "transporter"], default_range="fy"),
@@ -910,11 +979,13 @@ REPORTS: dict[str, ReportDef] = {r.code: r for r in [
     ReportDef("invoice-freight", "Invoice-wise Transportation Expense", "MIS",
               "Every invoice with boxes, rate per box and calculated transportation expense.", rpt_invoice_freight),
     ReportDef("customer-freight", "Customer-wise Transportation Expense", "MIS",
-              "Freight by customer within company and CFA.", rpt_customer, default_range="fy"),
+              "Freight by customer within company and depot.", rpt_customer, default_range="fy"),
     ReportDef("company-freight", "Company / Principal-wise Freight", "MIS",
-              "Freight, freight per box and freight % of sales by principal and CFA.", rpt_company, default_range="fy"),
-    ReportDef("cfa-freight", "CFA-wise Freight (Calculated vs Actual)", "MIS",
-              "Dispatch count, calculated and actual (billed) freight with variance per CFA.", rpt_cfa, default_range="fy"),
+              "Freight, freight per box and freight % of sales by principal and depot.", rpt_company, default_range="fy"),
+    ReportDef("cfa-freight", "Depot-wise Freight (Calculated vs Actual)", "MIS",
+              "Dispatch count, calculated and actual (billed) freight with variance per depot (several depots may be in one city).", rpt_cfa, default_range="fy"),
+    ReportDef("city-freight", "City-wise Freight (all depots of a city)", "MIS",
+              "Freight by the city of the dispatching depot; Depot-wise shows each depot.", rpt_city, default_range="fy"),
     ReportDef("location-freight", "Location-wise Freight", "MIS",
               "Freight cost by delivery location, sorted by highest cost.", rpt_location, default_range="fy"),
     ReportDef("transporter", "Transporter-wise Report", "MIS",
@@ -936,7 +1007,7 @@ REPORTS: dict[str, ReportDef] = {r.code: r for r in [
               "Invoices blocked by rate missing, boxes missing, override pending or rate conflict.", rpt_exceptions,
               filters=["date", "company", "customer", "cfa", "location", "erp", "invoice_no"], default_range="quarter"),
     ReportDef("rate-missing", "Rate Missing Report", "Controls",
-              "Missing Company/CFA/Location rate combinations with the invoices they block.", rpt_rate_missing,
+              "Missing Company/Depot/Location rate combinations with the invoices they block.", rpt_rate_missing,
               filters=["date", "company", "cfa", "location"], default_range="quarter"),
     ReportDef("audit", "Audit Report", "Controls", "Every audited action with old/new values, user, IP and reason.",
               rpt_audit, filters=["date", "module", "q", "invoice_no"], perm="audit.view"),

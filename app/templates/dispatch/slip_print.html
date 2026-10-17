@@ -54,7 +54,7 @@
 {% if snap.v == 2 %}
   <table class="kv">
     <tr><td><span class="l">Dispatch date &amp; time</span><span class="v">{{ snap.dispatch_date }} {{ snap.dispatch_time or '' }}</span></td>
-        <td><span class="l">From (CFA / warehouse)</span><span class="v">{{ snap.cfa.name }} ({{ snap.cfa.code }})</span></td></tr>
+        <td><span class="l">From depot</span><span class="v">{{ snap.cfa.name }} ({{ snap.cfa.code }})</span>{% if snap.cfa.locality or snap.cfa.city %}<div class="muted">{{ snap.cfa.locality or '' }}{{ ', ' if snap.cfa.locality and snap.cfa.city }}{{ snap.cfa.city or '' }}</div>{% endif %}</td></tr>
     <tr><td><span class="l">Mode of dispatch</span><span class="v">{{ snap.mode_label }}</span></td>
         <td>{% if snap.transporter %}<span class="l">Transporter</span><span class="v">{{ snap.transporter.name }}</span>
             <div>{{ snap.transporter.contact or '' }} {{ snap.transporter.mobile or '' }}{% if snap.transporter.gstin %} · GST {{ snap.transporter.gstin }}{% endif %}</div>
@@ -62,18 +62,19 @@
           {% elif snap.mode == 'SELF' %}<span class="l">Collected by</span><span class="v">Customer / own vehicle</span>
           {% else %}<span class="l">Carrier</span><span class="v">—</span>{% endif %}</td></tr>
     {% if snap.outside_auto %}
-    <tr><td colspan="2"><span class="l">Outside auto{{ ' (to the transporter)' if snap.mode in ('TRANSPORTER','DIRECT') }}</span><span class="v">{{ snap.outside_auto.name }}{% if snap.outside_auto.mobile %} · {{ snap.outside_auto.mobile }}{% endif %}</span> — ₹{{ '%.2f'|format(snap.outside_auto.rate|float) }} {{ 'per case' if snap.outside_auto.charge_basis == 'PER_CASE' else 'per trip' }}</td></tr>
+    <tr><td colspan="2"><span class="l">Local auto{{ ' (to the transporter)' if snap.mode in ('TRANSPORTER','DIRECT') }}</span><span class="v">{{ snap.outside_auto.name }}{% if snap.outside_auto.mobile %} · {{ snap.outside_auto.mobile }}{% endif %}{% if snap.outside_auto.vehicle_no %} · vehicle {{ snap.outside_auto.vehicle_no }}{% endif %}</span>
+      — {% if (snap.outside_auto.method or snap.outside_auto.charge_basis) == 'PER_CASE' %}charged per box (boxes × rate){% else %}charged per trip: <b>₹{{ '{:,.2f}'.format((snap.outside_auto.trip_charge or snap.outside_auto.rate)|float) }} for the whole trip</b>{% if snap.mode == 'OUTSIDE_AUTO' and (snap.totals.invoices or 0)|float > 1 %} ({{ snap.totals.invoices }} invoices; shared by boxes below){% endif %}{% endif %}</td></tr>
     {% endif %}
   </table>
   <table>
-    <thead><tr><th>Customer · area</th><th>Invoice no</th><th>Date</th><th>Co.</th><th class="num">Cases</th><th class="num">Rate/case</th><th class="num">Charge</th></tr></thead>
+    <thead><tr><th>Customer · area</th><th>Invoice no<div class="lr">recognition code</div></th><th>Date</th><th>Co.</th><th class="num">Cases</th><th class="num">Rate/case</th><th class="num">Charge</th></tr></thead>
     <tbody>
     {% for g in snap.groups %}
       <tr class="grp"><td colspan="4">{{ g.customer.name }}{% if g.customer.type %} <span class="muted">({{ g.customer.type }})</span>{% endif %} — {{ g.location.name }}<div class="lr">{{ g.customer.address or '' }}{% if g.customer.phone %} · {{ g.customer.phone }}{% endif %}{% if g.customer.whatsapp and g.customer.whatsapp != g.customer.phone %} · WA {{ g.customer.whatsapp }}{% endif %} · LR no: ____________</div></td>
         <td class="num">{{ g.cases }}</td><td></td><td class="num">₹{{ '{:,.2f}'.format(g.freight|float + g.extra|float) }}</td></tr>
       {% for i in g.invoices %}
-      <tr><td></td><td>{{ i.invoice_no }}</td><td>{{ i.invoice_date }}</td><td>{{ i.company_code }}</td><td class="num">{{ i.cases }}</td>
-          <td class="num">{{ ('₹' ~ '%.2f'|format(i.rate|float)) if i.rate is not none else 'trip' }}</td><td class="num">₹{{ '{:,.2f}'.format(i.freight|float) }}</td></tr>
+      <tr><td></td><td>{{ i.invoice_no }}{% if i.recognition_code %}<div class="lr">{{ i.recognition_code }}</div>{% endif %}</td><td>{{ i.invoice_date }}</td><td>{{ i.company_code }}</td><td class="num">{{ i.cases }}</td>
+          <td class="num">{% if snap.mode == 'OUTSIDE_AUTO' and (snap.outside_auto.method or snap.outside_auto.charge_basis) != 'PER_CASE' %}share{% else %}{{ ('₹' ~ '%.2f'|format(i.rate|float)) if i.rate is not none else 'trip' }}{% endif %}</td><td class="num">₹{{ '{:,.2f}'.format(i.freight|float) }}</td></tr>
       {% endfor %}
     {% endfor %}
     </tbody>
@@ -91,7 +92,7 @@
   </table>
 {% else %}
   <table class="kv">
-    <tr><td><span class="l">Company / Principal</span><span class="v">{{ snap.company.name }} ({{ snap.company.code }})</span></td><td><span class="l">CFA</span><span class="v">{{ snap.cfa.name }} ({{ snap.cfa.code }})</span></td></tr>
+    <tr><td><span class="l">Company / Principal</span><span class="v">{{ snap.company.name }} ({{ snap.company.code }})</span></td><td><span class="l">Depot</span><span class="v">{{ snap.cfa.name }} ({{ snap.cfa.code }})</span></td></tr>
     <tr><td><span class="l">Invoice No</span><span class="v">{{ snap.invoice_no }}</span></td><td><span class="l">Invoice Date</span><span class="v">{{ snap.invoice_date }}</span></td></tr>
     <tr><td><span class="l">Customer / Party</span><span class="v">{{ snap.customer.name }}</span></td><td><span class="l">Customer Code</span><span class="v">{{ snap.customer.code }}</span></td></tr>
     <tr><td><span class="l">Delivery Address</span><span class="v">{{ snap.customer.address or '—' }}</span></td><td><span class="l">Delivery Location</span><span class="v">{{ snap.location.name }}</span></td></tr>

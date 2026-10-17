@@ -2,7 +2,7 @@
 {% from "_macros.html" import filter_bar with context %}
 {% block content %}
 <div class="page-head">
-  <div><h1>Management Dashboard</h1><div class="sub">Transportation expense across all authorised companies and CFAs · {{ f.describe() }} (invoice date)</div></div>
+  <div><h1>Management Dashboard</h1><div class="sub">Transportation expense across all authorised companies and Depots · {{ f.describe() }} (invoice date)</div></div>
   <div class="actions">
     <a class="btn" href="/mis?{{ qs }}">Drill-down MIS</a>
     <a class="btn" href="/reports/monthly-mis?{{ qs }}">Monthly MIS</a>
@@ -40,7 +40,7 @@
     <div class="chart-box"><canvas id="c-company"></canvas></div>
   </div>
   <div class="card">
-    <div class="card-head"><h3>CFA-wise expense</h3><a class="small" href="/reports/cfa-freight?{{ qs }}">Table</a></div>
+    <div class="card-head"><h3>Depot-wise expense</h3><a class="small" href="/reports/cfa-freight?{{ qs }}">Table</a></div>
     <div class="chart-box"><canvas id="c-cfa"></canvas></div>
   </div>
   <div class="card">

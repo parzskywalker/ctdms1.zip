@@ -22,7 +22,7 @@ from app.models import (
     CFA, BatchStatus, Company, Customer, DispatchMode, ERPCodeMapping, ERPSystem, ImportBatch, ImportRow,
     ImportTemplate, Invoice, InvoiceItem, InvoiceStatus, Location, RowStatus, Transporter, User, utcnow,
 )
-from app.services import audit
+from app.services import audit, recognition
 from app.services import settings_service as cfg
 from app.services.errors import BusinessError
 from app.services.freight_engine import find_rate
@@ -39,7 +39,7 @@ TARGET_FIELDS: dict[str, tuple[str, bool, list[str]]] = {
     "company_code": ("Company / Principal code", False,
                      ["company", "company code", "principal", "principal code", "division", "company name",
                       "comp code", "sales org", "sales organization"]),
-    "cfa_code": ("CFA code", False, ["cfa", "cfa code", "depot", "depot code", "plant", "branch", "warehouse",
+    "cfa_code": ("Depot code", False, ["cfa", "cfa code", "depot", "depot code", "plant", "branch", "warehouse",
                                      "godown", "cfa name"]),
     "invoice_no": ("Invoice number", True, ["invoice no", "invoice number", "inv no", "bill no", "bill number",
                                             "billing document", "voucher no", "doc no", "document no",
@@ -498,6 +498,7 @@ def validate_row(db: Session, batch: ImportBatch, row: ImportRow, res: Resolver,
     d = row.data or {}
     errors, warnings = [], []
     allow_blank_boxes = cfg.get(db, "import.allow_blank_boxes")
+    sku_on = bool(cfg.get(db, "features.sku_lines"))  # v1.6: SKU lines postponed (rows are still grouped)
     items = _items_of(group) if group else []
     if items and _blank(d.get("sales_value")):
         line_total = sum((it["item_value"] for it in items if it["item_value"] is not None), Decimal("0"))
@@ -554,33 +555,42 @@ def validate_row(db: Session, batch: ImportBatch, row: ImportRow, res: Resolver,
     except ValueError as e:
         errors.append(_err("INVALID_NUMBER", str(e), field="boxes"))
 
-    # company
+    # company: the file's company column, else the existing ERP invoice marking (v1.6), else the default company
     company = None
+    marking = None
     if val("company_code") is not None:
         company = res.company(val("company_code"))
         if not company:
             errors.append(_err("UNKNOWN_COMPANY", f"Company '{val('company_code')}' not found / not mapped", field="company_code"))
-    elif batch.company_id:
-        company = db.get(Company, batch.company_id)
     else:
-        errors.append(_err("REQUIRED", "Company not in file and no default company selected", field="company_code"))
+        marking = recognition.find_marking(db, val("invoice_no"), batch.erp_system_id)
+        if marking is not None:
+            company = marking.company
+        elif batch.company_id:
+            company = db.get(Company, batch.company_id)
+        else:
+            errors.append(_err("REQUIRED", "Company not in file, not recognised from an invoice marking and no default "
+                                           "company selected", field="company_code"))
     if company and not company.is_active:
         errors.append(_err("INACTIVE", f"Company {company.code} is inactive", field="company_code"))
 
-    # cfa
+    # depot (the table is still called cfas)
     cfa = None
     if val("cfa_code") is not None:
         cfa = res.cfa(val("cfa_code"), company.id if company else None)
         if not cfa:
-            errors.append(_err("UNKNOWN_CFA", f"CFA '{val('cfa_code')}' not found / not mapped", field="cfa_code"))
+            errors.append(_err("UNKNOWN_CFA", f"Depot '{val('cfa_code')}' not found / not mapped", field="cfa_code"))
+    elif marking is not None and marking.cfa_id:
+        cfa = marking.cfa
     elif batch.cfa_id:
         cfa = db.get(CFA, batch.cfa_id)
     elif company and len(company.cfas) == 1:
         cfa = company.cfas[0]
     else:
-        errors.append(_err("REQUIRED", "CFA not in file and no default CFA selected", field="cfa_code"))
+        errors.append(_err("REQUIRED", "Depot not in file and no default depot selected", field="cfa_code"))
     if company and cfa and cfa not in company.cfas:
-        errors.append(_err("CFA_NOT_MAPPED", f"CFA {cfa.code} is not mapped to company {company.code}", field="cfa_code"))
+        errors.append(_err("CFA_NOT_MAPPED", f"Depot {cfa.code} does not handle company {company.code} "
+                                             "(Master Settings > Depots > companies handled)", field="cfa_code"))
     if user and company and cfa and not can_see(user, company.id, cfa.id):
         errors.append(_err("SCOPE", f"You are not authorised to import for {company.code}/{cfa.code}"))
 
@@ -626,7 +636,7 @@ def validate_row(db: Session, batch: ImportBatch, row: ImportRow, res: Resolver,
             dup = db.scalar(select(Invoice).where(Invoice.company_id == company.id, Invoice.cfa_id == cfa.id,
                                                   Invoice.fiscal_year == fy, Invoice.invoice_no == invoice_no))
             if dup and dup.id != row.invoice_id:
-                if items and not dup.items and dup.status != InvoiceStatus.CANCELLED:
+                if items and sku_on and not dup.items and dup.status != InvoiceStatus.CANCELLED:
                     # scanned at the desk earlier; the item-wise export now brings its SKU lines - add them
                     attach_to = dup
                     warnings.append(_err("ITEMS_TO_EXISTING", f"Invoice {invoice_no} already exists ({dup.central_id}"
@@ -688,7 +698,7 @@ def validate_row(db: Session, batch: ImportBatch, row: ImportRow, res: Resolver,
         "customer_code": str(val("customer_code") or customer.code), "source_invoice_id": src_id or invoice_no,
         "transporter": transporter, "lr_no": (str(val("lr_no")).strip().upper() if val("lr_no") else None),
         "vehicle_no": norm_vehicle(val("vehicle_no")), "remarks": val("remarks"), "irn": irn,
-        "items": items, "attach_to": attach_to,
+        "items": items if sku_on else [], "attach_to": attach_to, "marking": marking,
     }
 
 
@@ -785,9 +795,11 @@ def commit_batch(db: Session, user: User, batch: ImportBatch) -> dict:
                 lr_no=v["lr_no"], vehicle_no=v["vehicle_no"], import_batch_id=batch.id, imported_at=utcnow(),
                 imported_by_id=user.id if user else None, status=InvoiceStatus.PENDING, irn=v["irn"],
                 capture_mode={"API": "API", "ADAPTER": "API", "MANUAL": "MANUAL"}.get(batch.source, "IMPORT"),
+                marking_id=v["marking"].id if v.get("marking") is not None else None,
             )
             db.add(inv)
             db.flush()
+            recognition.assign(db, inv)
             _add_items(inv, v["items"])
             apply_freight(db, inv)
             imported += 1

@@ -28,7 +28,7 @@
   <div class="form-grid">
     <div><label>Source ERP</label><select name="erp_system_id"><option value="">—</option>{% for e in erps %}<option value="{{ e.id }}" {% if b.erp_system_id == e.id %}selected{% endif %}>{{ e.code }}</option>{% endfor %}</select></div>
     <div><label>Default company (if not in file)</label><select name="company_id"><option value="">—</option>{% for c in companies %}<option value="{{ c.id }}" {% if b.company_id == c.id %}selected{% endif %}>{{ c.code }} · {{ c.name }}</option>{% endfor %}</select></div>
-    <div><label>Default CFA (if not in file)</label><select name="cfa_id"><option value="">—</option>{% for c in cfas %}<option value="{{ c.id }}" {% if b.cfa_id == c.id %}selected{% endif %}>{{ c.code }} · {{ c.name }}</option>{% endfor %}</select></div>
+    <div><label>Default Depot (if not in file)</label><select name="cfa_id"><option value="">—</option>{% for c in cfas %}<option value="{{ c.id }}" {% if b.cfa_id == c.id %}selected{% endif %}>{{ c.code }} · {{ c.name }}</option>{% endfor %}</select></div>
     <div><label>Date format</label><select name="date_format">{% for d in date_formats %}<option value="{{ d }}" {% if b.date_format == d %}selected{% endif %}>{{ d }}</option>{% endfor %}</select></div>
   </div>
   <hr>
@@ -75,7 +75,7 @@
 </div>
 <div class="card flush">
   <div class="table-wrap"><table class="data compact">
-    <thead><tr><th>#</th><th>Status</th><th>Invoice</th><th>Date</th><th>Company</th><th>CFA</th><th>Customer</th><th>Location</th><th class="num">Sales</th><th class="num">Boxes</th><th style="min-width:280px">Messages</th></tr></thead>
+    <thead><tr><th>#</th><th>Status</th><th>Invoice</th><th>Date</th><th>Company</th><th>Depot</th><th>Customer</th><th>Location</th><th class="num">Sales</th><th class="num">Boxes</th><th style="min-width:280px">Messages</th></tr></thead>
     <tbody>
     {% for r in rows %}
       {% set d = r.data %}

@@ -9,7 +9,7 @@
   <form method="post" action="/imports/quick" enctype="multipart/form-data" class="card stack">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
     <h2 style="margin:0">One-click import</h2>
-    <p class="small muted" style="margin:0">Drop any ERP export (invoice-wise or item-wise). CTDMS recognises the layout from its column headings, imports every good row and keeps problem rows for correction. Item-wise files add SKU lines — also to invoices already scanned at the desk.</p>
+    <p class="small muted" style="margin:0">Drop any ERP export (invoice-wise or item-wise). CTDMS recognises the layout from its column headings, imports every good row and keeps problem rows for correction. Item-wise files are combined into one invoice per invoice number (product / SKU lines are not kept in v1.6). The company and depot can also be recognised from the existing marking in the ERP invoice number (Master Settings › Invoice Code Mappings).</p>
     <div class="row"><input type="file" name="file" accept=".csv,.xlsx,.xls,.txt" required style="flex:1"><button class="btn btn-primary" type="submit">Import</button></div>
   </form>
   <div class="card stack">
@@ -28,7 +28,7 @@
       <div><label>Source ERP</label><select name="erp_system_id"><option value="">— select —</option>{% for e in erps %}<option value="{{ e.id }}">{{ e.code }} · {{ e.name }}</option>{% endfor %}</select><div class="field-hint">Used for ERP code mapping</div></div>
       <div><label>Import template</label><select name="template_id"><option value="">Auto-detect columns</option>{% for t in templates %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</select></div>
       <div><label>Default company</label><select name="company_id"><option value="">From file</option>{% for c in companies %}<option value="{{ c.id }}">{{ c.code }} · {{ c.name }}</option>{% endfor %}</select><div class="field-hint">When the file has no company column</div></div>
-      <div><label>Default CFA</label><select name="cfa_id"><option value="">From file</option>{% for c in cfas %}<option value="{{ c.id }}">{{ c.code }} · {{ c.name }}</option>{% endfor %}</select></div>
+      <div><label>Default Depot</label><select name="cfa_id"><option value="">From file</option>{% for c in cfas %}<option value="{{ c.id }}">{{ c.code }} · {{ c.name }}</option>{% endfor %}</select></div>
     </div>
     <div class="form-actions"><button class="btn btn-primary btn-lg" type="submit">Upload &amp; preview</button></div>
     <p class="small muted" style="margin-top:10px">Next steps: 2 · check column mapping &amp; preview → 3 · validate (duplicates, missing customers / locations / rates) → 4 · import valid rows → 5 · correct &amp; retry rejected rows.</p>

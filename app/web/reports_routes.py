@@ -28,8 +28,9 @@ def _def(code: str, user: User):
 
 
 def _show_filters(rd) -> tuple[list[str], list[str] | None]:
-    show = [x for x in rd.filters if x in ("date", "company", "customer", "cfa", "location", "transporter", "erp",
-                                           "status", "invoice_no", "module", "q")]
+    show = [x for x in rd.filters if x in ("date", "company", "customer", "cfa", "city", "ctype", "location",
+                                           "transporter", "erp", "status", "invoice_no", "rcode", "auto_method",
+                                           "module", "q")]
     choices = None
     if "bill_status" in rd.filters:
         choices = BillStatus.ALL
@@ -41,8 +42,10 @@ def _show_filters(rd) -> tuple[list[str], list[str] | None]:
 
 
 @router.get("/reports")
-def index(request: Request, user: User = Depends(require("report.view"))):
-    groups = [(g, [r for r in REPORTS.values() if r.group == g and user.can(r.perm)]) for g in REPORT_GROUPS]
+def index(request: Request, db: Session = Depends(get_db), user: User = Depends(require("report.view"))):
+    sku = cfg.get(db, "features.sku_lines")  # v1.6: product / SKU reporting postponed
+    groups = [(g, [r for r in REPORTS.values() if r.group == g and user.can(r.perm)
+                   and (sku or r.code != "sku-dispatch")]) for g in REPORT_GROUPS]
     return render(request, "reports/index.html", {"title": "Reports", "groups": groups})
 
 

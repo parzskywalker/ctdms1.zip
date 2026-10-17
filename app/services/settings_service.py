@@ -11,7 +11,7 @@ from app.models import Setting
 
 # key: (default, type, category, description, choices)
 DEFAULTS: dict[str, tuple[str, str, str, str, str | None]] = {
-    "org.name": ("Demo Pharma Distributors & CFA", "str", "Organisation", "Organisation name printed on slips/reports", None),
+    "org.name": ("Demo Pharma Distributors", "str", "Organisation", "Organisation name printed on slips/reports", None),
     "org.address": ("Ring Road No. 1, Raipur, Chhattisgarh", "str", "Organisation", "Organisation address line", None),
     "dispatch.complete_requires": ("PRINTED", "choice", "Dispatch controls",
                                    "Dispatch cannot be COMPLETED unless the slip is: PRINTED / GENERATED / NONE (no control)",
@@ -23,10 +23,10 @@ DEFAULTS: dict[str, tuple[str, str, str, str, str | None]] = {
     "dispatch.vehicle_mandatory": ("false", "bool", "Dispatch controls", "Vehicle number mandatory for slip generation", None),
     "freight.source": ("TRANSPORTER", "choice", "Freight rates",
                        "Where the freight per case comes from: TRANSPORTER = transporter rate card (per area, applied on the "
-                       "gatepass) / COMPANY = principal rate card (company + CFA + location, applied at import)",
+                       "gatepass) / COMPANY = principal rate card (company + depot + location, applied at import)",
                        "TRANSPORTER,COMPANY"),
     "gatepass.cash_paid_default": ("true", "bool", "Dispatch controls",
-                                   "Outside autos and CASH transporters are marked paid in full when the gatepass is made", None),
+                                   "Local autos and CASH transporters are marked paid in full when the gatepass is made", None),
     "inbox.enabled": ("true", "bool", "Import",
                       "Watch the drop folder (data/inbox) and import ERP exports placed there automatically", None),
     "inbox.interval_minutes": ("5", "int", "Import", "How often the drop folder is checked (minutes)", None),
@@ -40,7 +40,7 @@ DEFAULTS: dict[str, tuple[str, str, str, str, str | None]] = {
     "dispatch.allow_future_date": ("false", "bool", "Dispatch controls", "Allow dispatch date later than today", None),
     "dispatch.reprint_reason_required": ("true", "bool", "Dispatch controls", "Reason mandatory for every slip reprint", None),
     "dispatch.default_slip_size": ("A5", "choice", "Dispatch controls", "Default slip paper size", "A4,A5"),
-    "dispatch.number_prefix": ("DS", "str", "Dispatch controls", "Dispatch number prefix (DS/CFA/FY/sequence)", None),
+    "dispatch.number_prefix": ("DS", "str", "Dispatch controls", "Dispatch number prefix (DS/Depot/FY/sequence)", None),
     "override.boxes_requires_approval": ("true", "bool", "Overrides",
                                          "Box-count changes by users without 'override.direct' need approval", None),
     "override.allow_self_approval": ("false", "bool", "Overrides", "Allow the requester to approve their own override", None),
@@ -109,6 +109,28 @@ DEFAULTS: dict[str, tuple[str, str, str, str, str | None]] = {
     "einvoice.signature_check": ("WARN", "choice", "Import",
                                  "E-invoice QR signature (needs the IRP public key, CTDMS_IRP_PUBLIC_KEY_FILE): "
                                  "OFF / WARN (flag invalid QRs) / BLOCK (refuse invalid QRs)", "OFF,WARN,BLOCK"),
+    # v1.6 - Invoice Recognition Code (a provision; the ERP invoice number is never changed)
+    "invoice_code.enabled": ("true", "bool", "Invoice Recognition Code",
+                             "Make an Invoice Recognition Code for every incoming invoice - an extra internal reference "
+                             "beside the original ERP invoice number, which is never changed. Off = no new codes.", None),
+    "invoice_code.format": ("{company}-{ctype}-{customer}-{depot}-{serial}", "str", "Invoice Recognition Code",
+                            "Pattern of the code. Parts: {company} {ctype} (customer type) {customer} {depot} "
+                            "{serial} (numeric part of the ERP invoice number) {erp} {fy}. Any separator, any order.",
+                            None),
+    "invoice_code.serial_digits": ("6", "int", "Invoice Recognition Code",
+                                   "Numeric part padded with zeros to at least this many digits (0 = as in the ERP "
+                                   "number)", None),
+    "invoice_code.serial_source": ("LAST_DIGITS", "choice", "Invoice Recognition Code",
+                                   "Numeric part taken from the ERP invoice number: LAST_DIGITS (last group of digits, "
+                                   "MB/26/001245 -> 001245) / ALL_DIGITS (every digit) / FULL (whole number)",
+                                   "LAST_DIGITS,ALL_DIGITS,FULL"),
+    "invoice_code.use_master_code": ("true", "bool", "Invoice Recognition Code",
+                                     "When a company / depot / customer has no recognition code of its own, use its "
+                                     "master code (off = show 'code not generated' until the code is filled in)", None),
+    "features.sku_lines": ("false", "bool", "Import",
+                           "Keep product / SKU lines from item-wise ERP exports. Postponed in v1.6: off = item-wise "
+                           "exports are still accepted (rows combined into one invoice) but lines are not stored or "
+                           "shown", None),
     "slip.footer_note": ("Goods dispatched in good condition. Please check seals and box count on receipt.",
                          "str", "Dispatch slip", "Footer note printed on each dispatch slip", None),
 }
@@ -149,10 +171,14 @@ def set_value(db: Session, key: str, value: Any, user_id: int | None = None) -> 
 
 
 def ensure_defaults(db: Session) -> None:
-    existing = {s.key for s in db.scalars(select(Setting))}
+    existing = {s.key: s for s in db.scalars(select(Setting))}
     for key, (val, vtype, cat, desc, choices) in DEFAULTS.items():
-        if key not in existing:
+        row = existing.get(key)
+        if row is None:
             db.add(Setting(key=key, value=val, value_type=vtype, category=cat, description=desc, choices=choices))
+        elif (row.description, row.category, row.choices) != (desc, cat, choices):
+            # wording / grouping follow the application version (values are never touched)
+            row.description, row.category, row.choices = desc, cat, choices
     db.flush()
 
 

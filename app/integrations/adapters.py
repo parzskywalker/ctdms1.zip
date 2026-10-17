@@ -210,7 +210,7 @@ class SAPODataAdapter(GenericRESTAdapter):
         ConfigField("password", "Password", True, secret=True),
         ConfigField("sap_client", "SAP client (sap-client)", False, default="100"),
         ConfigField("sales_org_filter", "Sales organisation filter", False),
-        ConfigField("default_cfa", "Default CFA code for this SAP plant", False),
+        ConfigField("default_cfa", "Default depot code for this SAP plant", False),
         ConfigField("page_size", "Page size", False, default="500"),
         ConfigField("timeout", "Timeout (seconds)", False, default="60"),
         ConfigField("verify_tls", "Verify TLS", False, default="true"),
@@ -273,7 +273,7 @@ class SAPIDocAdapter(FileDropAdapter):
     modes = ["IDOC", "FILE"]
     description = "Reads INVOIC02 IDoc XML files written by an SAP XML file port into a watched folder."
     config_fields = FileDropAdapter.config_fields[:2] + [ConfigField("pattern", "File pattern", False, default="*.xml"),
-                                                         ConfigField("default_cfa", "Default CFA code", False)]
+                                                         ConfigField("default_cfa", "Default depot code", False)]
 
     def fetch(self, since, until):
         self.ensure_configured()
@@ -335,7 +335,7 @@ class MargAdapter(ERPAdapter):
         ConfigField("query", "Sales register query (DB mode)", False),
         ConfigField("company_code", "Company code for this MARG data", False,
                     help="Used when the export has no company column"),
-        ConfigField("cfa_code", "CFA code for this MARG installation", False),
+        ConfigField("cfa_code", "Depot code for this MARG installation", False),
     ]
     default_field_map = {
         "invoice_no": "Bill No", "invoice_date": "Bill Date", "customer_code": "Party Code",

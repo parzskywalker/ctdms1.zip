@@ -30,7 +30,7 @@ def _get_rate(db, user, rate_id, *, for_change: bool = False) -> FreightRate:
     if not r or not can_see(user, r.company_id, r.cfa_id):
         raise HTTPException(404)
     if for_change and not can_change(user, r.company_id, r.cfa_id):
-        raise BusinessError("This rate applies outside your assigned CFA(s); only a user with all-CFA access can change it")
+        raise BusinessError("This rate applies outside your assigned depot(s); only a user with all-depot access can change it")
     return r
 
 
@@ -99,7 +99,7 @@ def create(request: Request, company_id: int = Form(...), cfa_id: str = Form("")
            effective_from: str = Form(...), effective_to: str = Form(""), remarks: str = Form(""),
            db: Session = Depends(get_db), user: User = Depends(require("rate.create"))):
     if not can_change(user, company_id, _int(cfa_id)):
-        raise BusinessError("You can only create rates for your own company / CFA (select your CFA)")
+        raise BusinessError("You can only create rates for your own company / depot (select your depot)")
     try:
         ef = parse_date(effective_from)
         et = parse_date(effective_to) if effective_to else None
@@ -195,7 +195,7 @@ def import_rates(request: Request, file: UploadFile = File(...), db: Session = D
                     raise BusinessError(f"unknown company '{r.get('company') or r.get('company_code')}'")
                 cfa = res.cfa(r.get("cfa") or r.get("cfa_code")) if (r.get("cfa") or r.get("cfa_code")) else None
                 if not can_change(user, co.id, cfa.id if cfa else None):
-                    raise BusinessError(f"not authorised for {co.code}/{cfa.code if cfa else 'all CFAs'}")
+                    raise BusinessError(f"not authorised for {co.code}/{cfa.code if cfa else 'all depots'}")
                 cu = res.customer(r.get("customer") or r.get("customer_code")) if (r.get("customer") or r.get("customer_code")) else None
                 loc_v = r.get("location") or r.get("delivery_location")
                 loc = res.location(loc_v) if loc_v else None

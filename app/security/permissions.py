@@ -72,7 +72,7 @@ DEFAULT_ROLES: dict[str, dict] = {
     },
     "MANAGEMENT": {
         "name": "Management",
-        "description": "Dashboard, reports and MIS across all companies and CFAs.",
+        "description": "Dashboard, reports and MIS across all companies and depots.",
         "permissions": ["dashboard.view", "report.view", "data.export", "invoice.view", "dispatch.view",
                         "rate.view", "master.view", "recon.view", "audit.view"],
         "all_scope": True,
@@ -85,8 +85,8 @@ DEFAULT_ROLES: dict[str, dict] = {
         "all_scope": True,
     },
     "CFA_MANAGER": {
-        "name": "CFA Manager",
-        "description": "Assigned CFA data, imports, approvals and reports.",
+        "name": "Depot Manager",
+        "description": "Assigned depot data, imports, approvals and reports.",
         "permissions": ["dashboard.view", "report.view", "data.export", "invoice.view", "invoice.import",
                         "invoice.recalculate", "dispatch.view", "dispatch.operate", "dispatch.verify",
                         "dispatch.complete", "dispatch.reprint", "dispatch.void_slip", "dispatch.cancel",

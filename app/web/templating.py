@@ -14,7 +14,9 @@ from sqlalchemy.orm import Session
 
 from app import __version__
 from app.config import get_settings
-from app.models import CFA, Customer, ERPSystem, InvoiceStatus, Location, RateLevel, Transporter, User
+from app.models import (
+    CFA, Customer, CustomerTypeMaster, ERPSystem, InvoiceStatus, Location, RateLevel, Transporter, User,
+)
 from app.security.auth import csrf_token
 from app.services.exporters import display
 from app.services.scope import visible_cfas, visible_companies
@@ -106,14 +108,19 @@ NAV = [
         ("Transporter Bills", "/recon", "recon.view", "scale"),
         ("Scan a Bill", "/recon/scan", "recon.edit", "scan"),
     ]),
-    ("Masters", [
+    ("Master Settings", [
+        ("Initial Master Upload", "/masters/upload", "master.edit", "upload"),
         ("Companies", "/masters/companies", "master.view", "building"),
+        ("Depots", "/masters/depots", "master.view", "warehouse"),
         ("Customers", "/masters/customers", "master.view", "users"),
-        ("CFAs", "/masters/cfas", "master.view", "warehouse"),
+        ("Customer Types", "/masters/customer-types", "master.view", "users"),
         ("Areas / Locations", "/masters/locations", "master.view", "pin"),
-        ("Transporters", "/masters/transporters", "master.view", "truck"),
+        ("Transporters (long-distance)", "/masters/transporters", "master.view", "truck"),
         ("Transporter Rate Cards", "/rate-cards", "rate.view", "rupee"),
-        ("Outside Autos", "/masters/autos", "master.view", "truck"),
+        ("Local Auto Transporters", "/masters/autos", "master.view", "truck"),
+        ("Local Auto Box Rates", "/masters/local-auto-rates", "master.view", "rupee"),
+        ("Invoice Code Mappings", "/masters/invoice-markings", "master.view", "link"),
+        ("Invoice Recognition Code", "/masters/recognition", "master.view", "list"),
         ("Principal Freight Rates", "/rates", "rate.view", "rupee"),
         ("ERP Mappings", "/masters/erp-mappings", "master.view", "link"),
     ]),
@@ -121,14 +128,15 @@ NAV = [
         ("Transportation MIS", "/mis", "report.view", "layers"),
         ("Gatepass Register", "/reports/gatepass-register", "report.view", "bar"),
         ("Transporter × Area", "/reports/transporter-area", "report.view", "bar"),
-        ("SKU-wise Dispatch", "/reports/sku-dispatch", "report.view", "bar"),
-        ("Customer Types", "/reports/customer-type", "report.view", "bar"),
+        ("Customer-type-wise", "/reports/customer-type", "report.view", "bar"),
+        ("Local Auto Trips", "/reports/outside-auto", "report.view", "bar"),
         ("Delivery Performance", "/reports/delivery-performance", "report.view", "bar"),
         ("Delivery Register", "/reports/delivery-register", "report.view", "bar"),
         ("Bill Irregularities", "/reports/bill-irregularities", "report.view", "bar"),
         ("Company-wise", "/reports/company-freight", "report.view", "bar"),
         ("Customer-wise", "/reports/customer-freight", "report.view", "bar"),
-        ("CFA-wise", "/reports/cfa-freight", "report.view", "bar"),
+        ("Depot-wise", "/reports/cfa-freight", "report.view", "bar"),
+        ("City-wise", "/reports/city-freight", "report.view", "bar"),
         ("Location-wise", "/reports/location-freight", "report.view", "bar"),
         ("Transporter-wise", "/reports/transporter", "report.view", "bar"),
         ("Dispatch Register", "/reports/dispatch-register", "report.view", "bar"),
@@ -205,6 +213,10 @@ def filter_options(db: Session, user: User) -> dict:
         "transporters": list(db.scalars(select(Transporter).order_by(Transporter.name))),
         "erps": list(db.scalars(select(ERPSystem).order_by(ERPSystem.code))),
         "statuses": InvoiceStatus.ALL,
+        # v1.6: depot cities (several depots may share one city) and customer types
+        "cities": sorted({c.city for c in visible_cfas(db, user, active_only=False) if c.city}),
+        "ctypes": list(db.scalars(select(CustomerTypeMaster).order_by(CustomerTypeMaster.sort_order,
+                                                                      CustomerTypeMaster.name))),
     }
 
 

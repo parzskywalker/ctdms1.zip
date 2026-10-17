@@ -22,11 +22,15 @@
         <select name="{{ f.name }}" {% if f.required %}required{% endif %} {% if ro %}disabled{% endif %}>
           <option value="">—</option>
           {% if f.options.startswith('choice:') %}
-            {% for c in f.options[7:].split(',') %}<option value="{{ c }}" {% if v == c %}selected{% endif %}>{{ {'TBB': 'TBB (to be billed)', 'CASH': 'Cash at dispatch'}.get(c, c.replace('_', ' ').title()) }}</option>{% endfor %}
+            {% for c in f.options[7:].split(',') %}<option value="{{ c }}" {% if v == c %}selected{% endif %}>{{ {'TBB': 'TBB (to be billed)', 'CASH': 'Cash at dispatch', 'PER_TRIP': 'Per trip', 'PER_CASE': 'Per box', 'BOTH': 'Per trip or per box (choose on the gatepass)', 'PREFIX': 'Starts with', 'CONTAINS': 'Contains'}.get(c, c.replace('_', ' ').title()) }}</option>{% endfor %}
           {% else %}
             {% for o in opts[f.options] %}<option value="{{ o.id }}" {% if v is not none and v|string == o.id|string %}selected{% endif %}>{{ o.code }} · {{ o.name }}</option>{% endfor %}
           {% endif %}
         </select>{% if f.help %}<div class="field-hint">{{ f.help }}</div>{% endif %}</div>
+    {% elif f.kind == 'date' %}
+      <div><label>{{ f.label }}{% if f.required %} <span class="req">*</span>{% endif %}</label>
+        <input type="date" name="{{ f.name }}" value="{{ v.isoformat() if v else '' }}" {% if f.required %}required{% endif %} {% if ro %}readonly{% endif %}>
+        {% if f.help %}<div class="field-hint">{{ f.help }}</div>{% endif %}</div>
     {% elif f.kind == 'multi' %}
       <div class="full"><label>{{ f.label }}</label>
         <div class="checks">{% set sel = (v or [])|map(attribute='id')|list %}

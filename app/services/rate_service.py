@@ -20,7 +20,7 @@ MODULE = "FREIGHT_RATE"
 
 def describe(rate: FreightRate) -> str:
     parts = [rate.company.code if rate.company else f"co#{rate.company_id}"]
-    parts.append(rate.cfa.code if rate.cfa else "ANY-CFA")
+    parts.append(rate.cfa.code if rate.cfa else "ANY-DEPOT")
     if rate.customer:
         parts.append(rate.customer.code)
     parts.append(rate.location.name if rate.location else ("DEFAULT" if rate.is_default else "-"))
@@ -55,16 +55,16 @@ def validate(db: Session, *, company_id, cfa_id, customer_id, location_id, is_de
             raise BusinessError("Delivery location is required (or tick 'Default rate')", field="location_id")
     if customer_id:
         if not cfa_id:
-            raise BusinessError("Customer-specific rates must also specify the CFA", field="cfa_id")
+            raise BusinessError("Customer-specific rates must also specify the depot", field="cfa_id")
         if not db.get(Customer, customer_id):
             raise BusinessError("Unknown customer", field="customer_id")
     if cfa_id:
         cfa = db.get(CFA, cfa_id)
         company = db.get(Company, company_id)
         if not cfa:
-            raise BusinessError("Unknown CFA", field="cfa_id")
+            raise BusinessError("Unknown depot", field="cfa_id")
         if cfa not in company.cfas:
-            raise BusinessError(f"CFA {cfa.code} is not mapped to company {company.code}", field="cfa_id")
+            raise BusinessError(f"Depot {cfa.code} does not handle company {company.code}", field="cfa_id")
 
     base = _same_key(select(FreightRate), company_id, cfa_id, customer_id, location_id, is_default)
     if exclude_id:

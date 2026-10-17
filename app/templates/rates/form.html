@@ -2,13 +2,13 @@
 {% from "_macros.html" import select with context %}
 {% block content %}
 <div class="crumbs"><a href="/rates">Freight Rates</a> › New</div>
-<div class="page-head"><div><h1>New freight rate</h1><div class="sub">Choose the most specific level you need. Leave Customer blank for a standard rate; leave CFA blank for a company-wide location rate.</div></div></div>
+<div class="page-head"><div><h1>New freight rate</h1><div class="sub">Choose the most specific level you need. Leave Customer blank for a standard rate; leave Depot blank for a company-wide location rate.</div></div></div>
 <div class="grid g-side">
 <form method="post" action="/rates" class="card">
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
   <div class="form-grid">
     <div><label>Company / Principal <span class="req">*</span></label>{{ select('company_id', opts.companies, qp.get('company_id'), blank='— select —', required=True, code=True) }}</div>
-    <div><label>CFA</label>{{ select('cfa_id', opts.cfas, qp.get('cfa_id'), blank='Any CFA (level 3)', code=True) }}</div>
+    <div><label>Depot</label>{{ select('cfa_id', opts.cfas, qp.get('cfa_id'), blank='Any depot (level 3)', code=True) }}</div>
     <div><label>Delivery location</label>{{ select('location_id', opts.locations, qp.get('location_id'), blank='— select —') }}</div>
     <div><label>Customer (optional)</label>{{ select('customer_id', opts.customers, qp.get('customer_id'), blank='All customers', code=True) }}</div>
     <div><label>Rate per box (₹) <span class="req">*</span></label><input type="text" name="rate_per_box" inputmode="decimal" required placeholder="8.00"></div>
@@ -22,9 +22,9 @@
 <div class="card">
   <h3>Rate priority</h3>
   <ol class="small" style="padding-left:18px;margin:6px 0">
-    <li><b>Customer-specific</b>: Company + CFA + Customer + Location</li>
-    <li><b>Standard</b>: Company + CFA + Location</li>
-    <li><b>Company-wide</b>: Company + Location (any CFA)</li>
+    <li><b>Customer-specific</b>: Company + Depot + Customer + Location</li>
+    <li><b>Standard</b>: Company + Depot + Location</li>
+    <li><b>Company-wide</b>: Company + Location (any Depot)</li>
     <li><b>Default</b>: only if explicitly configured</li>
   </ol>
   <p class="small muted">If none matches on the invoice date, the invoice is marked <b>RATE MISSING</b> and blocked. Two rates matching at the same level is a <b>RATE CONFLICT</b> — also blocked.</p>

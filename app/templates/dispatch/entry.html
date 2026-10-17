@@ -174,7 +174,7 @@
       <dl class="dl tight">
         <dt>Invoice</dt><dd>{{ inv.invoice_no }} · {{ inv.invoice_date|date }}</dd>
         <dt>Company</dt><dd>{{ inv.company.name }}</dd>
-        <dt>CFA</dt><dd>{{ inv.cfa.name }}</dd>
+        <dt>Depot</dt><dd>{{ inv.cfa.name }}</dd>
         <dt>Customer</dt><dd>{{ inv.customer.name }}<br><span class="muted small">{{ inv.customer.code }} · {{ inv.customer.contact_phone or '' }}</span></dd>
         <dt>Deliver to</dt><dd class="small">{{ inv.customer.delivery_address or inv.customer.billing_address or '—' }}</dd>
         <dt>Location</dt><dd>{{ inv.location.name }}{% if inv.location.route %} · {{ inv.location.route }}{% endif %}</dd>

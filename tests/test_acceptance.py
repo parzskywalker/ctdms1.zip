@@ -241,7 +241,7 @@ def test_24_excel_csv_pdf_export(web):
     assert ws.max_row > 5
     r = m.get("/reports/invoice-freight/export?fmt=csv&date_from=2000-01-01")
     rows = list(csv.reader(io.StringIO(r.content.decode("utf-8-sig"))))
-    assert rows[0][:3] == ["Date", "Company", "CFA"] and len(rows) > 20
+    assert rows[0][:3] == ["Date", "Company", "Depot"] and len(rows) > 20
     r = m.get("/reports/company-freight/export?fmt=pdf&date_from=2000-01-01")
     assert r.content[:4] == b"%PDF"
 
@@ -286,8 +286,10 @@ def test_26_27_transporter_bill_reconciliation_and_variance(db, web):
     assert bill.status == "VARIANCE" and bill.variance == Decimal("50.00")
     first = bill.lines[0]
     assert first.match_status == "VARIANCE" and first.variance == Decimal("50.00")
+    # one LR line can cover several invoices of the consignment: the billed amount is spread over them
+    ids = first.invoice_ids or [first.invoice_id]
+    assert sum(db.get(Invoice, i).actual_freight for i in ids) == first.billed_amount
     inv = db.get(Invoice, first.invoice_id)
-    assert inv.actual_freight == first.billed_amount
     import pytest
     from app.services.errors import BusinessError
     with pytest.raises(BusinessError):        # maker cannot approve own bill

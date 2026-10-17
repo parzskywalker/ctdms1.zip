@@ -69,9 +69,9 @@ def create_bill(request: Request, transporter_id: int = Form(...), bill_no: str 
         raise BusinessError(str(e)) from e
     co_id, cf_id = safe_int(company_id), safe_int(cfa_id)
     if (company_id and co_id is None) or (cfa_id and cf_id is None):
-        raise BusinessError("Invalid company / CFA")
+        raise BusinessError("Invalid company / depot")
     if not can_change(user, co_id, cf_id):
-        raise BusinessError("Select a company and CFA you are assigned to")
+        raise BusinessError("Select a company and depot you are assigned to")
     b = rs.create_bill(db, user, transporter_id=transporter_id, bill_no=bill_no, bill_date=bd, bill_amount=bill_amount,
                        company_id=co_id, cfa_id=cf_id,
                        period_from=pf, period_to=pt, remarks=remarks or None)
@@ -128,7 +128,7 @@ def _scan_create(request: Request, db: Session, user: User, form, uploads: list)
         raise BusinessError(f"At most {scan_svc.MAX_PAGES} pages per bill")
     co_id, cf_id = safe_int(form.get("company_id")), safe_int(form.get("cfa_id"))
     if not can_change(user, co_id, cf_id):
-        raise BusinessError("Select a company and CFA you are assigned to")
+        raise BusinessError("Select a company and depot you are assigned to")
     files, stored = [], []
     folder = get_settings().upload_dir / BILL_DIR
     folder.mkdir(parents=True, exist_ok=True)

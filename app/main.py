@@ -240,11 +240,11 @@ def create_app() -> FastAPI:
     from app.api import v1
     from app.web import (
         admin, approvals, auth_routes, dashboard_routes, dispatch_routes, gatepass_routes, imports_routes,
-        invoices_routes, masters_routes, notify_routes, rate_card_routes, rates_routes, recon_routes, reports_routes,
-        subscription_routes, tracking_routes,
+        invoices_routes, master_upload_routes, masters_routes, notify_routes, rate_card_routes, rates_routes,
+        recon_routes, reports_routes, subscription_routes, tracking_routes,
     )
     for mod in (auth_routes, dashboard_routes, invoices_routes, imports_routes, dispatch_routes, gatepass_routes,
-                notify_routes, tracking_routes, approvals, masters_routes, rates_routes, rate_card_routes, recon_routes,
+                notify_routes, tracking_routes, approvals, master_upload_routes, masters_routes, rates_routes, rate_card_routes, recon_routes,
                 subscription_routes, reports_routes, admin):
         app.include_router(mod.router)
     app.include_router(v1.router)

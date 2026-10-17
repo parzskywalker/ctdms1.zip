@@ -96,3 +96,24 @@ class ReportSubscription(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     owner = relationship("User")
+
+
+class MasterUpload(Base):
+    """v1.6 one-time master workbook upload: validated preview, then import; kept as history."""
+
+    __tablename__ = "master_uploads"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    file_name: Mapped[str] = mapped_column(String(200))
+    file_hash: Mapped[str] = mapped_column(String(64), index=True)
+    status: Mapped[str] = mapped_column(String(12), default="PREVIEW")  # PREVIEW / IMPORTED / CANCELLED
+    counts: Mapped[dict] = mapped_column(JSON, default=dict)            # per sheet: rows / new / existing / rejected
+    rows: Mapped[list] = mapped_column(JSON, default=list)              # every row with its verdict and messages
+    uploaded_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    committed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    committed_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    file_path: Mapped[str | None] = mapped_column(String(255))
+
+    uploaded_by = relationship("User", foreign_keys=[uploaded_by_id])
+    committed_by = relationship("User", foreign_keys=[committed_by_id])

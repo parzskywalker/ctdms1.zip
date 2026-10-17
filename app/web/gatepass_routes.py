@@ -17,6 +17,7 @@ from app.models import (
 )
 from app.security.auth import csrf_protect, require
 from app.services import dispatch_service as ds
+from app.services import local_auto_service as las
 from app.services import einvoice_service as einv
 from app.services import settings_service as cfg
 from app.services import transporter_rate_service as trs
@@ -67,7 +68,8 @@ def _inv_json(db: Session, inv: Invoice) -> dict:
     cu = inv.customer
     return {"id": inv.id, "invoice_no": inv.invoice_no, "date": inv.invoice_date.strftime("%d-%m-%Y"),
             "customer": cu.name, "customer_id": cu.id, "type": cu.type_label, "location": inv.location.name,
-            "location_id": inv.location_id, "company": inv.company.code, "cfa_id": inv.cfa_id,
+            "location_id": inv.location_id, "company": inv.company.code, "company_id": inv.company_id,
+            "cfa_id": inv.cfa_id, "rcode": inv.recognition_code or "",
             "amount": float(inv.sales_value or 0), "cases": inv.boxes, "status": inv.status_label,
             "company_freight": float(inv.freight_amount) if inv.freight_amount is not None else None,
             "company_rate": float(inv.rate_per_box) if inv.rate_per_box is not None else None,
@@ -107,7 +109,11 @@ def _builder(request: Request, db: Session, user: User, *, ids: list[int] | None
         "cards": _cards(db, today), "modes": DispatchMode.LABELS, "form": form or {}, "problems": problems or [],
         "freight_source": ds.freight_source(db), "today": today,
         "locations": {lo.id: lo.name for lo in db.scalars(select(Location))},
-        "auto_info": {str(a.id): {"basis": a.charge_basis, "rate": float(a.rate or 0)} for a in autos},
+        "auto_info": {str(a.id): {"methods": a.methods, "default": a.default_method,
+                                  "trip": float(a.default_trip_charge) if a.default_trip_charge else None,
+                                  "box": float(a.default_box_rate) if a.default_box_rate else None,
+                                  "vehicle": a.vehicle_no or ""} for a in autos},
+        "auto_rates": las.rates_for_screen(db, autos, today),
         "tr_info": {str(t.id): {"pay": t.payment_mode, "pickup": float(t.direct_pickup_charge or 0),
                                 "pickup_basis": t.direct_pickup_basis} for t in transporters},
         "cash_default": cfg.get(db, "gatepass.cash_paid_default")}, status_code=status_code)
@@ -163,7 +169,11 @@ def _request_from(form) -> ds.GatepassRequest:
         outside_auto_id=safe_int(form.get("outside_auto_id")),
         pickup_mode=PickupMode.OUTSIDE_AUTO if form.get("pickup_mode") == PickupMode.OUTSIDE_AUTO else PickupMode.REGULAR,
         dispatch_date=d, dispatch_time=t, cases={}, remarks=form.get("remarks"),
-        amount_paid=ds.parse_money(paid_raw) if paid_raw and form.get("paid_edited") == "1" else None)
+        amount_paid=ds.parse_money(paid_raw) if paid_raw and form.get("paid_edited") == "1" else None,
+        auto_method=(form.get("auto_method") or None), vehicle_no=(form.get("vehicle_no") or "").strip() or None)
+    trip_raw = (form.get("trip_charge") or "").strip()
+    if trip_raw:
+        req.trip_charge = ds.parse_money(trip_raw)
     return req
 
 

@@ -19,7 +19,7 @@ DEMO_USERS = [
     ("admin", "Admin@123", "Administrator"),
     ("management", "Demo@123", "Management"),
     ("accounts", "Demo@123", "Accounts"),
-    ("cfa.raipur", "Demo@123", "CFA Manager · Raipur"),
+    ("cfa.raipur", "Demo@123", "Depot Manager · Raipur"),
     ("operator.raipur", "Demo@123", "Dispatch Operator · Raipur"),
     ("operator.bilaspur", "Demo@123", "Dispatch Operator · Bilaspur"),
     ("operator.durg", "Demo@123", "Dispatch Operator · Durg"),

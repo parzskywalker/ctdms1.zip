@@ -11,7 +11,7 @@
     <div><label>Bill date <span class="req">*</span></label><input type="date" name="bill_date" required value="{{ today.isoformat() }}"></div>
     <div><label>Bill amount (₹) <span class="req">*</span></label><input type="text" name="bill_amount" required inputmode="decimal"></div>
     <div><label>Company (optional)</label>{{ select('company_id', opts.companies, none) }}</div>
-    <div><label>CFA (optional)</label>{{ select('cfa_id', opts.cfas, none) }}</div>
+    <div><label>Depot (optional)</label>{{ select('cfa_id', opts.cfas, none) }}</div>
     <div><label>Billing period from</label><input type="date" name="period_from" value="{{ last_month[0].isoformat() }}"></div>
     <div><label>Billing period to</label><input type="date" name="period_to" value="{{ last_month[1].isoformat() }}"></div>
     <div class="w2"><label>Remarks</label><input type="text" name="remarks"></div>

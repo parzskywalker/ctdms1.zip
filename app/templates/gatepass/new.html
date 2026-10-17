@@ -17,7 +17,7 @@
     <div class="card">
       <div class="row gp-scan">
         {% if cfas|length > 1 %}
-        <div style="min-width:150px"><label class="small muted">CFA / warehouse</label>
+        <div style="min-width:150px"><label class="small muted">Depot</label>
           <select name="cfa_id" id="gp-cfa" onchange="if (!document.querySelector('#gp-lines tbody tr')) location.search = this.value ? '?cfa_id=' + this.value : ''"><option value="">All (choose to filter)</option>{% for c in cfas %}<option value="{{ c.id }}" {% if c.id == cfa_id %}selected{% endif %}>{{ c.code }} · {{ c.name }}</option>{% endfor %}</select></div>
         {% elif cfas %}<input type="hidden" name="cfa_id" id="gp-cfa" value="{{ cfas[0].id }}">{% endif %}
         <div style="flex:1 1 320px"><label class="small muted" for="gp-scan">Scan e-invoice QR / invoice number</label>
@@ -80,14 +80,23 @@
         <label style="margin-top:8px">Goods reach the transporter by</label>
         <div class="checks">
           <label class="check"><input type="radio" name="pickup_mode" value="REGULAR" {% if form.get('pickup_mode') != 'OUTSIDE_AUTO' %}checked{% endif %}> Regular</label>
-          <label class="check"><input type="radio" name="pickup_mode" value="OUTSIDE_AUTO" {% if form.get('pickup_mode') == 'OUTSIDE_AUTO' %}checked{% endif %}> Outside auto</label>
+          <label class="check"><input type="radio" name="pickup_mode" value="OUTSIDE_AUTO" {% if form.get('pickup_mode') == 'OUTSIDE_AUTO' %}checked{% endif %}> Local auto</label>
         </div>
       </div>
       <div id="gp-auto-box">
-        <label for="gp-auto">Outside auto</label>
+        <label for="gp-auto">Local auto</label>
         <select name="outside_auto_id" id="gp-auto"><option value="">— select —</option>
           {% for a in autos %}<option value="{{ a.id }}" {% if form.get('outside_auto_id')|string == a.id|string %}selected{% endif %}>{{ a.name }}{% if a.mobile %} · {{ a.mobile }}{% endif %} ({{ a.charge_label }})</option>{% endfor %}</select>
-        {% if not autos %}<div class="field-hint">No outside autos yet — add them under Masters › Outside Autos.</div>{% endif %}
+        {% if not autos %}<div class="field-hint">No local autos yet — add them under Master Settings › Local Auto Transporters.</div>{% endif %}
+        <div id="gp-method-box" class="checks" style="margin-top:8px" role="radiogroup" aria-label="Charging method">
+          <label class="check" id="gp-m-trip"><input type="radio" name="auto_method" value="PER_TRIP" {% if form.get('auto_method') == 'PER_TRIP' %}checked{% endif %}> Per trip</label>
+          <label class="check" id="gp-m-box"><input type="radio" name="auto_method" value="PER_CASE" {% if form.get('auto_method') == 'PER_CASE' %}checked{% endif %}> Per box</label>
+        </div>
+        <div id="gp-trip-box" style="margin-top:8px"><label for="gp-trip">Trip charge (₹) — one amount for the whole trip</label>
+          <input type="text" inputmode="decimal" name="trip_charge" id="gp-trip" value="{{ form.get('trip_charge') or '' }}" placeholder="e.g. 500">
+          <div class="field-hint">However many invoices or boxes are on this trip, the auto is paid this amount once. It is shared over the invoices by boxes only for the MIS.</div></div>
+        <div id="gp-box-hint" class="field-hint"></div>
+        <div style="margin-top:8px"><label for="gp-veh">Vehicle no (optional)</label><input type="text" name="vehicle_no" id="gp-veh" value="{{ form.get('vehicle_no') or '' }}" maxlength="20"></div>
       </div>
       <div><label for="gp-remarks">Remarks</label><input type="text" name="remarks" id="gp-remarks" value="{{ form.get('remarks') or '' }}" maxlength="300"></div>
     </div>
@@ -99,7 +108,7 @@
         <dt>Cases</dt><dd id="s-cases">0</dd>
         <dt>Freight</dt><dd id="s-freight">₹0.00</dd>
         <dt>Direct pickup</dt><dd id="s-pickup">₹0.00</dd>
-        <dt>Outside auto</dt><dd id="s-auto">₹0.00</dd>
+        <dt>Local auto</dt><dd id="s-auto">₹0.00</dd>
         <dt><b>Total charged</b></dt><dd><b class="bigfig" id="s-total">₹0.00</b></dd>
       </dl>
       <div class="row" style="margin-top:10px">
@@ -134,6 +143,7 @@
   const CHOSEN = {{ chosen|jsdata|safe }};
   const CARDS = {{ cards|jsdata|safe }};
   const AUTOS = {{ auto_info|jsdata|safe }};
+  const AUTO_RATES = {{ auto_rates|jsdata|safe }};
   const TRS = {{ tr_info|jsdata|safe }};
   const SOURCE = {{ freight_source|jsdata|safe }};
   const CASH_DEFAULT = {{ cash_default|jsdata|safe }};
@@ -158,7 +168,7 @@
     if (lines.has(inv.id)) { say(`Invoice ${inv.invoice_no} is already on this gatepass`, 'info'); flashRow(inv.id); return; }
     if (inv.blocked) { say(`Invoice ${inv.invoice_no}: ${inv.blocked}`, 'error'); return; }
     const cfa = $('#gp-cfa');
-    if (lines.size && [...lines.values()][0].inv.cfa_id !== inv.cfa_id) { say('All invoices on one gatepass must be from the same CFA / warehouse', 'error'); return; }
+    if (lines.size && [...lines.values()][0].inv.cfa_id !== inv.cfa_id) { say('All invoices on one gatepass must be from the same depot', 'error'); return; }
     if (cfa && cfa.tagName === 'SELECT' && cfa.value && Number(cfa.value) !== inv.cfa_id) cfa.value = inv.cfa_id;
     if (!lines.size) {  // first invoice: take the mode / transporter planned when it was entered
       const pm = inv.plan_mode && $(`input[name=mode][value="${inv.plan_mode}"]`);
@@ -168,7 +178,7 @@
     const tr = document.createElement('tr');
     tr.dataset.id = inv.id;
     const c = cases || inv.cases || '';
-    tr.innerHTML = `<td class="nowrap"><b>${esc(inv.invoice_no)}</b><input type="hidden" name="ids" value="${inv.id}"><div class="small muted">${esc(inv.date)}</div></td>
+    tr.innerHTML = `<td class="nowrap"><b>${esc(inv.invoice_no)}</b><input type="hidden" name="ids" value="${inv.id}"><div class="small muted">${esc(inv.date)}</div>${inv.rcode ? `<div class="small mono muted" title="Invoice Recognition Code">${esc(inv.rcode)}</div>` : ''}</td>
       <td>${esc(inv.customer)} <span class="small muted">${esc(inv.type)}</span></td><td>${esc(inv.location)}</td><td>${esc(inv.company)}</td>
       <td class="num">${fmt(inv.amount)}</td>
       <td class="num"><input type="number" min="1" step="1" name="cases_${inv.id}" value="${esc(c)}" aria-label="Cases for ${esc(inv.invoice_no)}" required></td>
@@ -192,14 +202,39 @@
     const tri = TRS[tid];
     $('#gp-tr-hint').textContent = tri ? (tri.pay === 'CASH' ? 'Paid in cash at dispatch' : 'TBB - billed later') + (tri.pickup ? ` · direct pickup ₹${tri.pickup} ${tri.pickup_basis === 'PER_CASE' ? 'per case' : 'per trip'}` : '') : '';
     const auto = AUTOS[aid];
-    let cases = 0, freight = 0, missing = [];
+    const usesAuto = !!auto && (m === 'OUTSIDE_AUTO' || ((m === 'TRANSPORTER' || m === 'DIRECT') && pk === 'OUTSIDE_AUTO'));
+    // charging method: only the ones this local auto allows
+    $('#gp-m-trip').hidden = !(auto && auto.methods.includes('PER_TRIP'));
+    $('#gp-m-box').hidden = !(auto && auto.methods.includes('PER_CASE'));
+    $('#gp-method-box').hidden = !(usesAuto && auto.methods.length > 1);
+    let meth = null;
+    if (usesAuto) {
+      const chk = $('input[name=auto_method]:checked');
+      meth = chk && auto.methods.includes(chk.value) ? chk.value : auto.default;
+      const r = $(`input[name=auto_method][value="${meth}"]`); if (r) r.checked = true;
+    }
+    $('#gp-trip-box').hidden = meth !== 'PER_TRIP';
+    if (meth === 'PER_TRIP' && !$('#gp-trip').value && auto.trip) $('#gp-trip').value = auto.trip.toFixed(2);
+    if (usesAuto && !$('#gp-veh').value && auto.vehicle) $('#gp-veh').value = auto.vehicle;
+    const trip = parseFloat($('#gp-trip').value) || 0;
+    const boxRate = (inv) => {  // same rule as the server: most specific active rate, else the auto's default
+      let best = null, key = -1;
+      (AUTO_RATES[aid] || []).forEach((r) => {
+        if ((r.loc && r.loc !== inv.location_id) || (r.co && r.co !== inv.company_id) || (r.cfa && r.cfa !== inv.cfa_id)) return;
+        const k = (r.loc ? 4 : 0) + (r.co ? 2 : 0) + (r.cfa ? 1 : 0);
+        if (k > key || (k === key && best && r.from > best.from)) { best = r; key = k; }
+      });
+      return best ? best.rate : (auto && auto.box != null ? auto.box : null);
+    };
+    $('#gp-box-hint').textContent = meth === 'PER_CASE' ? 'Per box: boxes × the rate for each invoice (Local Auto Box Rates).' : '';
+    let cases = 0, freight = 0, missing = [], noBox = [];
     const rows = [...lines.values()];
     rows.forEach(({inv, tr}) => {
       const c = parseInt(tr.querySelector('input[type=number]').value, 10) || 0;
       cases += c;
       let rate = null;
       if (m === 'SELF') rate = 0;
-      else if (m === 'OUTSIDE_AUTO') rate = auto && auto.basis === 'PER_CASE' ? auto.rate : null;
+      else if (m === 'OUTSIDE_AUTO') { rate = meth === 'PER_CASE' ? boxRate(inv) : null; if (meth === 'PER_CASE' && rate == null) noBox.push(inv); }
       else if (SOURCE === 'COMPANY') rate = inv.company_rate;
       else if (tid) rate = (CARDS[tid] || {})[inv.location_id];
       tr._rate = rate; tr._cases = c;
@@ -208,15 +243,15 @@
     });
     rows.forEach(({tr}) => {
       let charge;
-      if (m === 'OUTSIDE_AUTO' && auto && auto.basis === 'PER_TRIP') charge = cases ? auto.rate * tr._cases / cases : 0;
+      if (m === 'OUTSIDE_AUTO' && meth === 'PER_TRIP') charge = cases ? trip * tr._cases / cases : 0;
       else charge = tr._rate == null ? null : tr._rate * tr._cases;
       const rc = tr.querySelector('[data-rate]'), cc = tr.querySelector('[data-charge]');
       if (charge == null) { rc.innerHTML = (m === 'TRANSPORTER' || m === 'DIRECT') && tid ? '<span class="rate-missing" title="No rate for this area on the rate card">no rate</span>' : '<span class="muted">—</span>'; cc.textContent = '—'; }
-      else { rc.textContent = m === 'OUTSIDE_AUTO' && auto && auto.basis === 'PER_TRIP' ? 'trip share' : fmt(tr._rate); cc.textContent = fmt(charge); freight += charge; }
+      else { rc.textContent = m === 'OUTSIDE_AUTO' && meth === 'PER_TRIP' ? 'share of trip' : fmt(tr._rate); cc.textContent = fmt(charge); freight += charge; }
     });
     let pickupCh = 0, autoCh = 0;
     if (m === 'DIRECT' && tri && tri.pickup) pickupCh = tri.pickup_basis === 'PER_CASE' ? tri.pickup * cases : tri.pickup;
-    if ((m === 'TRANSPORTER' || m === 'DIRECT') && pk === 'OUTSIDE_AUTO' && auto) autoCh = auto.basis === 'PER_CASE' ? auto.rate * cases : auto.rate;
+    if ((m === 'TRANSPORTER' || m === 'DIRECT') && pk === 'OUTSIDE_AUTO' && auto) autoCh = meth === 'PER_TRIP' ? trip : rows.reduce((a, {inv, tr}) => a + (boxRate(inv) || 0) * tr._cases, 0);
     const total = freight + pickupCh + autoCh;
     $('#t-cases').textContent = cases; $('#t-freight').textContent = fmt(freight);
     $('#s-inv').textContent = rows.length; $('#s-cases').textContent = cases; $('#s-freight').textContent = fmt(freight);
@@ -234,7 +269,9 @@
     const why = [];
     if (!rows.length) why.push('add at least one invoice');
     if ((m === 'TRANSPORTER' || m === 'DIRECT') && !tid) why.push('choose the transporter');
-    if ((m === 'OUTSIDE_AUTO' || ((m === 'TRANSPORTER' || m === 'DIRECT') && pk === 'OUTSIDE_AUTO')) && !aid) why.push('choose the outside auto');
+    if ((m === 'OUTSIDE_AUTO' || ((m === 'TRANSPORTER' || m === 'DIRECT') && pk === 'OUTSIDE_AUTO')) && !aid) why.push('choose the local auto');
+    if (meth === 'PER_TRIP' && !(trip > 0)) why.push('enter the trip charge');
+    if (noBox.length) why.push(`no per-box rate for ${[...new Set(noBox.map((i) => i.location))].join(', ')} for this local auto`);
     if (rows.some(({tr}) => !tr._cases)) why.push('enter cases for every invoice');
     if (missing.length) why.push(`no rate for ${[...new Set(missing.map((i) => i.location))].join(', ')} on this transporter's rate card`);
     $('#gp-submit').disabled = why.length > 0;
@@ -269,8 +306,9 @@
     const q = e.target.value.trim().toLowerCase();
     $$('#gp-open tbody tr[data-id]').forEach((tr) => { if (!lines.has(Number(tr.dataset.id))) tr.hidden = q && !tr.dataset.text.includes(q); });
   });
-  $$('input[name=mode], input[name=pickup_mode]').forEach((r) => r.addEventListener('change', () => { $('#gp-paid-edited').value = '0'; recalc(); }));
-  ['#gp-tr', '#gp-auto'].forEach((s) => $(s).addEventListener('change', () => { $('#gp-paid-edited').value = '0'; recalc(); }));
+  $$('input[name=mode], input[name=pickup_mode], input[name=auto_method]').forEach((r) => r.addEventListener('change', () => { $('#gp-paid-edited').value = '0'; recalc(); }));
+  $('#gp-trip').addEventListener('input', () => { $('#gp-paid-edited').value = '0'; recalc(); });
+  ['#gp-tr', '#gp-auto'].forEach((s) => $(s).addEventListener('change', () => { $('#gp-paid-edited').value = '0'; if (s === '#gp-auto') { $('#gp-trip').value = ''; $('#gp-veh').value = ''; $$('input[name=auto_method]').forEach((r) => { r.checked = false; }); } recalc(); }));
   $('#gp-paid').addEventListener('input', () => { $('#gp-paid-edited').value = '1'; recalc(); });
   $('#gp-form').addEventListener('submit', (e) => {
     if ($('#gp-submit').disabled) { e.preventDefault(); return; }

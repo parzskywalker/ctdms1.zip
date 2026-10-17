@@ -120,12 +120,17 @@ class AckIn(BaseModel):
 def _inv_out(inv: Invoice) -> dict:
     return {
         "id": inv.id, "central_id": inv.central_id, "invoice_no": inv.invoice_no,
+        "original_invoice_no": inv.invoice_no,  # v1.6: the ERP number, never changed
+        "recognition_code": inv.recognition_code, "recognition_note": inv.recognition_note,
         "invoice_date": inv.invoice_date.isoformat(), "fiscal_year": inv.fiscal_year,
         "source_erp": inv.source_erp.code if inv.source_erp else None, "source_invoice_id": inv.source_invoice_id,
         "company": {"id": inv.company_id, "code": inv.company.code, "name": inv.company.name},
         "cfa": {"id": inv.cfa_id, "code": inv.cfa.code, "name": inv.cfa.name},
+        "depot": {"id": inv.cfa_id, "code": inv.cfa.code, "name": inv.cfa.name, "city": inv.cfa.city,
+                  "locality": inv.cfa.locality},
         "customer": {"id": inv.customer_id, "code": inv.customer.code, "erp_code": inv.customer_code,
-                     "name": inv.customer.name},
+                     "name": inv.customer.name, "type": inv.customer.party_type,
+                     "type_name": inv.customer.type_label},
         "location": {"id": inv.location_id, "code": inv.location.code, "name": inv.location.name},
         "sales_value": str(inv.sales_value), "boxes": inv.boxes,
         "taxable_value": str(inv.taxable_value) if inv.taxable_value is not None else None,
@@ -388,7 +393,7 @@ def delivery(invoice_id: int, body: DeliveryIn, db: Session = Depends(get_db),
 
 
 # ----------------------------------------------------------------------------- masters / reports / dashboard
-MASTER_MODELS = {"companies": Company, "cfas": CFA, "customers": Customer, "locations": Location,
+MASTER_MODELS = {"companies": Company, "cfas": CFA, "depots": CFA, "customers": Customer, "locations": Location,
                  "transporters": Transporter, "erp-systems": ERPSystem}
 
 

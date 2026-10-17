@@ -10,6 +10,10 @@
 <div class="page-head">
   <div>
     <h1>Invoice {{ inv.invoice_no }} {{ badge(inv.status) }}</h1>
+    <div class="idcodes">
+      <div><small>Original ERP invoice number</small><b class="mono">{{ inv.invoice_no }}</b> <span class="tag">as received from {{ inv.source_erp.code if inv.source_erp else 'entry' }} · never changed</span></div>
+      <div><small>Invoice Recognition Code</small>{% if inv.recognition_code %}<b class="mono">{{ inv.recognition_code }}</b>{% elif inv.recognition_note %}<span class="pos">{{ inv.recognition_note }}</span>{% else %}<span class="muted">not used</span>{% endif %}</div>
+    </div>
     <div class="sub">{{ inv.central_id }} · {{ inv.invoice_date|date }} · FY {{ inv.fiscal_year }} · source {{ inv.source_erp.name if inv.source_erp else '—' }}{% if inv.source_invoice_id %} (doc {{ inv.source_invoice_id }}){% endif %}</div>
   </div>
   <div class="actions">
@@ -31,7 +35,8 @@
         <div class="card-head"><h3>Invoice</h3></div>
         <dl class="dl tight">
           <dt>Company</dt><dd>{{ inv.company.name }} <span class="muted">({{ inv.company.code }})</span></dd>
-          <dt>CFA</dt><dd>{{ inv.cfa.name }}</dd>
+          <dt>Depot</dt><dd>{{ inv.cfa.name }}{% if inv.cfa.locality or inv.cfa.city %} <span class="muted small">{{ inv.cfa.locality or '' }}{{ ', ' if inv.cfa.locality and inv.cfa.city }}{{ inv.cfa.city or '' }}</span>{% endif %}</dd>
+          {% if inv.marking %}<dt>ERP marking</dt><dd><span class="mono">{{ inv.marking.marking }}</span> <span class="muted small">recognised as {{ inv.marking.company.code }}{% if inv.marking.cfa %} / {{ inv.marking.cfa.code }}{% endif %}</span></dd>{% endif %}
           <dt>Customer</dt><dd><a href="/masters/customers/{{ inv.customer_id }}">{{ inv.customer.name }}</a> <span class="tag">{{ inv.customer.type_label }}</span><br><span class="muted small">Central {{ inv.customer.code }} · ERP code {{ inv.customer_code or '—' }}</span></dd>
           <dt>Captured by</dt><dd>{{ {'QR_SCAN': 'E-invoice QR scan', 'IMPORT': 'ERP export import', 'API': 'ERP API / adapter', 'MANUAL': 'Manual'}.get(inv.capture_mode, inv.capture_mode) }}{% if inv.irn %}<br><span class="muted small mono" title="E-invoice IRN">IRN {{ inv.irn[:16] }}…</span>{% endif %}{% if inv.qr_signature %} <span class="tag" title="Signature of the GST portal on the QR">QR {{ {'VERIFIED': 'signature verified', 'INVALID': 'signature INVALID', 'UNVERIFIED': 'signature not checked'}[inv.qr_signature] }}</span>{% endif %}</dd>
           {% if inv.eway_bill_no %}<dt>E-way bill</dt><dd class="mono">{{ inv.eway_bill_no }}{% if inv.eway_valid_until %} <span class="muted small">valid to {{ inv.eway_valid_until|date }}</span>{% endif %}</dd>{% endif %}
@@ -39,7 +44,7 @@
           <dt>Delivery location</dt><dd>{{ inv.location.name }}{% if inv.location.route %} <span class="muted">· route {{ inv.location.route }}</span>{% endif %}</dd>
           <dt>Invoice amount</dt><dd>{{ inv.sales_value|money }}</dd>
           {% if inv.taxable_value is not none %}<dt>Taxable amount</dt><dd>{{ inv.taxable_value|money }}</dd>{% endif %}
-          {% if inv.dispatch_mode and inv.status in InvoiceStatus.PRE_SLIP %}<dt>Planned dispatch</dt><dd>{{ {"TRANSPORTER": "Transporter", "DIRECT": "Transporter - direct pickup", "OUTSIDE_AUTO": "Outside auto", "SELF": "Self pickup"}.get(inv.dispatch_mode, inv.dispatch_mode) }}{% if inv.transporter %} · {{ inv.transporter.name }}{% endif %}</dd>{% endif %}
+          {% if inv.dispatch_mode and inv.status in InvoiceStatus.PRE_SLIP %}<dt>Planned dispatch</dt><dd>{{ {"TRANSPORTER": "Transporter", "DIRECT": "Transporter - direct pickup", "OUTSIDE_AUTO": "Local auto", "SELF": "Self pickup"}.get(inv.dispatch_mode, inv.dispatch_mode) }}{% if inv.transporter %} · {{ inv.transporter.name }}{% endif %}</dd>{% endif %}
           <dt>Imported</dt><dd>{{ inv.imported_at|dt }}{% if inv.imported_by %} by {{ inv.imported_by.full_name }}{% endif %}{% if inv.import_batch %}<br><a class="small" href="/imports/{{ inv.import_batch_id }}">batch {{ inv.import_batch.batch_no }}</a> ({{ inv.import_batch.source }}){% endif %}</dd>
           <dt>ERP sync</dt><dd>{{ badge(inv.erp_sync_status, inv.erp_sync_status.replace('_',' ').title()) }}</dd>
           {% if inv.remarks %}<dt>Remarks</dt><dd>{{ inv.remarks }}</dd>{% endif %}
@@ -107,6 +112,7 @@
       </div>
     </div>
 
+    {% if sku_lines or inv.items %}
     <div class="card flush">
       <div class="card-head"><h3>SKU lines</h3><span class="small muted">{{ inv.items|length }} line(s){% if inv.item_count and not inv.items %} · QR says {{ inv.item_count }} item(s); details arrive with the item-wise ERP export{% endif %}</span></div>
       {% if inv.items %}
@@ -116,6 +122,7 @@
       </table></div>
       {% endif %}
     </div>
+    {% endif %}
 
     <div class="card flush">
       <div class="card-head"><h3>Manual overrides</h3></div>
