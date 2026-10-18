@@ -1,0 +1,4 @@
+﻿Invoice No,Invoice Date,Customer Code,Customer Name,City,GSTIN,Net Amount,No of Cases
+DEMO-CBO-3001,16/10/2026,CB-GAMMA,Gamma Pharma Distributors (Demo),Durg,22DEMOX0003X1Z3,41000.00,10
+DEMO-CBO-3002,16/10/2026,CB-EPS,Epsilon City Hospital (Demo),Korba,22DEMOX0005X1Z5,64500.00,16
+DEMO-CBO-3003,17/10/2026,CB-THETA,Theta Pharma Mart (Demo),Durg,22DEMOX0008X1Z8,12800.00,4

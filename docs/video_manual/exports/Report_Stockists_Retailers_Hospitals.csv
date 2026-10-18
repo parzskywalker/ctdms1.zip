@@ -1,0 +1,5 @@
+﻿Customer type,Customers,Invoices,Cases,Sales value,Freight + pickup/auto,Cost / case,Cost % of sales
+Stockist,4,8,72,281990.0,752.0,10.44,0.27
+Hospital,1,2,34,135800.0,884.0,26.0,0.65
+Retailer,3,7,29,98650.0,651.0,22.45,0.66
+TOTAL,8,17,135,516440.0,2287.0,16.94,0.44

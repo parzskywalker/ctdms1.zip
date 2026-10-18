@@ -1,0 +1,6 @@
+﻿LR No,Invoice No,Boxes,Amount,Remarks
+BCM-7001,DEMO-SAP-1002,9,216.00,Rate billed 24 instead of 20
+BCM-7002,DEMO-SAP-1003,24,312.00,
+BCM-7002,DEMO-SAP-1003,24,312.00,Same LR billed again
+BCM-7003,DEMO-MRG-2005,4,52.00,
+BCM-9999,,8,240.00,Not in our dispatch records

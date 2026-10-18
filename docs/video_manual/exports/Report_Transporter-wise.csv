@@ -1,0 +1,7 @@
+﻿Transporter,Invoices,Boxes,Calculated Freight,Actual Transporter Bill,Calculated (billed),Variance,Trips (gatepasses),Cost / case,Cost / trip,LR Numbers,Vehicle Numbers
+Alpha Roadlines (Demo),5,33,297.0,297.0,297.0,0.0,1,9.0,297.0,"ATR-1102, ATR-1103, ATR-1101",
+Beta Cargo Movers (Demo),4,37,544.0,580.0,544.0,36.0,1,14.7,544.0,"BCM-7001, BCM-7002, BCM-7003",
+Delta Logistics (Demo),1,4,60.0,0.0,0.0,,1,15.0,60.0,,
+Epsilon Transport Co (Demo),1,8,152.0,0.0,0.0,,1,19.0,152.0,,
+Gamma Express Parcel (Demo),2,34,884.0,0.0,0.0,,1,26.0,884.0,GEP-3301,
+TOTAL,13,116,1937.0,877.0,841.0,36.0,5,16.7,387.4,,

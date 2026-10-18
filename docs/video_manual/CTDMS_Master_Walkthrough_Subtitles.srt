@@ -1,0 +1,387 @@
+1
+00:00:03,230 --> 00:00:24,996
+Welcome. This video shows CTDMS from the very first login, exactly as the first master user would see it. The database is completely empty. Everything you will see being created is a demonstration entry, marked D M, or Demo, so it can be removed before real use.
+
+2
+00:00:26,760 --> 00:00:42,112
+This is the Management Dashboard. Every figure is zero because nothing has been entered yet. The menu on the left has five groups: Dispatch desk, Operations, Masters, Reports and Administration.
+
+3
+00:00:42,710 --> 00:00:53,213
+Step one: tell CTDMS which billing systems exist. CTDMS sits above them. It never replaces them.
+
+4
+00:00:55,120 --> 00:01:10,383
+Open Administration, Integration Settings. We add four billing systems: SAP, MARG, CBO and Intrect. Each needs a short code, a name, and the way its data arrives.
+
+5
+00:01:21,450 --> 00:01:28,339
+Now each one is opened to record its status. SAP is working through an Excel upload.
+
+6
+00:01:28,940 --> 00:01:33,519
+Here we write a note so that everybody knows the status of this link.
+
+7
+00:01:35,080 --> 00:01:50,067
+MARG is configured, but the direct database link is not filled in yet, so CTDMS shows a warning. Meanwhile its sales register is imported as a file. This is a common real situation.
+
+8
+00:01:50,660 --> 00:02:01,528
+For CBO we generate an API key. Company C's IT team can use it to push invoices straight in. The key is shown only once.
+
+9
+00:02:02,130 --> 00:02:07,054
+Intrect is planned but not connected, so we leave it inactive.
+
+10
+00:02:07,660 --> 00:02:16,753
+The four systems now show four different statuses: working, file only, API key issued, and inactive.
+
+11
+00:02:17,350 --> 00:02:27,133
+Step two: master records. These are the permanent facts of the business. Create them once, in this order.
+
+12
+00:02:28,910 --> 00:02:37,278
+First the CFA, which is the warehouse that dispatches the goods. Our demonstration CFA is Raipur.
+
+13
+00:02:41,690 --> 00:02:50,173
+Next the five delivery areas. Freight is priced per area, so every town you deliver to must exist here.
+
+14
+00:03:26,690 --> 00:03:35,643
+Then the principal companies whose medicines we dispatch. Each is linked to the billing system it uses and to the CFA that serves it.
+
+15
+00:03:52,960 --> 00:04:08,037
+Now five transporters. The important choice is the payment mode. To be billed means the transporter sends a bill later, which we check. Cash means we pay at dispatch and no bill is expected.
+
+16
+00:04:44,250 --> 00:04:49,489
+One local delivery auto is also recorded, charged per trip.
+
+17
+00:04:51,870 --> 00:05:08,367
+Finally the customers: stockists, retailers and a hospital. Each has an area, a mobile number and a GST number. The GST number lets CTDMS recognise the customer from an e-invoice QR code.
+
+18
+00:06:44,050 --> 00:06:51,558
+Step three: people. The master creates a login for each person and decides what they may do.
+
+19
+00:06:53,310 --> 00:07:06,727
+Three demonstration users: a checker who approves, a dispatch operator who works at the warehouse desk, and an accounts person. Each gets a role and a password chosen by the master.
+
+20
+00:07:27,540 --> 00:07:36,568
+The Roles screen is a grid of tick boxes. A role is only a list of permissions, and the master can change any box.
+
+21
+00:07:37,160 --> 00:07:45,248
+The master also sets the rules of the house in System Settings. Every change asks for a reason and is audited.
+
+22
+00:07:47,010 --> 00:08:06,961
+We give the organisation its name, which is printed on every gatepass and report, and switch customer alerts to preview mode, called L O G. In preview mode messages are prepared and shown, but nothing is sent. WhatsApp and S M S are paid services and stay locked.
+
+23
+00:08:07,560 --> 00:08:21,512
+One more set-up detail. The same customer has a different code in each billing system. On the customer screen we record what MARG calls this customer, so that imports match automatically.
+
+24
+00:08:46,450 --> 00:08:58,033
+Step four: freight rates. Every transporter has a rate per case for each area. A new rate never takes effect until a second person approves it.
+
+25
+00:08:59,850 --> 00:09:07,518
+For most transporters we upload the whole rate list from a spreadsheet. Here is Alpha Roadlines.
+
+26
+00:09:21,990 --> 00:09:30,348
+The fifth transporter, Epsilon, does not serve every area. We type its three rates one by one.
+
+27
+00:09:39,790 --> 00:09:45,269
+All rates are now waiting. Until they are approved they are not used.
+
+28
+00:09:45,870 --> 00:09:53,318
+Now the checker signs in. This is a different person, so the two-person rule is respected.
+
+29
+00:09:53,920 --> 00:10:05,633
+The checker reads each proposed rate and presses Approve. A reason is needed only to reject. The first two are done slowly; the rest follow the same way.
+
+30
+00:10:10,280 --> 00:10:16,823
+All twenty rates are approved and now active. Fresh rates start from the effective date.
+
+31
+00:10:17,420 --> 00:10:27,833
+Step five: invoices. They come from the billing systems. There are several ways in. We will use all of them.
+
+32
+00:10:29,610 --> 00:10:48,127
+First, Company A's SAP export. It is an Excel file with one line per medicine, so CTDMS also learns the SKU detail. We choose the system and company, and press Upload and preview, so nothing is saved before we look.
+
+33
+00:10:48,720 --> 00:11:01,533
+CTDMS recognised the columns by their headings. Every row is valid, so we import. The five invoices and their medicine lines are now in the central database.
+
+34
+00:11:02,140 --> 00:11:16,498
+Second, Company B's MARG sales register, a plain CSV file. This one contains deliberate mistakes, which is realistic. Watch how CTDMS handles each.
+
+35
+00:11:17,090 --> 00:11:34,327
+The Branch column was read as a CFA code, but MARG's branch is only a name. We tell CTDMS it is not a CFA column. We also save this layout under a name, so next time any MARG file is recognised at once.
+
+36
+00:11:34,930 --> 00:11:53,462
+CTDMS found three problems and explains each one. First, party code T H dash zero eight is unknown. The system suggests Theta Pharma Mart, which is right, so we map the code once, and every future file will know it.
+
+37
+00:11:54,060 --> 00:12:17,076
+Second, invoice 2006 has no case count. It is accepted as an exception, to be filled in at dispatch. Third, invoice 2003 appears twice in the file. The duplicate is refused, so an invoice can never be counted twice. Now we import the valid rows.
+
+38
+00:12:17,680 --> 00:12:32,867
+Third, Company C's CBO export. Its customer codes are not known to CTDMS, but the file carries each customer's GST number, and CTDMS recognises the customer from that.
+
+39
+00:12:33,470 --> 00:12:42,628
+The import log lists every batch with its result. Three files, three different systems, one central register.
+
+40
+00:12:43,230 --> 00:13:00,392
+Fourth, a single invoice typed by hand, for example when no export is available. Choose the stockist, and the area fills itself in. Then company, invoice number, date, amount, taxable amount and cases.
+
+41
+00:13:00,990 --> 00:13:11,423
+Invoices can also be captured by scanning the e-invoice QR code at the dispatch desk. We will do that next, together with the gatepass.
+
+42
+00:13:12,020 --> 00:13:20,438
+The Invoice Register now holds every invoice from every source. The Status column tells where each one stands.
+
+43
+00:13:21,040 --> 00:13:33,542
+Step six: dispatch. One gatepass covers a whole pickup, even when it carries goods of different companies, for different customers, in different towns.
+
+44
+00:13:35,330 --> 00:13:50,017
+The warehouse operator scans the e-invoice QR printed on an invoice. This one is not in CTDMS yet, so it is created from the QR. The operator types the number of cases counted.
+
+45
+00:13:50,610 --> 00:14:03,103
+The other invoices are waiting in the list below. One press of Add puts each on the same gatepass. This pickup mixes two companies, three customers and two towns.
+
+46
+00:14:03,710 --> 00:14:21,317
+Who carries the goods? Alpha Roadlines, a to-be-billed transporter. The panel at the right shows the freight from Alpha's rate card for each area: cases times rate. Nothing is paid now, because Alpha will send a bill later.
+
+47
+00:14:21,910 --> 00:14:30,433
+The gatepass is created with its own number. It has not been printed yet, and nothing can leave the gate until it is.
+
+48
+00:14:31,040 --> 00:14:41,433
+Print it. The printed page carries a barcode, every customer with invoices, cases and charge, and the transporter's details.
+
+49
+00:14:42,030 --> 00:15:00,157
+At the gate, the guard scans the barcode on the printed gatepass, or types its number. CTDMS shows what must leave. The guard counts the cases and confirms gate-out. Every invoice on the gatepass becomes dispatched at that moment.
+
+50
+00:15:00,760 --> 00:15:16,997
+Later the transporter gives its receipt numbers, called LR or bilty numbers, one for each customer. They are typed on the gatepass. They can be corrected, with a reason, until the transporter's bill is approved.
+
+51
+00:15:17,600 --> 00:15:37,031
+Second gatepass: Beta Cargo Movers carries goods of all three companies to Bilaspur and Durg. First the operator chooses Epsilon Transport by mistake. CTDMS warns at once that Epsilon has no rate for Durg, so the operator switches to Beta Cargo.
+
+52
+00:15:37,630 --> 00:15:42,929
+Printed, gone out at the gate, and the LR numbers entered later.
+
+53
+00:15:49,780 --> 00:16:07,252
+Third gatepass: Gamma Express Parcel is a cash transporter. It goes to Korba with two companies' goods for the hospital. Because Gamma is paid in cash, the amount shown as paid now equals the full freight, and no bill is expected.
+
+54
+00:16:10,180 --> 00:16:19,633
+Fourth gatepass: a local delivery in Raipur using our hired auto, charged per trip, with two invoices to one customer.
+
+55
+00:16:26,990 --> 00:16:42,962
+Fifth gatepass: Delta Logistics collects directly from our warehouse, so its direct pickup charge of two hundred rupees is added. We print it, but the goods have not left yet, so it stays in the Printed state.
+
+56
+00:16:43,560 --> 00:16:58,438
+Sixth: a gatepass made on the wrong transporter. Before the goods leave, a gatepass can be voided with a reason. The invoice goes back to the waiting list, and nothing is lost or duplicated.
+
+57
+00:16:59,040 --> 00:17:11,298
+Now the correct gatepass is made, with Epsilon Transport, which does have a Bilaspur rate. We leave it generated but not printed, so you can see that status too.
+
+58
+00:17:11,900 --> 00:17:20,329
+The Gatepass register shows every gatepass with its state: not printed, printed, gone out, or void.
+
+59
+00:17:20,930 --> 00:17:36,862
+Two invoices still need attention. Invoice 2006 arrived without a case count. The master can correct it directly; other users must ask a checker to approve. The change is recorded with a reason.
+
+60
+00:17:37,460 --> 00:17:49,583
+The mistaken invoice 4002 is cancelled. Cancelling needs a reason, and the invoice stays in the register, marked cancelled, so there is a full history.
+
+61
+00:17:50,180 --> 00:18:00,173
+Step seven: the goods reach the customer, and the signed receipt comes back. CTDMS records this as proof of delivery.
+
+62
+00:18:01,940 --> 00:18:10,718
+Deliveries Pending lists everything that has left the warehouse but has no proof yet. Overdue consignments would be highlighted.
+
+63
+00:18:11,320 --> 00:18:19,303
+The signed receipts for Alpha Roadlines' consignments are back, so we tick them and mark them delivered, with the date.
+
+64
+00:18:19,910 --> 00:18:34,537
+For Beta Cargo, Gamma Pharma received only twenty-two of twenty-four cases. This is recorded on the consignment as delivered short, with who received it, a note, and a photo of the signed receipt.
+
+65
+00:18:35,130 --> 00:18:45,948
+The tracking page shows the whole journey of the invoice: order received, gatepass, printed, left the warehouse, LR number, and delivered.
+
+66
+00:18:46,550 --> 00:18:55,738
+The remaining consignments, Beta's other customers and the cash and auto trips, stay on the pending list until their proof comes back.
+
+67
+00:18:56,340 --> 00:19:07,973
+Step eight: money. To-be-billed transporters send a bill. CTDMS checks every line against our own gatepasses before anybody pays.
+
+68
+00:19:13,140 --> 00:19:20,913
+The accounts person records Alpha Roadlines' bill: number, date, total amount, and the period it covers.
+
+69
+00:19:21,520 --> 00:19:29,993
+Each line of the paper bill is typed in: LR number, date, customer, station, cases, rate and amount.
+
+70
+00:19:30,590 --> 00:19:45,582
+Every line is matched to our gatepass: the LR exists, the cases agree, the rate agrees with Alpha's rate card, and the arithmetic is right. All three lines are matched, and the variance is zero.
+
+71
+00:19:46,180 --> 00:19:56,403
+One more question must be answered: has the transporter changed any rates? Nothing has, so we save the review with nothing ticked.
+
+72
+00:19:57,010 --> 00:20:12,882
+Now Beta Cargo Movers' bill. This transporter sent its statement as a spreadsheet, so we import it. It has mistakes, which is common in real life, and we want to see whether CTDMS catches them.
+
+73
+00:20:13,480 --> 00:20:30,297
+CTDMS flags the lines. The first has a rate of twenty-four, but Beta's rate card says twenty. The Gamma Pharma consignment is billed twice. And one LR number does not exist in our dispatch records at all.
+
+74
+00:20:30,900 --> 00:20:41,513
+The irregularity report lists them all in plain words. It can be printed or sent to Excel, and taken to the transporter before anything is paid.
+
+75
+00:20:42,110 --> 00:20:50,858
+Now the maker-checker rule. The accounts person who typed bill one cannot approve it. The checker signs in.
+
+76
+00:20:51,840 --> 00:21:02,503
+Beta's bill cannot be approved: it carries blocking flags. The checker would reject it, with a reason, and send it back to the transporter.
+
+77
+00:21:03,100 --> 00:21:10,873
+With the bill approved, the accounts person marks it paid and records the bank reference, called the U T R.
+
+78
+00:21:12,230 --> 00:21:16,749
+The bill list now shows one bill paid and one needing follow-up.
+
+79
+00:21:17,350 --> 00:21:28,403
+Step nine: using the data. Customers can be alerted, other software can read and write through the API, and every report can be exported.
+
+80
+00:21:30,180 --> 00:21:47,117
+Customer Alerts shows the messages CTDMS prepared when goods left the gate and when LR numbers were entered. In preview mode they are marked sent without being sent. When the business decides to pay for WhatsApp, only a setting changes.
+
+81
+00:21:47,720 --> 00:21:59,388
+Company C's IT team can push invoices with the API key we generated. Here one invoice arrives directly from CBO, with no file and no typing.
+
+82
+00:21:59,990 --> 00:22:10,463
+The API documentation page lists every call: invoices, tracking, reports, dashboard figures and ERP write-back.
+
+83
+00:22:11,060 --> 00:22:19,538
+Step ten: what management sees. Everything entered so far now appears in the dashboard and in the reports.
+
+84
+00:22:21,330 --> 00:22:34,148
+The dashboard now has figures. Total invoices, how many are dispatched, how many are waiting, sales value, calculated freight, and freight as a percentage of sales.
+
+85
+00:22:34,750 --> 00:22:44,743
+Every report can be exported. The full list is grouped into M I S, operational, reconciliation and control reports.
+
+86
+00:22:45,340 --> 00:22:59,043
+Transporter-wise: trips, cases, cost per case and cost per trip for each transporter. The buttons at the top export it as Excel, C S V or P D F.
+
+87
+00:22:59,650 --> 00:23:06,199
+SKU-wise dispatch shows which medicines went out, in what quantity, to whom.
+
+88
+00:23:06,800 --> 00:23:13,838
+Delivery performance shows on-time delivery and short or damaged deliveries for each transporter and area.
+
+89
+00:23:14,430 --> 00:23:21,039
+The transportation M I S drills down by company, area, customer and transporter.
+
+90
+00:23:21,640 --> 00:23:35,447
+Any report can also be e-mailed automatically every day, week or month. We set up a weekly Excel gatepass register for management. Sending needs the office mail server to be configured.
+
+91
+00:23:36,050 --> 00:23:46,988
+From any gatepass, the printable P D F and one label for every case can be produced. Scanning any case label at the gate opens its gatepass.
+
+92
+00:23:47,590 --> 00:23:59,453
+Finally the master can download a complete copy of all the data, one C S V file per table, as a zip file. Passwords and keys are never included.
+
+93
+00:24:00,050 --> 00:24:06,749
+Last step: control. See what other users see, and who did what.
+
+94
+00:24:11,950 --> 00:24:24,733
+This is the dispatch operator's view. The menu is shorter, because the master allowed only dispatch work. No rates, no bills, no administration.
+
+95
+00:24:25,330 --> 00:24:39,178
+The audit log records every change: who, what, when, with old and new values. Nobody can edit or erase it from the screen. This is the master's proof of what happened.
+
+96
+00:24:39,780 --> 00:24:49,513
+The final invoice register shows every status side by side: dispatched, printed, waiting, cancelled, and the invoice pushed by API.
+
+97
+00:24:50,110 --> 00:25:07,107
+That completes the walkthrough, from an empty system to dispatch, delivery, bills, reports and control. Every record shown is marked as a demonstration entry, so it can be removed before real use. Thank you.
