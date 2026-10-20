@@ -163,7 +163,7 @@ S.append(Paragraph("Version 1.6 - Master User Manual", ParagraphStyle("t3", font
 S.append(Paragraph("Demonstration Edition", ParagraphStyle("t3b", fontName="SB", fontSize=20, leading=26, textColor=colors.HexColor("#f5a524"))))
 S.append(Spacer(1, .5 * cm))
 S.append(Paragraph("One master workbook · Depots (several in one city) · Customer types and codes · Invoice Recognition Code · "
-                   "Local autos per trip / per box", ParagraphStyle("t4", fontName="SI", fontSize=12, leading=16, textColor=colors.HexColor("#b9d3ee"))))
+                   "Local autos per trip / per box · Keyboard-first operation", ParagraphStyle("t4", fontName="SI", fontSize=12, leading=16, textColor=colors.HexColor("#b9d3ee"))))
 S.append(Spacer(1, 3.2 * cm))
 S.append(Paragraph("Prepared for Tulsyan &nbsp;|&nbsp; Application version 1.6.0 &nbsp;|&nbsp; October 2026<br/>"
                    "<b>Every master record, invoice and gatepass in this document is a DEMONSTRATION ENTRY</b> (codes DM-…, names ending (Demo)), "
@@ -192,6 +192,7 @@ table(["#", "Request", "What was done", "Where in CTDMS"], [
     ["18", "Master Settings", "All masters in one menu; active / inactive instead of deleting", "Master Settings menu"],
     ["19", "Reports and search", "Filters for recognition code, depot, city, customer type, local-auto method; City-wise, Depot-wise, Local Auto Trips; ERP number and code in separate columns", "Reports, Invoice Register"],
     ["20-21", "Demo data and video", "New v1.6 demonstration workbook and invoices; the guide video re-recorded in the same style", "this manual, the video"],
+    ["22", "Keyboard first, mouse optional (MARG style)", "Same function keys on every screen (F1 help, F2 new, F3 go to, F4 search, F6 save, F7 edit, F8 gatepass / print, F9 complete dispatch, F10 reports, Esc back); Enter moves field to field and then to the main button; choice boxes find a company, depot, customer, customer type, area or transporter by code or name; arrows + Enter in every list; return to the same row; clear yellow focus; key bar at the bottom of every screen; delete / void / cancel ask first with No pre-selected", "every screen - F1 shows the keys"],
 ], [1.2, 3.4, 8.2, 4.2])
 
 # ------------------------------------------------------------------------- 2 summary
@@ -207,6 +208,7 @@ SUMMARY = ("<b>One clean start.</b> On the first day the master data from MARG, 
  "<b>Local autos charged correctly.</b> A per-trip auto is owed one amount for the trip however many invoices it carries; the "
  "amount is only shared over the invoices for the MIS. A per-box auto is boxes times its rate. Long-distance transporters work as "
  "before. "
+ "<b>Keyboard first.</b> Staff used to MARG work with codes, Enter, arrows and function keys; the mouse is optional. "
  "<b>Result:</b> one consistent master list, invoices recognised automatically, simple daily dispatch, and transportation "
  "expense that adds up exactly - prepared for using the same structure across CFA, distribution and super-stockist work later.")
 words = len(re.sub(r"<[^>]+>", "", SUMMARY).split())
@@ -309,9 +311,9 @@ S.append(NextPageTemplate("body")); S.append(PageBreak())
 P("6. Every invoice and trip explained in plain language", H1)
 SPECIAL = {
     "001245": "The example management asked for: original number <b>001245</b>, Invoice Recognition Code <b>ABC-RET-C025-GUMA-001245</b>. The number was not changed in any way.",
-    "001250": "Its customer type, Government Supply, had no short code, so at first no code was made and the reason was shown. After the code GOV was entered in Master Settings the code appeared at once.",
-    "XY/K/2604": "Was added to Ravi Tempo's per-box trip, but Ravi Tempo has no per-box rate for Durg, so CTDMS refused it. It is still waiting.",
-    "PQR/K/0312": "Not dispatched in the demonstration - shows an invoice still waiting.",
+    "001250": "Its customer type, Government Supply, had no short code, so at first no code was made and the reason was shown. After the code GOV was entered in Master Settings the code appeared at once. It is the invoice still waiting for dispatch.",
+    "XY/K/2604": "Was added to Ravi Tempo's per-box trip, but Ravi Tempo has no per-box rate for Durg, so CTDMS refused it. It then went with Shree Roadlines in the keyboard-only dispatch (Step 9 of the video), together with PQR/K/0312.",
+    "PQR/K/0312": "Dispatched in the keyboard-only demonstration: picked from the waiting list with the Down arrow and Enter, transporter found by typing its code SRL, gatepass generated, printed and completed with Enter, F8 and F9.",
     "XY/K/2603": "15 boxes at Ravi Tempo's Raipur rate of ₹20 = ₹300 (the per-box example).",
     "PQR/K/0311": "6 boxes at ₹22 - Ravi Tempo's own rate for PQR's goods in Raipur, which wins over the general Raipur rate.",
     "XY/G/2602": "Kishore Mini Truck can be charged either way; today per trip, ₹550 for this one invoice.",
@@ -385,7 +387,36 @@ h2("Step 6. Dispatch")
 shot("gp_long", "Long-distance transporter: unchanged v1.5 workflow.", w=13)
 shot("gp_trip", "Local auto per trip: four invoices, one trip charge of ₹500.", w=13)
 shot("gp_box", "Local auto per box: boxes × the rate for each invoice.", w=13)
-h2("Step 7. Reports")
+h2("Step 7. Keyboard-only dispatch (MARG style)")
+P("Every daily screen can be worked without the mouse. A key always means the same thing; the dark bar at the bottom of the "
+  "screen shows the keys that work on that screen, and <b>F1</b> lists all of them. F5 (refresh), F11 (full screen) and F12 are "
+  "left to the browser.")
+table(["Key", "Meaning (same on every screen)", "Key", "Moving around"], [
+    ["F1", "Help - list of keys", "Enter", "Next field; after the last field the cursor goes to the main button, Enter again presses it"],
+    ["F2", "New / Add (dispatch desk: new gatepass)", "Shift + Enter", "Previous field"],
+    ["F3", "Go to any screen by typing its name (also Ctrl+K)", "Type", "In a choice box: the code (GUMA, C025, SRL) or part of the name; ↓ ↑ to pick, Enter to select"],
+    ["F4", "Search box of the screen", "↓ ↑", "Move through a table; ↓ from a search box goes into its table"],
+    ["F6", "Save (also Ctrl+S)", "Enter on a row", "Open it (gatepass screen: add the invoice)"],
+    ["F7", "Edit", "Space", "Tick / untick"],
+    ["F8", "Generate the gatepass / dispatch slip, or print it", "Esc", "Close a list or question; otherwise back one screen - to the same list and row"],
+    ["F9", "Complete the dispatch (gate-out)", "/", "Find an invoice, LR or gatepass from any screen"],
+    ["F10", "Reports", "", ""],
+], [1.4, 6.2, 2.4, 7])
+num(["<b>F2</b> - New gatepass. The cursor is in Depot: type <b>KVR</b>, Enter.",
+     "Type or scan the invoice number, Enter. Or <b>↓</b> into the waiting list and Enter on the invoice.",
+     "Enter on the empty scan box - Mode of dispatch (arrows change it), Enter - Transporter: type <b>SRL</b>, Enter. "
+     "For a local auto: type its code, Enter; the trip charge and vehicle come from the master, Enter, Enter.",
+     "Enter through date, time and remarks; the cursor lands on <b>Generate gatepass</b>; Enter.",
+     "<b>F8</b> prints. <b>F9</b> completes the dispatch - CTDMS asks first, Enter = Yes.",
+     "<b>Esc</b> back to the list; ↓ for the next record. Delete, void, cancel and reject always ask with <b>No</b> pre-selected."])
+shot("kb_depot", "F2 - New gatepass: typing the depot code KVR finds Kamal Vihar Depot.", w=13)
+shot("kb_transporter", "Transporter box: typing SRL finds Shree Roadlines; Enter selects and moves on.", w=13)
+shot("kb_confirm", "F9 - complete the dispatch: a Yes / No question; for void / cancel the safe answer No is pre-selected.", w=13)
+shot("kb_list", "Lists: ↓ ↑ move the yellow row, Enter opens it, Esc comes back to the same row.", w=13)
+shot("kb_help", "F1 - all keys, and the keys of the current screen.", w=13)
+box("Tested: the whole dispatch - depot, invoices, transporter or local auto, generate, print, gate-out, back to the list - was "
+    "done with the keyboard only (58 automatic checks, tests/e2e_keyboard_dispatch.py).", "tip")
+h2("Step 8. Reports")
 shot("rep_trips", "Local Auto Trips: owed to the auto = booked on the invoices.")
 shot("rep_city", "City-wise freight: all Raipur depots together.")
 shot("rep_depot", "Depot-wise freight: each depot with its city.")
@@ -417,6 +448,10 @@ table(["What you see", "Why", "What to do"], [
     ["Gatepass 'no per-box rate for …'", "Per-box local auto has no rate for that location / company", "Add a Local Auto Box Rate, or use another auto"],
     ["'… is charged per trip only'", "The chosen method is not allowed for that auto", "Choose the allowed method or change the auto's settings"],
     ["Long-distance 'no rate'", "Rate card has no rate for the area (as in v1.5)", "Add the rate; the checker approves it"],
+    ["A function key shows 'not used on this screen'", "That key has no job on this screen", "Look at the key bar at the bottom, or press F1"],
+    ["Esc asks 'Leave this screen?'", "Something was typed and not saved", "N (or Enter) stays; Y leaves without saving"],
+    ["'Generate gatepass' is grey when Enter reaches it", "Something is still missing", "The message says what (e.g. choose the transporter); Shift+Enter goes back"],
+    ["A choice box says 'Nothing matches'", "The typed code or name is not in that master (or is inactive)", "Type less, check the code in Master Settings, or Esc to keep the old value"],
 ], [5, 6, 6])
 h1("10. Before real use", new=False)
 num(["Start from an empty database (init-db, create-admin) - do not reuse the demonstration database.",

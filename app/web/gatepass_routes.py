@@ -174,6 +174,8 @@ def _request_from(form) -> ds.GatepassRequest:
     trip_raw = (form.get("trip_charge") or "").strip()
     if trip_raw:
         req.trip_charge = ds.parse_money(trip_raw)
+        if req.trip_charge is not None and ds.parse_decimal(trip_raw) != req.trip_charge:
+            raise BusinessError(f"Trip charge \"{trip_raw}\" is not a rupee amount - type it like 500 or 450.50")
     return req
 
 

@@ -84,10 +84,17 @@
 
   // "Are you sure?" for irreversible actions: <button data-confirm="message">.
   // Registered after data-require-reason so a missing reason is reported first (no dialog in that case).
+  // v1.6: keyboard Yes / No dialog (keys.js); for red (danger) buttons "No" is pre-selected, so Enter never deletes.
   $$('[data-confirm]').forEach((b) => {
     b.addEventListener('click', (e) => {
       if (e.defaultPrevented) return;
-      if (!window.confirm(b.getAttribute('data-confirm'))) { e.preventDefault(); e.stopImmediatePropagation(); }
+      if (b._confirmed) { b._confirmed = false; return; }
+      e.preventDefault(); e.stopImmediatePropagation();
+      const msg = b.getAttribute('data-confirm');
+      const ask = window.CTDMSKeys && window.CTDMSKeys.ask;
+      if (!ask) { if (window.confirm(msg)) { b._confirmed = true; b.click(); } return; }
+      ask(msg, {danger: b.classList.contains('btn-danger'), yes: b.getAttribute('data-confirm-yes') || 'Yes'})
+        .then((ok) => { if (ok) { b._confirmed = true; b.click(); } });
     });
   });
 

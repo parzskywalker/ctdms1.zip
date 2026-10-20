@@ -3,7 +3,7 @@
 <div class="crumbs"><a href="/admin/users">Users</a> › {{ u.username if u else 'New' }}</div>
 <div class="page-head"><div><h1>{{ ('User · ' ~ u.full_name) if u else 'New user' }}</h1></div></div>
 <div class="grid g-side">
-<form method="post" action="/admin/users/save" class="card">
+<form method="post" action="/admin/users/save" class="card" data-main-form>
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
   {% if u %}<input type="hidden" name="id" value="{{ u.id }}">{% endif %}
   <div class="form-grid">
@@ -19,7 +19,7 @@
     <div class="full"><label class="check"><input type="checkbox" name="all_cfas" value="1" {% if u and u.all_cfas %}checked{% endif %}>All Depots</label>
       <div class="checks" style="margin-top:6px">{% for c in cfas %}<label class="check"><input type="checkbox" name="cfas" value="{{ c.id }}" {% if u and c in u.cfas %}checked{% endif %}>{{ c.code }} <span class="muted">· {{ c.name }}</span></label>{% endfor %}</div></div>
   </div>
-  <div class="form-actions"><button class="btn btn-primary" type="submit">Save user</button><a class="btn" href="/admin/users">Back</a></div>
+  <div class="form-actions"><button class="btn btn-primary" type="submit" data-key="F6">Save user</button><a class="btn" href="/admin/users" data-key="Esc">Back</a></div>
 </form>
 {% if u %}
 <div>

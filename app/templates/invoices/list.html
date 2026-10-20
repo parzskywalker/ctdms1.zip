@@ -4,7 +4,7 @@
 <div class="page-head">
   <div><h1>Invoice Register</h1><div class="sub">All invoices from every ERP. The <b>original ERP invoice number</b> is kept exactly as received; the <b>Invoice Recognition Code</b> beside it is an extra internal reference (company · customer type · customer · depot · number){% if q %} · search “{{ q }}”{% endif %}</div></div>
   <div class="actions">
-    {% if can('invoice.import') %}<a class="btn btn-primary" href="/invoices/new">Add invoice</a><a class="btn" href="/imports">Import invoices</a>{% endif %}
+    {% if can('invoice.import') %}<a class="btn btn-primary" href="/invoices/new" data-key="F2">Add invoice</a><a class="btn" href="/imports">Import invoices</a>{% endif %}
     {% if can('data.export') %}
       <a class="btn" href="/reports/invoice-freight/export?fmt=xlsx&{{ f.query() }}">Excel</a>
       <a class="btn" href="/reports/invoice-freight/export?fmt=csv&{{ f.query() }}">CSV</a>

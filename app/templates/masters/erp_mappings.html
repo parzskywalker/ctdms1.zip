@@ -35,7 +35,7 @@
       <div><label>Name in the ERP (optional)</label><input type="text" name="source_name"></div>
       <div><label>Central record</label><select name="target_id" required>{% for t in targets %}<option value="{{ t.id }}">{{ t.code }} · {{ t.name }}</option>{% endfor %}</select></div>
       <div><label>Only for company (optional)</label><select name="company_id"><option value="">All companies</option>{% for c in companies %}<option value="{{ c.id }}">{{ c.code }}</option>{% endfor %}</select><div class="field-hint">Use when two principals' ERPs reuse the same code for different parties.</div></div>
-      <button class="btn btn-primary" type="submit">Save mapping</button>
+      <button class="btn btn-primary" type="submit" data-key="F6">Save mapping</button>
     </form>
     {% endif %}
     <div class="card">

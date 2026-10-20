@@ -30,7 +30,7 @@
       <button class="menu-btn" type="button" aria-label="Menu">☰</button>
       {% if can('invoice.view') %}
       <form class="quick" action="/invoices" method="get" role="search">
-        <input id="quick-q" type="search" name="q" placeholder="Find invoice / LR / dispatch no  ( / )" autocomplete="off">
+        <input id="quick-q" type="search" name="q" placeholder="Find invoice / LR / dispatch no  ( / )" autocomplete="off" aria-keyshortcuts="/">
       </form>
       {% endif %}
       <div class="spacer"></div>
@@ -47,6 +47,8 @@
       {% endfor %}
       {% block content %}{% endblock %}
     </main>
+    {% if can('report.view') %}<a id="kb-reports" href="/reports" hidden tabindex="-1" data-key-label="Reports">Reports</a>{% endif %}
+    <footer class="keybar no-print" id="keybar" aria-label="Keyboard shortcuts on this screen (F1 for all keys)"></footer>
   </div>
 </div>
 {% else %}
@@ -54,5 +56,6 @@
 {% endif %}
 <script src="/static/js/app.js?v={{ app_version }}"></script>
 {% block scripts %}{% endblock %}
+<script src="/static/js/keys.js?v={{ app_version }}"></script>
 </body>
 </html>

@@ -1,5 +1,37 @@
 # Changelog
 
+## v1.6.0 — keyboard-first operation (21 Oct 2026)
+
+For staff used to MARG: every daily screen works from the keyboard, the mouse is optional. No database change.
+
+- **Same function keys on every screen**: F1 help (all keys + the keys of this screen), F2 new (dashboard / gatepasses:
+  new gatepass; Pending Dispatch: gatepass for the ticked invoices), F3 go to any screen by typing its name (Ctrl+K),
+  F4 search box, F6 save the form you are in (Ctrl+S), F7 edit, F8 generate / print the gatepass or dispatch slip,
+  F9 complete the dispatch (gate-out), F10 reports, Esc close / back. F5, F11, F12 are left to the browser.
+  Buttons show their key (e.g. *Generate gatepass F8*); a key bar at the bottom of every screen lists what works there.
+- **Enter = next field** in every data-entry form (ERP style); after the last field the cursor goes to the main button
+  and a second Enter presses it. Shift+Enter goes back. Search / filter boxes: Enter applies. Login: Enter signs in.
+- **Searchable choice boxes** for company, depot, customer, customer type, area, transporter, local auto, ERP (and any
+  long list): type the code (`GUMA`, `C025`, `SRL`, recognition codes, ERP customer codes) or part of the name, ↓↑, Enter.
+- **Lists**: ↓↑ move a highlighted row, Enter opens it (gatepass screen: adds the invoice), Space ticks, typing jumps
+  to the search box, ↓ from a search box enters its table. Esc from a record returns to the same list, filters and row.
+- **Auto-focus**: search box on lists, first field on forms, Depot (or the scan box) on New gatepass, Transporter on
+  Dispatch Entry. Clear yellow focus on every field, button and row; focused fields never hide under the bars.
+- **Dispatch desk**: Enter on the empty scan box jumps to *Who carries the goods*; the panel now asks carrier first,
+  date / time after; a grey button explains why it cannot be pressed yet.
+- **Safety**: confirmations are a keyboard Yes / No box (Y / N / Esc); for delete, void, cancel, reject and merge *No* is
+  pre-selected, so Enter never destroys anything; a held-down key never answers. Esc on a screen with unsaved typing asks
+  before leaving ("Stay here" pre-selected).
+- **Fix - local auto trip charge**: emptying the trip-charge box refilled it at once with the usual amount, so what was
+  typed next was added to the end (`500` became `500.00500`, saved as ₹500.01). The usual amount is now filled in only
+  when the auto is chosen, and the server refuses a trip charge with more than 2 decimals. The v1.6 demonstration data
+  and video had this error (₹500.01 / ₹600.01); both are re-made with ₹500 and ₹550.
+- Every red (danger) button asks Yes / No first, even where a screen did not ask before (Reject on a freight rate).
+- Tests: `tests/test_v16_keyboard.py` (keys on every screen); `tests/e2e_keyboard_dispatch.py` drives the whole dispatch
+  in Edge with the keyboard only (58 checks: login, depot by code, invoices, transporter / local auto by code, generate,
+  print, gate-out, back to the same row, per-invoice dispatch entry, unsaved-changes guard, master entry, F3 / F10 / F1 / F4).
+- Guide: the v1.6 video has a new *Step 9 - Keyboard-only dispatch*; the manual has a keyboard chapter.
+
 ## v1.6.0 — 18 Oct 2026 (management feedback: masters, depots, codification, local autos)
 
 Migration 0007 (applied automatically; all data kept): depot locality / recognition code, customer types master,

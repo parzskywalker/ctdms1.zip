@@ -17,7 +17,7 @@
   {% if blank is not none %}<option value="">{{ blank }}</option>{% endif %}
   {% for it in items %}
     {% set v = it[value_attr] %}
-    <option value="{{ v }}" {% if selected is not none and selected|string == v|string %}selected{% endif %}>{% if code %}{{ it.code }} · {% endif %}{{ it[label_attr] }}{% if it.is_active is defined and not it.is_active %} (inactive){% endif %}</option>
+    <option value="{{ v }}"{% if it.code is defined and it.code %} data-code="{{ it.code }}"{% endif %} data-k="{{ (it.marking or '') if it.marking is defined else '' }} {{ (it.city or '') if it.city is defined else '' }} {{ (it.source_erp_code or '') if it.source_erp_code is defined else '' }}" {% if selected is not none and selected|string == v|string %}selected{% endif %}>{% if code %}{{ it.code }} · {% endif %}{{ it[label_attr] }}{% if it.is_active is defined and not it.is_active %} (inactive){% endif %}</option>
   {% endfor %}
 </select>
 {%- endmacro %}
@@ -32,8 +32,8 @@
   {% if 'company' in show %}<div class="f"><label>Company</label>{{ select('company_id', opts.companies, f.company_id) }}</div>{% endif %}
   {% if 'customer' in show %}<div class="f wide"><label>Customer</label>{{ select('customer_id', opts.customers, f.customer_id) }}</div>{% endif %}
   {% if 'city' in show and opts.cities %}<div class="f narrow"><label>City</label><select name="city"><option value="">All</option>{% for c in opts.cities %}<option value="{{ c }}" {% if f.city == c %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></div>{% endif %}
-  {% if 'cfa' in show %}<div class="f"><label>Depot</label><select name="cfa_id"><option value="">All</option>{% for c in opts.cfas %}<option value="{{ c.id }}" {% if f.cfa_id == c.id %}selected{% endif %}>{{ c.name }}{% if c.city and c.city.lower() not in c.name.lower() %} ({{ c.city }}){% endif %}</option>{% endfor %}</select></div>{% endif %}
-  {% if 'ctype' in show and opts.ctypes %}<div class="f narrow"><label>Customer type</label><select name="ctype"><option value="">All</option>{% for c in opts.ctypes %}<option value="{{ c.code }}" {% if f.ctype == c.code %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select></div>{% endif %}
+  {% if 'cfa' in show %}<div class="f"><label>Depot</label><select name="cfa_id"><option value="">All</option>{% for c in opts.cfas %}<option value="{{ c.id }}" data-code="{{ c.code }}" data-k="{{ c.marking or '' }} {{ c.city or '' }} {{ c.locality or '' }}" {% if f.cfa_id == c.id %}selected{% endif %}>{{ c.name }}{% if c.city and c.city.lower() not in c.name.lower() %} ({{ c.city }}){% endif %}</option>{% endfor %}</select></div>{% endif %}
+  {% if 'ctype' in show and opts.ctypes %}<div class="f narrow"><label>Customer type</label><select name="ctype"><option value="">All</option>{% for c in opts.ctypes %}<option value="{{ c.code }}" data-code="{{ c.marking or c.code }}" data-k="{{ c.code }}" {% if f.ctype == c.code %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select></div>{% endif %}
   {% if 'location' in show %}<div class="f"><label>Location</label>{{ select('location_id', opts.locations, f.location_id) }}</div>{% endif %}
   {% if 'transporter' in show %}<div class="f"><label>Transporter</label>{{ select('transporter_id', opts.transporters, f.transporter_id) }}</div>{% endif %}
   {% if 'erp' in show %}<div class="f narrow"><label>ERP</label>{{ select('erp_id', opts.erps, f.erp_id, label_attr='code') }}</div>{% endif %}

@@ -6,7 +6,7 @@
 <div class="page-head"><div><h1>{{ ('New ' ~ md.singular) if is_new else (md.singular ~ ' · ' ~ obj.name) }}</h1>{% if not is_new and obj.merged_into_id is defined and obj.merged_into_id %}<div class="sub">Merged into another customer — imports using this code resolve to the surviving record.</div>{% endif %}</div></div>
 <div class="grid g-side">
 <div>
-<form method="post" action="/masters/{{ md.key }}/save" class="card">
+<form method="post" action="/masters/{{ md.key }}/save" class="card" data-main-form>
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
   {% if not is_new %}<input type="hidden" name="id" value="{{ obj.id }}">{% endif %}
   <input type="hidden" name="back" value="{{ back }}">
@@ -24,7 +24,7 @@
           {% if f.options.startswith('choice:') %}
             {% for c in f.options[7:].split(',') %}<option value="{{ c }}" {% if v == c %}selected{% endif %}>{{ {'TBB': 'TBB (to be billed)', 'CASH': 'Cash at dispatch', 'PER_TRIP': 'Per trip', 'PER_CASE': 'Per box', 'BOTH': 'Per trip or per box (choose on the gatepass)', 'PREFIX': 'Starts with', 'CONTAINS': 'Contains'}.get(c, c.replace('_', ' ').title()) }}</option>{% endfor %}
           {% else %}
-            {% for o in opts[f.options] %}<option value="{{ o.id }}" {% if v is not none and v|string == o.id|string %}selected{% endif %}>{{ o.code }} · {{ o.name }}</option>{% endfor %}
+            {% for o in opts[f.options] %}<option value="{{ o.id }}" data-code="{{ o.code }}" data-k="{{ (o.marking or '') if o.marking is defined else '' }} {{ (o.city or '') if o.city is defined else '' }}" {% if v is not none and v|string == o.id|string %}selected{% endif %}>{{ o.code }} · {{ o.name }}</option>{% endfor %}
           {% endif %}
         </select>{% if f.help %}<div class="field-hint">{{ f.help }}</div>{% endif %}</div>
     {% elif f.kind == 'date' %}
@@ -44,7 +44,7 @@
   {% endfor %}
   {% if not is_new and not ro %}<div class="full"><label>Reason for change (optional, stored in audit)</label><input type="text" name="change_reason"></div>{% endif %}
   </div>
-  {% if not ro %}<div class="form-actions"><button class="btn btn-primary" type="submit">Save</button><a class="btn" href="/masters/{{ md.key }}">Back</a></div>{% endif %}
+  {% if not ro %}<div class="form-actions"><button class="btn btn-primary" type="submit" data-key="F6">Save</button><a class="btn" href="/masters/{{ md.key }}" data-key="Esc">Back</a></div>{% endif %}
 </form>
 
 {% if md.key == 'customers' and not is_new %}
@@ -82,7 +82,7 @@
     <form method="post" action="/masters/customers/{{ obj.id }}/merge" class="stack">
       <input type="hidden" name="csrf_token" value="{{ csrf }}">
       <label>Merge another customer into this one</label>
-      <select name="source_id" required><option value="">— select duplicate —</option>{% for c in all_customers if c.is_active %}<option value="{{ c.id }}">{{ c.code }} · {{ c.name }}</option>{% endfor %}</select>
+      <select name="source_id" required><option value="">— select duplicate —</option>{% for c in all_customers if c.is_active %}<option value="{{ c.id }}" data-code="{{ c.code }}">{{ c.code }} · {{ c.name }}</option>{% endfor %}</select>
       <input type="text" name="reason" id="merge-reason" placeholder="Reason (required)">
       <button class="btn btn-danger" type="submit" data-require-reason="#merge-reason" data-confirm="Merge the selected customer into {{ obj.code }}? All its invoices move here. This cannot be undone.">Merge into {{ obj.code }}</button>
       <div class="field-hint">Moves invoices, rates and ERP code mappings; deactivates the duplicate. Audited.</div>

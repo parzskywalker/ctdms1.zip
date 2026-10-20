@@ -4,7 +4,7 @@
 <div class="crumbs"><a href="/rates">Freight Rates</a> › New</div>
 <div class="page-head"><div><h1>New freight rate</h1><div class="sub">Choose the most specific level you need. Leave Customer blank for a standard rate; leave Depot blank for a company-wide location rate.</div></div></div>
 <div class="grid g-side">
-<form method="post" action="/rates" class="card">
+<form method="post" action="/rates" class="card" data-main-form>
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
   <div class="form-grid">
     <div><label>Company / Principal <span class="req">*</span></label>{{ select('company_id', opts.companies, qp.get('company_id'), blank='— select —', required=True, code=True) }}</div>
@@ -17,7 +17,7 @@
     <div><label>&nbsp;</label><label class="check"><input type="checkbox" name="is_default" value="1">Default rate (no location)</label></div>
     <div class="full"><label>Remarks / reason</label><input type="text" name="remarks" placeholder="e.g. Agreed with Company A for FY 2026-27"></div>
   </div>
-  <div class="form-actions"><button class="btn btn-primary" type="submit">Create rate</button><a class="btn" href="/rates">Cancel</a></div>
+  <div class="form-actions"><button class="btn btn-primary" type="submit" data-key="F6">Create rate</button><a class="btn" href="/rates" data-key="Esc">Cancel</a></div>
 </form>
 <div class="card">
   <h3>Rate priority</h3>

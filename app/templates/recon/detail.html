@@ -110,7 +110,7 @@
       {% if not b.lines and not spare_rows %}<tr><td colspan="9" class="empty">No lines.</td></tr>{% endif %}
       </tbody>
     </table></div>
-    {% if can_edit %}<div class="sticky-bar"><button class="btn btn-primary" type="submit">Save lines &amp; re-check</button><span class="small muted">Every change is audited. The person who edits a bill cannot approve it.</span></div>{% endif %}
+    {% if can_edit %}<div class="sticky-bar"><button class="btn btn-primary" type="submit" data-key="F6">Save lines &amp; re-check</button><span class="small muted">Every change is audited. The person who edits a bill cannot approve it.</span></div>{% endif %}
   </form>
 </div>
 

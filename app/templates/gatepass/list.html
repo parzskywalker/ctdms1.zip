@@ -4,14 +4,14 @@
 <div class="page-head">
   <div><h1>Gatepasses</h1><div class="sub">Every pickup that left (or is about to leave) the warehouse — one gatepass per transporter / auto trip.</div></div>
   <div class="actions">
-    {% if can('dispatch.operate') %}<a class="btn btn-primary" href="/gatepass/new">New gatepass</a>{% endif %}
+    {% if can('dispatch.operate') %}<a class="btn btn-primary" href="/gatepass/new" data-key="F2">New gatepass</a>{% endif %}
     <a class="btn" href="/gatepass/gate">Gate check</a><a class="btn" href="/gatepass/lr-pending">LR pending</a>
   </div>
 </div>
 <form class="filters" method="get">
   <div class="f narrow"><label>From</label><input type="date" name="date_from" value="{{ d_from.isoformat() }}"></div>
   <div class="f narrow"><label>To</label><input type="date" name="date_to" value="{{ d_to.isoformat() }}"></div>
-  <div class="f"><label>Transporter</label><select name="transporter_id"><option value="">All</option>{% for t in transporters %}<option value="{{ t.id }}" {% if t.id == tid %}selected{% endif %}>{{ t.name }}</option>{% endfor %}</select></div>
+  <div class="f"><label>Transporter</label><select name="transporter_id"><option value="">All</option>{% for t in transporters %}<option value="{{ t.id }}" data-code="{{ t.code }}" {% if t.id == tid %}selected{% endif %}>{{ t.name }}</option>{% endfor %}</select></div>
   <div class="f"><label>Mode</label><select name="mode"><option value="">All</option>{% for k, v in modes.items() %}<option value="{{ k }}" {% if k == mode %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
   <div class="f narrow"><label>State</label><select name="state">{% for k, v in states.items() %}<option value="{{ k }}" {% if k == state %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
   <div class="f wide"><label>Search</label><input type="search" name="q" value="{{ q }}" placeholder="Gatepass, invoice or LR no"></div>

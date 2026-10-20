@@ -55,7 +55,7 @@
 <div class="card">
   <form method="post" action="/imports/{{ b.id }}/commit" class="row">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
-    <button class="btn btn-ok btn-lg" type="submit" {% if not (summary.VALID + summary.WARNING) %}disabled{% endif %}>4 · Import {{ summary.VALID + summary.WARNING }} valid row(s)</button>
+    <button class="btn btn-ok btn-lg" type="submit" data-key="F6" {% if not (summary.VALID + summary.WARNING) %}disabled{% endif %}>4 · Import {{ summary.VALID + summary.WARNING }} valid row(s)</button>
     <span class="muted">Rejected and duplicate rows are not imported; you can correct and retry them afterwards.</span>
   </form>
 </div>

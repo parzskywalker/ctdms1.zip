@@ -42,7 +42,7 @@
       <div><label>Note <span class="muted small">(required if short / damaged / refused)</span></label><input type="text" name="note" value="{{ first.pod_note or '' }}"></div>
       <div><label>Photo of signed LR / receipt</label><input type="file" name="photo" accept="image/*,application/pdf" capture="environment"></div>
       {% if first.delivery_status %}<div><label>Reason for the change</label><input type="text" name="reason"></div>{% endif %}
-      <button class="btn btn-primary" type="submit">Save</button>
+      <button class="btn btn-primary" type="submit" data-key="F6">Save</button>
     </form>
     {% endif %}
     {% if can('dispatch.operate') and slip and not slip.is_void %}

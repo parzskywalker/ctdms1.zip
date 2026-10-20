@@ -4,6 +4,7 @@
 <div class="page-head">
   <div><h1>Management Dashboard</h1><div class="sub">Transportation expense across all authorised companies and Depots · {{ f.describe() }} (invoice date)</div></div>
   <div class="actions">
+    {% if can('dispatch.operate') %}<a class="btn btn-primary" href="/gatepass/new" data-key="F2">New gatepass</a>{% endif %}
     <a class="btn" href="/mis?{{ qs }}">Drill-down MIS</a>
     <a class="btn" href="/reports/monthly-mis?{{ qs }}">Monthly MIS</a>
   </div>

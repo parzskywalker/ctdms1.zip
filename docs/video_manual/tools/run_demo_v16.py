@@ -140,8 +140,8 @@ def stage_intro(d: Demo):
                  "What changed after the management review  |  live demonstration on a clean database",
                  "Welcome to the version 1.6 walkthrough. It shows the changes asked for after the management review: "
                  "one master workbook, depots instead of C F A, customer types and codes, the invoice recognition code, "
-                 "and local autos charged per trip or per box. The database is empty. Every record you will see is a "
-                 "demonstration entry.")
+                 "local autos charged per trip or per box, and keyboard-first operation for staff used to MARG. "
+                 "The database is empty. Every record you will see is a demonstration entry.")
     d.go("/")
     d.say("This is the dashboard of a brand-new installation. The menu now says Depot wherever it used to say C F A, "
           "and all the master records live under Master Settings.")
@@ -441,8 +441,100 @@ def stage_both(d: Demo):
     print_gatepass(d)
 
 
+def stage_keyboard(d: Demo):
+    d.title_card("Step 9 - Keyboard-only dispatch", "Codes, Enter, arrows and function keys - like MARG",
+                 "Step nine. A complete dispatch done only with the keyboard, the way the staff already work in MARG. "
+                 "The mouse is not touched in this part.")
+    d.go("/")
+    d.kb_only(True)
+    d.say("Every screen shows its keys in the dark bar at the bottom, and F1 lists all of them. A key means the same thing "
+          "on every screen: F2 new, F4 search, F6 save, F8 gatepass or print, F9 complete the dispatch, F10 reports, "
+          "and Escape goes back.")
+    d.key("F1", after=2.5)
+    d.shot("42_kb_help")
+    d.key("Escape")
+    d.say("F2 starts a new gatepass. The cursor is already in the Depot box. Typing the depot code, K V R, finds the "
+          "Kamal Vihar depot, and Enter selects it.")
+    d.key("F2", after=1.2)
+    d.pg.wait_for_url("**/gatepass/new**")
+    d.type_keys("KVR", after=1.0)
+    d.shot("43_kb_depot_code")
+    d.key("Enter", after=1.2)
+    d.pg.wait_for_url("**cfa_id=**")
+    d.pg.wait_for_load_state("networkidle")
+    d.kb_only(True)
+    d.say("The invoice number is typed, or scanned, and Enter adds it. The down arrow goes into the waiting list, and "
+          "Enter adds the highlighted invoice.")
+    d.type_keys("XY/K/2604")
+    d.key("Enter", after=1.0)
+    d.key("ArrowDown", show="↓", after=1.0)
+    d.key("Enter", after=1.0)
+    d.say("This is the Durg invoice that Ravi Tempo could not take per box. Today both go by Shree Roadlines. Enter on the "
+          "empty box moves on to who carries the goods, and Enter moves from field to field. In the transporter box, "
+          "typing S R L finds Shree Roadlines.")
+    d.key("Enter")
+    d.key("Enter")
+    d.type_keys("SRL", after=0.9)
+    d.shot("44_kb_transporter_code")
+    d.key("Enter", after=0.8)
+    d.say("Enter, Enter, through the date and time to the remarks.")
+    d.key("Enter", after=0.5)
+    d.key("Enter", after=0.5)
+    d.key("Enter", after=0.5)
+    d.type_keys("Keyboard only (Demo)")
+    d.key("Enter", after=0.6)
+    d.say("After the last field the cursor lands on Generate gatepass. One more Enter generates it.")
+    d.key("Enter", after=1.2)
+    d.shot("45_kb_ready")
+    d.key("Enter", after=1.0)
+    d.pg.wait_for_url(lambda u: u.rstrip("/").split("/")[-1].isdigit())
+    d.pg.wait_for_load_state("networkidle")
+    state["g_kb"] = d.pg.url
+    d.kb_only(True)
+    d.say("F8 prints the gatepass. F9 completes the dispatch: CTDMS asks first, and Enter answers yes.")
+    with d.ctx.expect_page() as pop:
+        d.key("F8", after=0.5)
+    pop.value.wait_for_load_state()
+    d.pause(1.5)
+    pop.value.close()
+    d.pg.wait_for_selector('[data-key="F9"]:not([disabled])', timeout=15000)  # the page refreshes itself after printing
+    d.pg.wait_for_load_state("networkidle")
+    d.pause(1.0)
+    d.kb_only(True)
+    d.key("F9", after=1.2)
+    d.shot("46_kb_confirm")
+    d.key("Enter", after=1.0)
+    d.pg.wait_for_load_state("networkidle")
+    d.kb_only(True)
+    d.pause(1.0)
+    d.shot("47_kb_gone_out")
+    d.say("Escape goes back to the list. The arrows move through the gatepasses, Enter opens one, and Escape returns to "
+          "the same row, ready for the next record.")
+    d.key("Escape", after=1.0)
+    d.pg.wait_for_load_state("networkidle")
+    d.kb_only(True)
+    d.key("ArrowDown", show="↓", after=0.6)
+    d.key("ArrowDown", show="↓", after=0.8)
+    d.key("Enter", after=1.2)
+    d.pg.wait_for_load_state("networkidle")
+    d.kb_only(True)
+    d.key("Escape", after=1.0)
+    d.pg.wait_for_load_state("networkidle")
+    d.kb_only(True)
+    d.pause(0.8)
+    d.shot("48_kb_back_on_row")
+    d.say("Delete, void, cancel and reject always ask first with No already selected, so a stray Enter never cancels "
+          "anything. And F3 jumps to any screen by typing part of its name.")
+    d.key("F3", after=0.6)
+    d.type_keys("city", after=1.0)
+    d.shot("49_kb_goto")
+    d.key("Enter", after=1.0)
+    d.pg.wait_for_load_state("networkidle")
+    d.kb_only(False)
+
+
 def stage_reports(d: Demo):
-    d.title_card("Step 9 - Reports and MIS", "Reports",
+    d.title_card("Step 10 - Reports and MIS", "Reports",
                  "Last step: the reports management sees.")
     d.go("/reports/outside-auto?date_from=2026-10-01")
     d.say("The Local Auto Trips report. One row per trip. The amount owed to the auto, and the amount booked on its invoices, "
@@ -474,15 +566,15 @@ def stage_reports(d: Demo):
     d.shot("41_dashboard", full=True)
     d.title_card("End of the version 1.6 walkthrough", "Every record shown is a demonstration entry (DM- codes, names ending (Demo))",
                  "That completes version one point six: one master workbook, depots with several in one city, customer types "
-                 "and codes, the invoice recognition code beside the unchanged E R P number, and local autos charged per trip "
-                 "or per box without double counting. Thank you.")
+                 "and codes, the invoice recognition code beside the unchanged E R P number, local autos charged per trip "
+                 "or per box without double counting, and a dispatch desk that runs from the keyboard. Thank you.")
 
 
 STAGES = [("intro", stage_intro), ("upload", stage_upload), ("masters", stage_masters), ("rates", stage_rates),
           ("future", stage_future), ("recognition", stage_recognition), ("import", stage_import),
           ("register", stage_register), ("missing", stage_missing), ("search", stage_search),
           ("long", stage_long_distance), ("trip", stage_per_trip), ("box", stage_per_box), ("both", stage_both),
-          ("reports", stage_reports)]
+          ("keyboard", stage_keyboard), ("reports", stage_reports)]
 
 
 def main():

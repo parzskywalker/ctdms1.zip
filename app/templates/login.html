@@ -9,7 +9,7 @@
     </div>
     {% for f in flashes %}<div class="alert alert-{{ f.k }}">{{ f.m }}</div>{% endfor %}
     {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
-    <form method="post" action="/login" class="stack">
+    <form method="post" action="/login" class="stack" data-enter-last="submit">
       <input type="hidden" name="csrf_token" value="{{ csrf }}">
       <input type="hidden" name="next" value="{{ next }}">
       <div><label for="username">Username</label><input id="username" name="username" type="text" autocomplete="username" value="{{ username or '' }}" required autofocus></div>

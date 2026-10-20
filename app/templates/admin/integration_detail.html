@@ -31,7 +31,7 @@
     </div>
     {% set miss = ad.missing_config() %}
     {% if miss %}<div class="alert alert-warn" style="margin-top:12px">Missing for live connection: {{ miss|join(', ') }}</div>{% endif %}
-    <div class="form-actions"><button class="btn btn-primary" type="submit">Save configuration</button></div>
+    <div class="form-actions"><button class="btn btn-primary" type="submit" data-key="F6">Save configuration</button></div>
   </form>
 
   <div>

@@ -401,6 +401,23 @@ def test_approve_all_rate_cards_keeps_maker_checker(db, web):
     assert db.get(TransporterRate, mine.id).status == "PENDING_APPROVAL"
 
 
+def test_trip_charge_with_extra_digits_is_refused(api, web, db):
+    """'500.00500' (typed after a pre-filled 500.00) must not quietly become ₹500.01."""
+    auto = db.scalar(select(OutsideAuto).where(OutsideAuto.is_active.is_(True)))
+    auto.allowed_methods = "PER_TRIP"
+    db.commit()
+    inv = _fresh(api, "C-VDP01", boxes=3)
+    w = web("admin")
+    r = w.post("/gatepass/new", data={"ids": str(inv.id), f"cases_{inv.id}": "3", "mode": DispatchMode.OUTSIDE_AUTO,
+                                      "outside_auto_id": str(auto.id), "auto_method": "PER_TRIP",
+                                      "trip_charge": "500.00500"})
+    assert "is not a rupee amount" in r.text
+    assert db.scalar(select(func.count()).select_from(Invoice).where(Invoice.id == inv.id,
+                                                                     Invoice.dispatch_slip_id.is_not(None))) == 0
+    html = w.get("/gatepass/new").text
+    assert "tripTouched" in html  # the screen no longer refills an emptied trip charge
+
+
 def test_local_auto_gatepass_prints_trip_amount(api, web, db):
     adm = _u(db, "admin")
     auto = db.scalar(select(OutsideAuto).where(OutsideAuto.code == "AUTO-RAM"))

@@ -23,6 +23,6 @@
     {% else %}<tr><td colspan="8" class="empty">Every consignment has its LR number.</td></tr>{% endfor %}
     </tbody>
   </table></div>
-  {% if rows and can('dispatch.operate') %}<div class="sticky-bar"><button class="btn btn-primary" type="submit">Save LR numbers</button><span class="small muted">Only filled rows are saved.</span></div>{% endif %}
+  {% if rows and can('dispatch.operate') %}<div class="sticky-bar"><button class="btn btn-primary" type="submit" data-key="F6">Save LR numbers</button><span class="small muted">Only filled rows are saved.</span></div>{% endif %}
 </form>
 {% endblock %}

@@ -51,7 +51,7 @@
         <div class="field-hint">Untick to insist on short codes: invoices then show "code not generated" until the code is filled in. A customer type always needs its own short code.</div></div>
       <div class="full"><label>Reason for change (audited)</label><input type="text" name="reason" {% if not can_settings %}readonly{% endif %}></div>
     </div>
-    {% if can_settings %}<div class="form-actions"><button class="btn btn-primary" type="submit">Save settings</button></div>{% endif %}
+    {% if can_settings %}<div class="form-actions"><button class="btn btn-primary" type="submit" data-key="F6">Save settings</button></div>{% endif %}
   </form>
   <div class="card flush">
     <div class="card-head"><h3>Customer types and their codes</h3><a class="btn btn-sm" href="/masters/customer-types">Edit</a></div>

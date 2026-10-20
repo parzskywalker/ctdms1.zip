@@ -22,7 +22,7 @@
 <div class="card flush">
   <div class="card-head"><h3>Per sheet</h3>
     {% if up.status == 'PREVIEW' and totals.new %}
-    <form method="post" action="/masters/upload/{{ up.id }}/commit" class="inline-form"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn btn-ok btn-lg" type="submit" data-confirm="Create {{ totals.new }} master records? Rejected rows are left out.">Import {{ totals.new }} valid records</button></form>
+    <form method="post" action="/masters/upload/{{ up.id }}/commit" class="inline-form"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn btn-ok btn-lg" type="submit" data-key="F6" data-confirm="Create {{ totals.new }} master records? Rejected rows are left out.">Import {{ totals.new }} valid records</button></form>
     {% endif %}</div>
   <div class="table-wrap"><table class="data compact">
     <thead><tr><th>Sheet</th><th class="num">Rows</th><th class="num">{{ 'Imported' if up.status == 'IMPORTED' else 'New (accepted)' }}</th><th class="num">Already in CTDMS</th><th class="num">Rejected</th><th class="num">Warnings</th><th></th></tr></thead>

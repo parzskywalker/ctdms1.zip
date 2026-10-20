@@ -30,7 +30,7 @@
       <div><label>Default company</label><select name="company_id"><option value="">From file</option>{% for c in companies %}<option value="{{ c.id }}">{{ c.code }} · {{ c.name }}</option>{% endfor %}</select><div class="field-hint">When the file has no company column</div></div>
       <div><label>Default Depot</label><select name="cfa_id"><option value="">From file</option>{% for c in cfas %}<option value="{{ c.id }}">{{ c.code }} · {{ c.name }}</option>{% endfor %}</select></div>
     </div>
-    <div class="form-actions"><button class="btn btn-primary btn-lg" type="submit">Upload &amp; preview</button></div>
+    <div class="form-actions"><button class="btn btn-primary btn-lg" type="submit" data-key="F6">Upload &amp; preview</button></div>
     <p class="small muted" style="margin-top:10px">Next steps: 2 · check column mapping &amp; preview → 3 · validate (duplicates, missing customers / locations / rates) → 4 · import valid rows → 5 · correct &amp; retry rejected rows.</p>
   </form>
   <div class="card">

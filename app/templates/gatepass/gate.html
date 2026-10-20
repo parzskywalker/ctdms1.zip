@@ -35,7 +35,7 @@
       <form method="post" action="/gatepass/{{ slip.id }}/gate-out" class="card stack">
         <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="back" value="gate">
         <h3 style="margin:0">{{ slip.total_cases }} cases counted?</h3>
-        <button class="btn btn-ok btn-lg" type="submit">Confirm gate-out</button>
+        <button class="btn btn-ok btn-lg" type="submit" data-key="F9">Confirm gate-out</button>
       </form>
       {% endif %}
       <div class="card"><dl class="dl tight"><dt>Date</dt><dd>{{ slip.dispatch_date|date }}</dd><dt>Printed</dt><dd>{{ '×%d'|format(slip.print_count) if slip.print_count else 'NO' }}</dd><dt>Invoices</dt><dd>{{ slip.invoice_count }}</dd></dl></div>

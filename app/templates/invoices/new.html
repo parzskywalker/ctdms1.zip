@@ -6,22 +6,22 @@
   <div><h1>Add invoice</h1><div class="sub">For an invoice that is not in an ERP export and has no e-invoice QR. Faster ways: <a href="/gatepass/new">scan the QR</a> or drop the ERP export into the <a href="/imports">import</a> folder.</div></div>
 </div>
 {% if errors %}<div class="alert alert-error">{% for e in errors %}<div>{{ e }}</div>{% endfor %}</div>{% endif %}
-<form method="post" action="/invoices/new" class="card" id="newinv">
+<form method="post" action="/invoices/new" class="card" id="newinv" data-main-form>
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
   <div class="form-grid">
     <div class="w2"><label>Stockist / customer <span class="req">*</span></label>
       <select name="customer_id" id="customer_id" required>
         <option value="">— select —</option>
-        {% for c in customers %}<option value="{{ c.id }}" {% if form.customer_id|string == c.id|string %}selected{% endif %}>{{ c.name }} · {{ c.code }}</option>{% endfor %}
+        {% for c in customers %}<option value="{{ c.id }}" data-code="{{ c.code }}" data-k="{{ c.marking or '' }} {{ c.source_erp_code or '' }}" {% if form.customer_id|string == c.id|string %}selected{% endif %}>{{ c.name }} · {{ c.code }}</option>{% endfor %}
       </select></div>
     <div><label>Area</label><input type="text" id="area" readonly placeholder="(from the customer master)"><div class="field-hint" id="ctype"></div></div>
     <div><label>Company <span class="req">*</span></label>
       <select name="company_id" required><option value="">— select —</option>
-        {% for c in companies %}<option value="{{ c.id }}" {% if form.company_id|string == c.id|string or companies|length == 1 %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+        {% for c in companies %}<option value="{{ c.id }}" data-code="{{ c.code }}" data-k="{{ c.marking or '' }}" {% if form.company_id|string == c.id|string or companies|length == 1 %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
       </select></div>
     <div><label>Depot <span class="req">*</span></label>
       <select name="cfa_id" required><option value="">— select —</option>
-        {% for c in cfas %}<option value="{{ c.id }}" {% if form.cfa_id|string == c.id|string or cfas|length == 1 %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+        {% for c in cfas %}<option value="{{ c.id }}" data-code="{{ c.code }}" data-k="{{ c.marking or '' }} {{ c.city or '' }}" {% if form.cfa_id|string == c.id|string or cfas|length == 1 %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
       </select></div>
     <div><label>Mode of dispatch (planned)</label>
       <select name="dispatch_mode"><option value="">— decide at gatepass —</option>
@@ -40,7 +40,7 @@
   </div>
   <div class="field-hint" style="margin-top:8px">The LR number is entered after dispatch (transporters give it later) — on the gatepass or under <a href="/gatepass/lr-pending">LR Pending</a>.</div>
   <div class="form-actions">
-    <button class="btn btn-primary" type="submit" name="next" value="another">Add invoice</button>
+    <button class="btn btn-primary" type="submit" name="next" value="another" data-key="F6">Add invoice</button>
     {% if can('dispatch.operate') %}<button class="btn" type="submit" name="next" value="gatepass">Add &amp; make gatepass</button>{% endif %}
   </div>
 </form>

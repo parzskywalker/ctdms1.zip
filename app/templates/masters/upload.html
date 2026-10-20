@@ -13,7 +13,7 @@
   <form method="post" action="/masters/upload" enctype="multipart/form-data" class="card stack">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
     <h2 style="margin:0">Upload the master workbook</h2>
-    <div class="row"><input type="file" name="file" accept=".xlsx,.xlsm" required style="flex:1"><button class="btn btn-primary btn-lg" type="submit">Check workbook</button></div>
+    <div class="row"><input type="file" name="file" accept=".xlsx,.xlsm" required style="flex:1"><button class="btn btn-primary btn-lg" type="submit" data-key="F6">Check workbook</button></div>
     <ol class="small" style="padding-left:18px;margin:0">
       <li><b>Check</b> — every row is validated: mandatory fields, values, duplicates inside the file and against CTDMS, and links between sheets (e.g. a customer's delivery location, a depot's companies).</li>
       <li><b>Preview</b> — accepted and rejected counts per sheet, every problem with its reason. Nothing is saved yet.</li>

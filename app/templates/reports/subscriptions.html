@@ -40,7 +40,7 @@
     <div><label>Depot</label><select name="cfa_id"><option value="">All</option>{% for c in opts.cfas %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></div>
     <div><label>Transporter</label><select name="transporter_id"><option value="">All</option>{% for t in opts.transporters %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</select></div>
   </div>
-  <div class="form-actions"><button class="btn btn-primary" type="submit">Save</button></div>
+  <div class="form-actions"><button class="btn btn-primary" type="submit" data-key="F6">Save</button></div>
 </form>
 {% endif %}
 {% endblock %}

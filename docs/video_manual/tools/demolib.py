@@ -20,7 +20,7 @@ OVERLAY_JS = r"""
 (() => {
   if (window.top !== window) return;
   const css = `
-  #__cap{position:fixed;left:0;right:0;bottom:0;z-index:2147483646;background:rgba(15,34,56,.94);color:#fff;
+  #__cap{position:fixed;left:0;right:0;bottom:var(--kbh,0px);z-index:2147483646;background:rgba(15,34,56,.94);color:#fff;
     font:600 19px/1.35 "Segoe UI",Arial,sans-serif;padding:12px 40px;text-align:center;pointer-events:none;display:none}
   #__badge{position:fixed;left:50%;transform:translateX(-50%);top:6px;z-index:2147483646;background:#b45309;color:#fff;font:700 12px "Segoe UI";
     padding:4px 10px;border-radius:12px;pointer-events:none;letter-spacing:.4px}
@@ -31,12 +31,20 @@ OVERLAY_JS = r"""
   #__title{position:fixed;inset:0;z-index:2147483647;background:#0f2238;color:#fff;display:none;flex-direction:column;
     align-items:center;justify-content:center;font-family:"Segoe UI",Arial,sans-serif;text-align:center;padding:60px}
   #__title h1{font-size:46px;margin:0 0 14px;color:#fff} #__title p{font-size:22px;color:#b9d3ee;max-width:980px;margin:0}
+  #__key{position:fixed;right:28px;bottom:calc(var(--kbh,0px) + 92px);z-index:2147483647;display:none;align-items:center;gap:10px;
+    background:#fff;color:#18212d;border:2px solid #18212d;border-bottom-width:6px;border-radius:10px;padding:10px 18px;
+    font:700 26px/1 "Segoe UI",Arial,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.35);pointer-events:none}
+  #__key small{font:600 13px "Segoe UI";color:#5f6b7a;text-transform:uppercase;letter-spacing:.5px}
+  #__kbonly{position:fixed;left:calc(50% + 140px);top:6px;z-index:2147483646;background:#0f766e;color:#fff;font:700 12px "Segoe UI";
+    padding:4px 10px;border-radius:12px;pointer-events:none;letter-spacing:.4px;display:none}
   body{padding-bottom:78px !important}`;
   function build() {
     if (document.getElementById('__cap') || !document.body) return;
     const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
-    for (const id of ['__cap', '__badge', '__cur', '__title']) { const d = document.createElement('div'); d.id = id; document.body.appendChild(d); }
+    for (const id of ['__cap', '__badge', '__cur', '__title', '__key', '__kbonly']) { const d = document.createElement('div'); d.id = id; document.body.appendChild(d); }
     document.getElementById('__badge').textContent = 'DEMONSTRATION DATA - NOT REAL';
+    document.getElementById('__kbonly').textContent = 'KEYBOARD ONLY - NO MOUSE';
+    try { if (sessionStorage.getItem('__kbonly') === '1') document.getElementById('__kbonly').style.display = 'block'; } catch (e) {}
     let c = null, t = null;
     try { c = sessionStorage.getItem('__cap'); t = sessionStorage.getItem('__title'); } catch (e) {}
     if (c) { const e = document.getElementById('__cap'); e.textContent = c; e.style.display = 'block'; }
@@ -51,6 +59,11 @@ OVERLAY_JS = r"""
     try { sessionStorage.setItem('__title', JSON.stringify([h, p || ''])); } catch (x) {} };
   window.__moveCur = (x, y) => { const k = document.getElementById('__cur'); if (!k) return; k.style.left = (x - 13) + 'px'; k.style.top = (y - 13) + 'px';
     try { sessionStorage.setItem('__cur', JSON.stringify([x - 13, y - 13])); } catch (e) {} };
+  let keyT = null;
+  window.__key = (k) => { const e = document.getElementById('__key'); if (!e) return; e.innerHTML = '<small>key</small><span></span>';
+    e.lastChild.textContent = k; e.style.display = 'flex'; clearTimeout(keyT); keyT = setTimeout(() => { e.style.display = 'none'; }, 1300); };
+  window.__kbOnly = (on) => { try { sessionStorage.setItem('__kbonly', on ? '1' : ''); } catch (x) {}
+    const e = document.getElementById('__kbonly'); if (e) e.style.display = on ? 'block' : 'none'; };
   window.__pulse = () => { const k = document.getElementById('__cur'); if (!k) return; k.classList.add('click'); setTimeout(() => k.classList.remove('click'), 180); };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', build); else build();
 })();
@@ -150,8 +163,9 @@ class Demo:
     def fill(self, name: str, value, delay: int = 25):
         loc = self.field(name)
         self._move(loc)
-        loc.fill("")
         if self.record and len(str(value)) < 60:
+            loc.click()
+            loc.press("Control+a")  # type over what is there (a pre-filled amount is replaced, not appended to)
             loc.press_sequentially(str(value), delay=delay)
         else:
             loc.fill(str(value))
@@ -168,8 +182,30 @@ class Demo:
                   next((v for v, t in opts if label.lower() in t.lower()), None)
             if hit is None:
                 raise RuntimeError(f"option '{label}' not in {name}: {opts}")
-            loc.select_option(value=hit)
+            if loc.evaluate("e => !!e._combo"):
+                self._type_combo(loc, hit, label)
+            else:
+                loc.select_option(value=hit)
         self._unhl(loc)
+
+    def _type_combo(self, loc, value: str, label: str):
+        """v1.6 searchable choice box: type part of the name, Enter picks the highlighted entry."""
+        inp = self.pg.locator("#" + loc.evaluate("e => e._combo.inp.id"))
+        self._move(inp)
+        inp.click()
+        q = " ".join(re.split(r" · |\(", label)[0].split()[:2])
+        inp.press_sequentially(q, delay=45 if self.record else 0)
+        self.pause(0.5)
+        if self.pg.evaluate("v => { const c = document.querySelector('.combo-list:not([hidden]) .combo-opt.hi'); "
+                            "return !!c; }", value):
+            hi_val = self.pg.evaluate("sel => { const c = sel._combo; return c.shown[c.hi] ? c.shown[c.hi].value : null; }",
+                                      loc.element_handle())
+            if hi_val == value:
+                inp.press("Enter")
+                return
+        loc.select_option(value=value)
+        inp.evaluate("e => e.blur()")
+        self.pause(0.3)
 
     def check(self, name: str, on: bool = True):
         loc = self.field(name)
@@ -233,12 +269,42 @@ class Demo:
         self._move(loc)
         self.pg.evaluate("() => window.__pulse && window.__pulse()")
         loc.click()
+        self.answer_yes()
         if wait:
             try:
                 self.pg.wait_for_load_state("networkidle", timeout=15000)
             except Exception:
                 pass
         self.pause(0.7)
+
+    def answer_yes(self):
+        """v1.6 asks 'are you sure' in its own Yes / No box (keyboard friendly) instead of the browser's."""
+        try:
+            if not self.pg.locator("#kb-ask").count():
+                return
+        except Exception:
+            return
+        yes = self.pg.locator("#kb-ask [data-yes]").first
+        self.pause(0.8)
+        self._move(yes)
+        self.pg.evaluate("() => window.__pulse && window.__pulse()")
+        yes.click()
+
+    # ------------------------------------------------------------------ keyboard-only part of the video
+    def kb_only(self, on: bool = True):
+        self.pg.evaluate("on => { window.__kbOnly && window.__kbOnly(on); if (on && window.__moveCur) window.__moveCur(-200, -200); }", on)
+
+    def key(self, k: str, show: str | None = None, after: float = 0.7):
+        """Press one key and show it on screen (keycap in the corner)."""
+        self.pg.evaluate("t => window.__key && window.__key(t)", show or k.replace("Arrow", "").replace("Escape", "Esc"))
+        self.pause(0.35)
+        self.pg.keyboard.press(k)
+        self.pause(after)
+
+    def type_keys(self, text: str, after: float = 0.6):
+        self.pg.evaluate("t => window.__key && window.__key(t)", "typing  " + text)
+        self.pg.keyboard.type(text, delay=120 if self.record else 0)
+        self.pause(after)
 
     def btn(self, text: str, **kw):
         self.click(f'main button:has-text("{text}"), main a:has-text("{text}"), main input[type=submit][value*="{text}"]', **kw)

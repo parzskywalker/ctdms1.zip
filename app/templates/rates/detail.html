@@ -41,7 +41,7 @@
       <form method="post" action="/rates/{{ r.id }}/decide" class="stack">
         <input type="hidden" name="csrf_token" value="{{ csrf }}">
         <input type="text" name="remarks" placeholder="Remarks (required to reject)">
-        <div class="row"><button class="btn btn-ok" name="decision" value="approve">Approve</button><button class="btn btn-danger" name="decision" value="reject">Reject</button></div>
+        <div class="row"><button class="btn btn-ok" name="decision" value="approve">Approve</button><button class="btn btn-danger" name="decision" value="reject" data-confirm="Reject this freight rate?">Reject</button></div>
       </form>
     </div>
     {% endif %}

@@ -12,6 +12,8 @@ ERP invoice ─► central invoice DB ─► Company ─► Customer ─► Depo
 **v1.6** (see CHANGELOG): one-time **Initial Master Upload** workbook, **Depots** instead of CFA (several per city),
 configurable **Customer Types**, the **Invoice Recognition Code** beside the unchanged ERP invoice number
 (e.g. `ABC-RET-C025-GUMA-001245`), and **Local Autos** charged per trip (one amount per trip, shared by boxes) or per box.
+**Keyboard-first** (MARG style): the same function keys on every screen (F2 new, F4 search, F6 save, F8 gatepass /
+print, F9 complete dispatch, Esc back; F1 lists them), Enter moves field to field, choice boxes find masters by code.
 The v1.6 guide (video, transcript, manual) is in `docs/video_manual/v1.6/`.
 
 It does not replace the ERPs. Invoices come in by Excel/CSV import, REST push or ERP adapters, are normalised into one

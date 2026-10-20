@@ -5,7 +5,7 @@
   <div><h1>{{ md.title }}</h1><div class="sub">{{ total }} record{{ '' if total == 1 else 's' }}. Records are deactivated, never deleted, so history stays intact.</div></div>
   <div class="actions">
     {% if can('data.export') %}<a class="btn" href="?{{ qs }}&export=csv">CSV</a>{% endif %}
-    {% if can('master.edit') %}<a class="btn btn-primary" href="/masters/{{ md.key }}/new">New {{ md.singular }}</a>{% endif %}
+    {% if can('master.edit') %}<a class="btn btn-primary" href="/masters/{{ md.key }}/new" data-key="F2">New {{ md.singular }}</a>{% endif %}
   </div>
 </div>
 <form class="filters" method="get">

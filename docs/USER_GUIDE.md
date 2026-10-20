@@ -16,6 +16,28 @@
   Long-distance transporters work as before.
 * Product / SKU lines are not used in v1.6.
 
+## Keyboard (v1.6) - the mouse is optional
+
+The same key does the same job on every screen; the dark bar at the bottom shows the keys of the screen, **F1** shows
+all of them.
+
+| Key | Meaning | | Key | Moving around |
+|---|---|---|---|---|
+| F1 | Help | | Enter | Next field; after the last one the cursor is on the main button - Enter again presses it |
+| F2 | New / Add (new gatepass on the dispatch desk) | | Shift+Enter | Previous field |
+| F3 | Go to a screen by typing its name (Ctrl+K) | | Type | In a choice box: code (GUMA, C025, SRL) or part of the name, then ↓↑ and Enter |
+| F4 | Search box | | ↓ ↑ | Move in a list; Enter opens the row; ↓ from a search box goes into the list |
+| F6 | Save (Ctrl+S) | | Space | Tick / untick |
+| F7 | Edit | | Esc | Close the list / question, else back one screen (to the same list and row) |
+| F8 | Generate / print the gatepass or slip | | / | Find an invoice, LR or gatepass from anywhere |
+| F9 | Complete dispatch (gate-out) | | | |
+| F10 | Reports | | | |
+
+**A dispatch without the mouse:** F2 → type the depot code, Enter → type/scan invoice numbers, Enter (or ↓ into the
+waiting list, Enter) → Enter on the empty box → arrows choose the mode, Enter → type the transporter or local-auto code,
+Enter → Enter through the fields → Enter on *Generate gatepass* → F8 print → F9, Enter (gate-out) → Esc back to the list.
+Delete, void, cancel and reject always ask first with **No** pre-selected.
+
 
 ## Dispatch desk (warehouse operator) — v1.3 gatepass flow
 

@@ -3,7 +3,8 @@
 <div class="crumbs"><a href="/gatepass">Gatepasses</a> › New</div>
 <div class="page-head">
   <div><h1>New gatepass</h1>
-    <div class="sub">Scan the e-invoice QR (or type the invoice number), check the cases, choose who carries the goods, then generate and print. Nothing leaves the gate without a printed gatepass. LR and vehicle numbers are not needed now.</div></div>
+    <div class="sub">Scan the e-invoice QR (or type the invoice number), check the cases, choose who carries the goods, then generate and print. Nothing leaves the gate without a printed gatepass. LR and vehicle numbers are not needed now.</div>
+    <div class="sub small kb-howto">Keyboard: type or scan the invoice no + <kbd class="kh">Enter</kbd> · <kbd class="kh">↓</kbd> picks from the waiting list (<kbd class="kh">Enter</kbd> adds) · <kbd class="kh">Enter</kbd> on the empty box moves on to who carries the goods · <kbd class="kh">F8</kbd> generates the gatepass</div></div>
   <div class="actions"><a class="btn" href="/gatepass/gate">Gate check</a><a class="btn" href="/gatepass/lr-pending">LR pending</a></div>
 </div>
 {% if problems %}
@@ -18,10 +19,10 @@
       <div class="row gp-scan">
         {% if cfas|length > 1 %}
         <div style="min-width:150px"><label class="small muted">Depot</label>
-          <select name="cfa_id" id="gp-cfa" onchange="if (!document.querySelector('#gp-lines tbody tr')) location.search = this.value ? '?cfa_id=' + this.value : ''"><option value="">All (choose to filter)</option>{% for c in cfas %}<option value="{{ c.id }}" {% if c.id == cfa_id %}selected{% endif %}>{{ c.code }} · {{ c.name }}</option>{% endfor %}</select></div>
+          <select name="cfa_id" id="gp-cfa" {% if not cfa_id %}autofocus{% endif %} onchange="if (!document.querySelector('#gp-lines tbody tr')) location.search = this.value ? '?cfa_id=' + this.value : ''"><option value="">All (choose to filter)</option>{% for c in cfas %}<option value="{{ c.id }}" data-code="{{ c.code }}" data-k="{{ c.marking or '' }} {{ c.city or '' }} {{ c.locality or '' }}" {% if c.id == cfa_id %}selected{% endif %}>{{ c.code }} · {{ c.name }}</option>{% endfor %}</select></div>
         {% elif cfas %}<input type="hidden" name="cfa_id" id="gp-cfa" value="{{ cfas[0].id }}">{% endif %}
         <div style="flex:1 1 320px"><label class="small muted" for="gp-scan">Scan e-invoice QR / invoice number</label>
-          <input id="gp-scan" type="text" autocomplete="off" autofocus placeholder="Point the scanner at the QR on the invoice, or type the invoice no and press Enter"></div>
+          <input id="gp-scan" type="text" autocomplete="off" data-key="F4" {% if cfa_id or cfas|length <= 1 %}autofocus{% endif %} data-grid="#gp-open" placeholder="Point the scanner at the QR on the invoice, or type the invoice no and press Enter"></div>
         <div style="width:90px"><label class="small muted" for="gp-scan-cases">Cases</label><input id="gp-scan-cases" type="number" min="1" inputmode="numeric" placeholder="opt."></div>
         <div style="align-self:flex-end"><button class="btn btn-primary" type="button" id="gp-scan-btn">Add</button>
           <button class="btn" type="button" id="gp-cam" hidden title="Use this device's camera">Camera</button></div>
@@ -42,8 +43,8 @@
 
     <div class="card flush">
       <div class="card-head"><h3>Waiting to be dispatched ({{ open_invs|length }})</h3>
-        <input type="search" id="gp-filter" placeholder="Filter by invoice, customer, area…" style="max-width:260px"></div>
-      <div class="table-wrap scroll-y"><table class="data compact" id="gp-open">
+        <input type="search" id="gp-filter" data-grid="#gp-open" placeholder="Filter by invoice, customer, area…  (↓ into the list)" style="max-width:280px"></div>
+      <div class="table-wrap scroll-y"><table class="data compact" id="gp-open" data-search="#gp-filter" data-empty-focus="#gp-scan">
         <thead><tr><th>Invoice</th><th>Date</th><th>Customer</th><th>Area</th><th>Co.</th><th class="num">Cases</th><th class="num">Value</th><th></th></tr></thead>
         <tbody>
         {% for i in open_invs %}
@@ -60,12 +61,8 @@
   </div>
 
   <div class="gp-side">
-    <div class="card stack">
+    <div class="card stack" id="gp-who">
       <h3 style="margin:0">Who carries the goods</h3>
-      <div class="row">
-        <div style="flex:1"><label>Dispatch date</label><input type="date" name="dispatch_date" value="{{ form.get('dispatch_date') or today.isoformat() }}" max="{{ today.isoformat() }}"></div>
-        <div style="width:110px"><label>Time</label><input type="time" name="dispatch_time" value="{{ form.get('dispatch_time') or '' }}"></div>
-      </div>
       <div class="gp-modes" role="radiogroup" aria-label="Mode of dispatch">
         {% set cur_mode = form.get('mode') or 'TRANSPORTER' %}
         {% for code, label in modes.items() %}
@@ -75,7 +72,7 @@
       <div id="gp-tr-box">
         <label for="gp-tr">Transporter</label>
         <select name="transporter_id" id="gp-tr"><option value="">— select —</option>
-          {% for t in transporters %}<option value="{{ t.id }}" {% if form.get('transporter_id')|string == t.id|string %}selected{% endif %}>{{ t.name }}</option>{% endfor %}</select>
+          {% for t in transporters %}<option value="{{ t.id }}" data-code="{{ t.code }}" {% if form.get('transporter_id')|string == t.id|string %}selected{% endif %}>{{ t.name }}</option>{% endfor %}</select>
         <div class="field-hint" id="gp-tr-hint"></div>
         <label style="margin-top:8px">Goods reach the transporter by</label>
         <div class="checks">
@@ -86,7 +83,7 @@
       <div id="gp-auto-box">
         <label for="gp-auto">Local auto</label>
         <select name="outside_auto_id" id="gp-auto"><option value="">— select —</option>
-          {% for a in autos %}<option value="{{ a.id }}" {% if form.get('outside_auto_id')|string == a.id|string %}selected{% endif %}>{{ a.name }}{% if a.mobile %} · {{ a.mobile }}{% endif %} ({{ a.charge_label }})</option>{% endfor %}</select>
+          {% for a in autos %}<option value="{{ a.id }}" data-code="{{ a.code }}" data-k="{{ a.vehicle_no or '' }}" {% if form.get('outside_auto_id')|string == a.id|string %}selected{% endif %}>{{ a.name }}{% if a.mobile %} · {{ a.mobile }}{% endif %} ({{ a.charge_label }})</option>{% endfor %}</select>
         {% if not autos %}<div class="field-hint">No local autos yet — add them under Master Settings › Local Auto Transporters.</div>{% endif %}
         <div id="gp-method-box" class="checks" style="margin-top:8px" role="radiogroup" aria-label="Charging method">
           <label class="check" id="gp-m-trip"><input type="radio" name="auto_method" value="PER_TRIP" {% if form.get('auto_method') == 'PER_TRIP' %}checked{% endif %}> Per trip</label>
@@ -97,6 +94,10 @@
           <div class="field-hint">However many invoices or boxes are on this trip, the auto is paid this amount once. It is shared over the invoices by boxes only for the MIS.</div></div>
         <div id="gp-box-hint" class="field-hint"></div>
         <div style="margin-top:8px"><label for="gp-veh">Vehicle no (optional)</label><input type="text" name="vehicle_no" id="gp-veh" value="{{ form.get('vehicle_no') or '' }}" maxlength="20"></div>
+      </div>
+      <div class="row">
+        <div style="flex:1"><label>Dispatch date</label><input type="date" name="dispatch_date" value="{{ form.get('dispatch_date') or today.isoformat() }}" max="{{ today.isoformat() }}"></div>
+        <div style="width:110px"><label>Time</label><input type="time" name="dispatch_time" value="{{ form.get('dispatch_time') or '' }}"></div>
       </div>
       <div><label for="gp-remarks">Remarks</label><input type="text" name="remarks" id="gp-remarks" value="{{ form.get('remarks') or '' }}" maxlength="300"></div>
     </div>
@@ -117,7 +118,7 @@
       </div>
       <div class="field-hint" id="s-balance"></div>
       <div class="field-hint">Rates: {{ 'transporter rate card (per case, per area)' if freight_source == 'TRANSPORTER' else 'principal rate card (set at import)' }}. The server re-checks every rate when you generate.</div>
-      <div class="form-actions"><button class="btn btn-primary btn-lg" type="submit" id="gp-submit" disabled>Generate gatepass</button></div>
+      <div class="form-actions"><button class="btn btn-primary btn-lg" type="submit" id="gp-submit" disabled data-key="F8" data-why="#gp-why">Generate gatepass</button></div>
       <div class="field-hint" id="gp-why"></div>
     </div>
   </div>
@@ -153,6 +154,7 @@
   const fmt = (n) => '₹' + Number(n || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const lines = new Map();
+  let tripTouched = false, vehTouched = false;  // operator typed: keep their value, never refill
   const byId = new Map(OPEN.map((i) => [i.id, i]));
   const msg = $('#gp-scan-msg');
   const tbody = $('#gp-lines tbody');
@@ -214,8 +216,8 @@
       const r = $(`input[name=auto_method][value="${meth}"]`); if (r) r.checked = true;
     }
     $('#gp-trip-box').hidden = meth !== 'PER_TRIP';
-    if (meth === 'PER_TRIP' && !$('#gp-trip').value && auto.trip) $('#gp-trip').value = auto.trip.toFixed(2);
-    if (usesAuto && !$('#gp-veh').value && auto.vehicle) $('#gp-veh').value = auto.vehicle;
+    if (meth === 'PER_TRIP' && !tripTouched && !$('#gp-trip').value && auto.trip) $('#gp-trip').value = auto.trip.toFixed(2);
+    if (usesAuto && !vehTouched && !$('#gp-veh').value && auto.vehicle) $('#gp-veh').value = auto.vehicle;
     const trip = parseFloat($('#gp-trip').value) || 0;
     const boxRate = (inv) => {  // same rule as the server: most specific active rate, else the auto's default
       let best = null, key = -1;
@@ -280,7 +282,11 @@
 
   async function scan() {
     const input = $('#gp-scan'), code = input.value.trim();
-    if (!code) return;
+    if (!code) {  // Enter on the empty box: invoices are done, move on to who carries the goods
+      if (lines.size && window.CTDMSKeys) window.CTDMSKeys.jump('#gp-who');
+      else if (!lines.size) say('Type or scan an invoice number first (or press ↓ to pick from the waiting list).', 'info');
+      return;
+    }
     const local = OPEN.find((i) => i.invoice_no.toUpperCase() === code.toUpperCase());
     const cases = $('#gp-scan-cases').value;
     if (local) { add(local, parseInt(cases, 10) || null); input.value = ''; $('#gp-scan-cases').value = ''; say(`Invoice ${local.invoice_no} added`, 'ok'); input.focus(); return; }
@@ -307,8 +313,9 @@
     $$('#gp-open tbody tr[data-id]').forEach((tr) => { if (!lines.has(Number(tr.dataset.id))) tr.hidden = q && !tr.dataset.text.includes(q); });
   });
   $$('input[name=mode], input[name=pickup_mode], input[name=auto_method]').forEach((r) => r.addEventListener('change', () => { $('#gp-paid-edited').value = '0'; recalc(); }));
-  $('#gp-trip').addEventListener('input', () => { $('#gp-paid-edited').value = '0'; recalc(); });
-  ['#gp-tr', '#gp-auto'].forEach((s) => $(s).addEventListener('change', () => { $('#gp-paid-edited').value = '0'; if (s === '#gp-auto') { $('#gp-trip').value = ''; $('#gp-veh').value = ''; $$('input[name=auto_method]').forEach((r) => { r.checked = false; }); } recalc(); }));
+  $('#gp-trip').addEventListener('input', () => { tripTouched = true; $('#gp-paid-edited').value = '0'; recalc(); });
+  $('#gp-veh').addEventListener('input', () => { vehTouched = true; });
+  ['#gp-tr', '#gp-auto'].forEach((s) => $(s).addEventListener('change', () => { $('#gp-paid-edited').value = '0'; if (s === '#gp-auto') { tripTouched = false; vehTouched = false; $('#gp-trip').value = ''; $('#gp-veh').value = ''; $$('input[name=auto_method]').forEach((r) => { r.checked = false; }); } recalc(); }));
   $('#gp-paid').addEventListener('input', () => { $('#gp-paid-edited').value = '1'; recalc(); });
   $('#gp-form').addEventListener('submit', (e) => {
     if ($('#gp-submit').disabled) { e.preventDefault(); return; }

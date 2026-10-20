@@ -3,7 +3,7 @@
 {% block content %}
 <div class="crumbs"><a href="/recon">Reconciliation</a> › New bill</div>
 <div class="page-head"><div><h1>Enter transporter bill</h1><div class="sub">Create the bill header, then link dispatches for the period or import the transporter's line-wise statement.</div></div></div>
-<form method="post" action="/recon/new" class="card" style="max-width:920px">
+<form method="post" action="/recon/new" class="card" style="max-width:920px" data-main-form>
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
   <div class="form-grid">
     <div class="w2"><label>Transporter <span class="req">*</span></label>{{ select('transporter_id', opts.transporters, none, blank='— select —', required=True) }}</div>
@@ -17,6 +17,6 @@
     <div class="w2"><label>Remarks</label><input type="text" name="remarks"></div>
     <div class="full"><label class="check"><input type="checkbox" name="link" value="1" checked>Auto-link all dispatched invoices of this transporter in the billing period</label></div>
   </div>
-  <div class="form-actions"><button class="btn btn-primary" type="submit">Create bill</button><a class="btn" href="/recon">Cancel</a></div>
+  <div class="form-actions"><button class="btn btn-primary" type="submit" data-key="F6">Create bill</button><a class="btn" href="/recon" data-key="Esc">Cancel</a></div>
 </form>
 {% endblock %}

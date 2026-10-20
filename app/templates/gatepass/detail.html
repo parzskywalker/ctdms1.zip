@@ -11,12 +11,13 @@
       <input type="hidden" name="csrf_token" value="{{ csrf }}">
       <select name="size" style="width:auto"><option value="A5" {% if slip_size == 'A5' %}selected{% endif %}>A5</option><option value="A4" {% if slip_size == 'A4' %}selected{% endif %}>A4</option></select>
       {% if slip.print_count %}<input type="text" name="reason" placeholder="Reprint reason" required minlength="5" style="width:180px">{% endif %}
-      <button class="btn {{ 'btn-primary' if not slip.print_count else '' }}" type="submit" name="mode" value="print" {% if slip.print_count and not can('dispatch.reprint') %}disabled{% endif %}>{{ 'Print gatepass' if not slip.print_count else 'Reprint' }}</button>
+      <button class="btn {{ 'btn-primary' if not slip.print_count else '' }}" type="submit" name="mode" value="print" data-key="F8" {% if slip.print_count and not can('dispatch.reprint') %}disabled{% endif %}>{{ 'Print gatepass' if not slip.print_count else 'Reprint' }}</button>
       <button class="btn" type="submit" name="mode" value="pdf" {% if slip.print_count and not can('dispatch.reprint') %}disabled{% endif %}>PDF</button>
     </form>
     <a class="btn" href="/gatepass/{{ slip.id }}/labels" target="_blank" title="One label per case, 100 × 50 mm">Case labels</a>
     <a class="btn" href="/gatepass/{{ slip.id }}/labels?sheet=a4" target="_blank" title="10 labels per A4 sheet">Labels (A4)</a>
     {% endif %}
+    {% if can('dispatch.operate') %}<a class="btn" href="/gatepass/new" data-key="F2">New gatepass</a>{% endif %}
   </div>
 </div>
 
@@ -58,7 +59,7 @@
       </tbody>
     </table></div>
     {% if slip.transporter_id and not slip.is_void and can('dispatch.operate') %}
-    <div class="sticky-bar"><input type="text" name="reason" placeholder="Reason (needed when changing an existing LR)" style="max-width:340px"><button class="btn btn-primary" type="submit">Save LR numbers</button></div>
+    <div class="sticky-bar"><input type="text" name="reason" placeholder="Reason (needed when changing an existing LR)" style="max-width:340px"><button class="btn btn-primary" type="submit" data-key="F6">Save LR numbers</button></div>
     {% endif %}
   </form>
 
@@ -69,7 +70,7 @@
       <h3 style="margin:0">Gate-out</h3>
       <p class="small muted" style="margin:0">Confirms that the goods physically left with this gatepass. All {{ slip.invoice_count }} invoice(s) become DISPATCHED. Rule: gatepass must be <b>{{ rule }}</b>.</p>
       {% if complete_blockers %}<ul class="blockers">{% for b in complete_blockers %}<li>{{ b }}</li>{% endfor %}</ul>{% endif %}
-      <button class="btn btn-ok" type="submit" {% if complete_blockers %}disabled{% endif %} data-confirm="Record gate-out of {{ slip.dispatch_no }} ({{ slip.total_cases }} cases)?">Record gate-out</button>
+      <button class="btn btn-ok" type="submit" data-key="F9" {% if complete_blockers %}disabled{% endif %} data-confirm="Record gate-out of {{ slip.dispatch_no }} ({{ slip.total_cases }} cases)?">Record gate-out</button>
     </form>
     {% endif %}
     <div class="card">
