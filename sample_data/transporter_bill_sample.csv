@@ -1,4 +1,6 @@
-LR No,Invoice No,Boxes,Amount,Remarks
-VDL5029,90012133,20,1200.00,
-VDL5029,MB/26/01340,22,1395.00,Loading charges
-VDL77777,,10,1400.00,Not in our dispatch records
+LR No,Invoice No,Boxes,Amount,Remarks
+VDL5033,MB/26/01336,21,1260.00,
+VDL5036,90012127,11,735.00,Loading charges
+VDL5036,CBO/RPR/04595,35,1980.00,
+,90012149,31,1860.00,
+VDL77777,,10,1400.00,Not in our dispatch records
