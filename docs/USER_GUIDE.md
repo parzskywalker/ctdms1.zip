@@ -32,7 +32,8 @@ result is really there (a gatepass generated, printed and gone out; a bill appro
   resets your practice copy to the lesson's starting point. *Save & exit* returns to live work.
 * Two-person steps (rate or bill approval): press *Act as Demo Checker* in the panel, then *Act as myself*.
 * Learning paths: Master Administrator (15 lessons), Dispatch Operator, Depot Manager, Checker / Approver, Accounts,
-  Management / Viewer - chosen from your role; the Master can assign another.
+  Management, Read-only Viewer - chosen from your role; the Master can only assign the tutorial that belongs to the
+  user's role (a Dispatch Operator is not given the Master Administrator tutorial).
 
 **For the Master - Administration › Guided Training:** switch compulsory training ON / OFF (also in System Settings ›
 Guided Training). ON: users created from then on must finish their path before live screens open; OFF: everybody works,
@@ -159,8 +160,13 @@ Reprints need a reason and are marked "REPRINT #n (DUPLICATE)".
 
 ## Administrator
 
-* **Users** (Administration › Users › *New user*): username, name, role (Admin, Management, Accounts, CFA
-  Manager, Dispatch Operator, Checker, Viewer), the companies / CFAs they may see, and a password you choose.
+* **Roles and access** (Administration › Roles): the permission matrix per role, what each role sees in the menu, and
+  every user with their role and depots. Master Settings, administration and the audit log are Administrator-only;
+  Final Reports / Management MIS are for Administrator, Accounts and Management only - these are a fixed baseline
+  (shown locked) and cannot be given to other roles. Every change to a role is audited. Nobody can change their own
+  role or depots.
+* **Users** (Administration › Users › *New user*): username, name, role (Admin, Management, Accounts, Depot
+  Manager, Dispatch Operator, Checker, Viewer), the companies / depots they may see, and a password you choose.
   Untick *Must change it at first login* to hand over a fixed password. *Set new password* on a user unlocks the
   account and signs them out everywhere. Every change is in the audit log.
 * **Locked (paid) features**: automatic bill reading (AI) and WhatsApp / SMS alerts cost money and are locked while

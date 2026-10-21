@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import Location, RateStatus, Transporter, TransporterRate, User
-from app.security.auth import csrf_protect, require
+from app.security.auth import csrf_protect, require, require_any
 from app.services import transporter_rate_service as trs
 from app.services.errors import BusinessError
 from app.services.import_service import read_table
@@ -34,7 +34,8 @@ def index(request: Request, db: Session = Depends(get_db), user: User = Depends(
 
 
 @router.get("/rate-cards/{tid:int}")
-def card(tid: int, request: Request, db: Session = Depends(get_db), user: User = Depends(require("rate.view"))):
+def card(tid: int, request: Request, db: Session = Depends(get_db),
+         user: User = Depends(require_any("rate.view", "rate.approve"))):  # approvers open the card they verify
     t = db.get(Transporter, tid)
     if not t:
         raise HTTPException(404)

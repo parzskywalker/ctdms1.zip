@@ -77,9 +77,10 @@ def detail(invoice_id: int, request: Request, db: Session = Depends(get_db),
     prints = list(db.scalars(select(SlipPrintLog).where(SlipPrintLog.invoice_id == inv.id).order_by(SlipPrintLog.id)))
     history = list(db.scalars(select(AuditLog).where(AuditLog.record_type == "Invoice",
                                                      AuditLog.record_id == str(inv.id)).order_by(AuditLog.ts)))
+    # what the transporter billed for this invoice: only for roles that work with transporter bills
     bill_lines = list(db.execute(select(TransporterBillLine, TransporterBill)
                                  .join(TransporterBill, TransporterBillLine.bill_id == TransporterBill.id)
-                                 .where(TransporterBillLine.invoice_id == inv.id)))
+                                 .where(TransporterBillLine.invoice_id == inv.id))) if user.can("recon.view") else []
     current = find_rate(db, company_id=inv.company_id, cfa_id=inv.cfa_id, customer_id=inv.customer_id,
                         location_id=inv.location_id, on_date=inv.invoice_date)
     return render(request, "invoices/detail.html", {

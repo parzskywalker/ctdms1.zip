@@ -20,11 +20,12 @@ from app.models import (
     CFA, Company, Customer, DispatchSlip, ERPSystem, Invoice, InvoiceStatus, Location, Transporter, User, utcnow,
 )
 from app.security.auth import (
-    PermissionDenied, authenticate, create_access_token, current_user_optional, require, same_token,
+    PermissionDenied, authenticate, create_access_token, current_user, current_user_optional, require, require_any,
+    same_token,
 )
 from app.services import audit
 from app.services import dispatch_service as ds
-from app.services.dashboard import dashboard_data
+from app.services.dashboard import dashboard_data, ops_dashboard_data
 from app.services.errors import BusinessError
 from app.services.freight_engine import calc_freight, find_rate
 from app.services.import_service import Resolver, ingest_records
@@ -117,7 +118,9 @@ class AckIn(BaseModel):
     invoice_ids: list[int]
 
 
-def _inv_out(inv: Invoice) -> dict:
+def _inv_out(inv: Invoice, user: User | None = None) -> dict:
+    # What the transporter billed is financial reconciliation data: only for roles that work with bills / final reports
+    show_billed = user is not None and (user.can("recon.view") or user.can("mis.view"))
     return {
         "id": inv.id, "central_id": inv.central_id, "invoice_no": inv.invoice_no,
         "original_invoice_no": inv.invoice_no,  # v1.6: the ERP number, never changed
@@ -146,7 +149,7 @@ def _inv_out(inv: Invoice) -> dict:
                      "dispatch_time": inv.dispatch_time.strftime("%H:%M") if inv.dispatch_time else None,
                      "print_count": inv.print_count,
                      "completed_at": inv.completed_at.isoformat() if inv.completed_at else None},
-        "actual_freight": str(inv.actual_freight) if inv.actual_freight is not None else None,
+        "actual_freight": str(inv.actual_freight) if show_billed and inv.actual_freight is not None else None,
         "eway_bill": {"no": inv.eway_bill_no,
                       "valid_until": inv.eway_valid_until.isoformat() if inv.eway_valid_until else None},
         "delivery": {"status": inv.delivery_status,
@@ -196,12 +199,12 @@ def list_invoices(request: Request, page: int = Query(1, ge=1, le=100_000), page
     total = db.scalar(select(func.count()).select_from(stmt.subquery()))
     rows = db.scalars(stmt.order_by(Invoice.invoice_date.desc(), Invoice.id.desc())
                       .offset((page - 1) * page_size).limit(page_size))
-    return {"total": total, "page": page, "page_size": page_size, "items": [_inv_out(i) for i in rows]}
+    return {"total": total, "page": page, "page_size": page_size, "items": [_inv_out(i, user) for i in rows]}
 
 
 @router.get("/invoices/{invoice_id:int}", tags=["invoices"])
 def get_invoice(invoice_id: int, db: Session = Depends(get_db), user: User = Depends(require("invoice.view"))):
-    return _inv_out(_get(db, user, invoice_id))
+    return _inv_out(_get(db, user, invoice_id), user)
 
 
 @router.post("/invoices/ingest", tags=["invoices"], dependencies=[Depends(api_csrf)])
@@ -285,7 +288,7 @@ def pending(request: Request, page: int = Query(1, ge=1, le=100_000), page_size:
     last = rows[-1] if rows else None
     return {"total": total, "page": None if after else page, "page_size": page_size, "has_more": has_more,
             "next_cursor": f"{last.invoice_date.isoformat()}_{last.id}" if last and has_more else None,
-            "items": [_inv_out(i) for i in rows]}
+            "items": [_inv_out(i, user) for i in rows]}
 
 
 @router.post("/invoices/{invoice_id:int}/dispatch", tags=["dispatch"], dependencies=[Depends(api_csrf)])
@@ -301,7 +304,7 @@ def save_dispatch(invoice_id: int, body: DispatchIn, db: Session = Depends(get_d
     ds.save_details(db, user, inv, transporter_id=tid, vehicle_no=body.vehicle_no, lr_no=body.lr_no,
                     dispatch_date=body.dispatch_date, dispatch_time=body.dispatch_time, remarks=body.remarks)
     db.commit()
-    return _inv_out(inv)
+    return _inv_out(inv, user)
 
 
 @router.post("/invoices/{invoice_id:int}/verify", tags=["dispatch"], dependencies=[Depends(api_csrf)])
@@ -309,7 +312,7 @@ def verify(invoice_id: int, db: Session = Depends(get_db), user: User = Depends(
     inv = _get(db, user, invoice_id)
     ds.verify(db, user, inv)
     db.commit()
-    return _inv_out(inv)
+    return _inv_out(inv, user)
 
 
 @router.post("/invoices/{invoice_id:int}/generate-slip", tags=["dispatch"], dependencies=[Depends(api_csrf)])
@@ -317,7 +320,7 @@ def generate(invoice_id: int, db: Session = Depends(get_db), user: User = Depend
     inv = _get(db, user, invoice_id)
     slip = ds.generate_slip(db, user, inv)
     db.commit()
-    return {"dispatch_no": slip.dispatch_no, "invoice": _inv_out(inv)}
+    return {"dispatch_no": slip.dispatch_no, "invoice": _inv_out(inv, user)}
 
 
 @router.post("/invoices/{invoice_id:int}/print", tags=["dispatch"], dependencies=[Depends(api_csrf)])
@@ -343,7 +346,7 @@ def complete(invoice_id: int, db: Session = Depends(get_db), user: User = Depend
         db.commit()
         raise
     db.commit()
-    return _inv_out(inv)
+    return _inv_out(inv, user)
 
 
 @router.post("/invoices/{invoice_id:int}/cancel", tags=["dispatch"], dependencies=[Depends(api_csrf)])
@@ -351,7 +354,7 @@ def cancel(invoice_id: int, body: ReasonIn, db: Session = Depends(get_db), user:
     inv = _get(db, user, invoice_id)
     ds.cancel(db, user, inv, body.reason)
     db.commit()
-    return _inv_out(inv)
+    return _inv_out(inv, user)
 
 
 # ----------------------------------------------------------------------------- tracking & proof of delivery
@@ -372,7 +375,7 @@ def track(q: str, db: Session = Depends(get_db), user: User = Depends(require("d
         slip = db.get(DispatchSlip, group[0].dispatch_slip_id) if group[0].dispatch_slip_id else None
         out.append({"stage": dsv.stage(group, slip), "gatepass": slip.dispatch_no if slip else None,
                     "customer": {"code": group[0].customer.code, "name": group[0].customer.name},
-                    "area": group[0].location.name, "invoices": [_inv_out(i) for i in group],
+                    "area": group[0].location.name, "invoices": [_inv_out(i, user) for i in group],
                     "milestones": [{"key": st.key, "label": st.label, "done": st.done, "problem": st.problem,
                                     "at": st.when.isoformat() if st.when else None, "detail": st.detail}
                                    for st in dsv.timeline(db, group)]})
@@ -389,7 +392,7 @@ def delivery(invoice_id: int, body: DeliveryIn, db: Session = Depends(get_db),
     dsv.record(db, user, group, status=body.status.upper(), delivered_on=body.delivered_on,
                received_by=body.received_by, note=body.note, source="STAFF", reason=body.reason)
     db.commit()
-    return {"updated": [_inv_out(i) for i in group]}
+    return {"updated": [_inv_out(i, user) for i in group]}
 
 
 # ----------------------------------------------------------------------------- masters / reports / dashboard
@@ -397,35 +400,50 @@ MASTER_MODELS = {"companies": Company, "cfas": CFA, "depots": CFA, "customers": 
                  "transporters": Transporter, "erp-systems": ERPSystem}
 
 
+# Using a master (dropdowns, searches, integrations that only need to resolve a code) and managing it are separate:
+# master.use returns the lookup fields only; the full records (GSTIN, PAN, bank details, contacts ...) need
+# master.view, which is Administrator-only.
+LOOKUP_FIELDS = {
+    Company: ["id", "code", "name", "marking", "relationship_type", "is_active"],
+    CFA: ["id", "code", "name", "locality", "marking", "city", "state", "is_active"],
+    Customer: ["id", "code", "name", "party_type", "marking", "city", "state", "pincode", "location_id", "is_active"],
+    Location: ["id", "code", "name", "city", "state", "pincode", "route", "zone", "is_active"],
+    Transporter: ["id", "code", "name", "payment_mode", "service_area", "city", "is_active"],
+    ERPSystem: ["id", "code", "name", "is_active"],
+}
+
+
 @router.get("/masters/{entity}", tags=["masters"])
-def masters(entity: str, db: Session = Depends(get_db), user: User = Depends(require("master.view"))):
+def masters(entity: str, db: Session = Depends(get_db), user: User = Depends(require("master.use"))):
     model = MASTER_MODELS.get(entity)
     if not model:
         raise HTTPException(404)
+    full = user.can("master.view")
     out = []
     for o in db.scalars(select(model).order_by(model.code)):
         if (model is Company and not can_see(user, o.id)) or (model is CFA and not can_see(user, None, o.id)):
             continue
-        d = {c.name: getattr(o, c.name) for c in model.__table__.columns
-             if c.name not in ("api_key_hash", "config")}
+        cols = [c.name for c in model.__table__.columns if c.name not in ("api_key_hash", "config")] if full \
+            else LOOKUP_FIELDS[model]
+        d = {c: getattr(o, c) for c in cols}
         out.append({k: (str(v) if isinstance(v, Decimal) else v.isoformat() if hasattr(v, "isoformat") else v)
                     for k, v in d.items()})
     return out
 
 
 @router.get("/reports", tags=["reports"])
-def report_list(user: User = Depends(require("report.view"))):
+def report_list(user: User = Depends(require_any("report.view", "mis.view"))):
     return [{"code": r.code, "title": r.title, "group": r.group, "description": r.description}
             for r in REPORTS.values() if user.can(r.perm)]
 
 
 @router.get("/reports/{code}", tags=["reports"])
-def report(code: str, request: Request, db: Session = Depends(get_db), user: User = Depends(require("report.view"))):
+def report(code: str, request: Request, db: Session = Depends(get_db), user: User = Depends(current_user)):
     rd = REPORTS.get(code)
     if not rd:
         raise HTTPException(404)
-    if not user.can(rd.perm):
-        raise PermissionDenied(rd.perm)
+    if not user.can(rd.perm):  # final reports need mis.view (Administrator, Accounts, Management)
+        raise PermissionDenied(rd.perm, "Your role does not include this report." if rd.final else None)
     res = rd.run(db, user, Filters.from_params(request.query_params, default_range=rd.default_range))
 
     def j(v):
@@ -438,6 +456,8 @@ def report(code: str, request: Request, db: Session = Depends(get_db), user: Use
 
 @router.get("/dashboard/summary", tags=["reports"])
 def dashboard(request: Request, db: Session = Depends(get_db), user: User = Depends(require("dashboard.view"))):
+    if not user.can("mis.view"):  # counts only - the financial figures are not even computed
+        return ops_dashboard_data(db, user)
     d = dashboard_data(db, user, Filters.from_params(request.query_params, default_range="fy"))
 
     def j(v):

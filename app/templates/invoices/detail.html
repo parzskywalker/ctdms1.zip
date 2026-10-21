@@ -2,8 +2,8 @@
 {% from "_macros.html" import badge, variance with context %}
 {% block content %}
 <div class="crumbs">
-  <a href="/mis?company_id={{ inv.company_id }}">{{ inv.company.name }}</a> ›
-  <a href="/reports/customer-freight?company_id={{ inv.company_id }}&customer_id={{ inv.customer_id }}">{{ inv.customer.name }}</a> ›
+  {% if can('mis.view') %}<a href="/mis?company_id={{ inv.company_id }}">{{ inv.company.name }}</a>{% else %}{{ inv.company.name }}{% endif %} ›
+  {% if can('mis.view') %}<a href="/reports/customer-freight?company_id={{ inv.company_id }}&customer_id={{ inv.customer_id }}">{{ inv.customer.name }}</a>{% else %}{{ inv.customer.name }}{% endif %} ›
   {{ inv.cfa.name }} › {{ inv.location.name }} › Invoice {{ inv.invoice_no }}
   {% if inv.dispatch_no %} › Dispatch {{ inv.dispatch_no }}{% endif %} › Freight {{ inv.freight_amount|money }}
 </div>
@@ -37,7 +37,7 @@
           <dt>Company</dt><dd>{{ inv.company.name }} <span class="muted">({{ inv.company.code }})</span></dd>
           <dt>Depot</dt><dd>{{ inv.cfa.name }}{% if inv.cfa.locality or inv.cfa.city %} <span class="muted small">{{ inv.cfa.locality or '' }}{{ ', ' if inv.cfa.locality and inv.cfa.city }}{{ inv.cfa.city or '' }}</span>{% endif %}</dd>
           {% if inv.marking %}<dt>ERP marking</dt><dd><span class="mono">{{ inv.marking.marking }}</span> <span class="muted small">recognised as {{ inv.marking.company.code }}{% if inv.marking.cfa %} / {{ inv.marking.cfa.code }}{% endif %}</span></dd>{% endif %}
-          <dt>Customer</dt><dd><a href="/masters/customers/{{ inv.customer_id }}">{{ inv.customer.name }}</a> <span class="tag">{{ inv.customer.type_label }}</span><br><span class="muted small">Central {{ inv.customer.code }} · ERP code {{ inv.customer_code or '—' }}</span></dd>
+          <dt>Customer</dt><dd>{% if can('master.view') %}<a href="/masters/customers/{{ inv.customer_id }}">{{ inv.customer.name }}</a>{% else %}{{ inv.customer.name }}{% endif %} <span class="tag">{{ inv.customer.type_label }}</span><br><span class="muted small">Central {{ inv.customer.code }} · ERP code {{ inv.customer_code or '—' }}</span></dd>
           <dt>Captured by</dt><dd>{{ {'QR_SCAN': 'E-invoice QR scan', 'IMPORT': 'ERP export import', 'API': 'ERP API / adapter', 'MANUAL': 'Manual'}.get(inv.capture_mode, inv.capture_mode) }}{% if inv.irn %}<br><span class="muted small mono" title="E-invoice IRN">IRN {{ inv.irn[:16] }}…</span>{% endif %}{% if inv.qr_signature %} <span class="tag" title="Signature of the GST portal on the QR">QR {{ {'VERIFIED': 'signature verified', 'INVALID': 'signature INVALID', 'UNVERIFIED': 'signature not checked'}[inv.qr_signature] }}</span>{% endif %}</dd>
           {% if inv.eway_bill_no %}<dt>E-way bill</dt><dd class="mono">{{ inv.eway_bill_no }}{% if inv.eway_valid_until %} <span class="muted small">valid to {{ inv.eway_valid_until|date }}</span>{% endif %}</dd>{% endif %}
           {% if inv.delivery_status %}<dt>Delivery</dt><dd>{{ inv.delivery_label }} · {{ inv.delivered_on|date }} <a class="small" href="/track/{{ inv.id }}">tracking</a></dd>{% elif inv.dispatch_slip_id %}<dt>Tracking</dt><dd><a href="/track/{{ inv.id }}">Shipment progress</a></dd>{% endif %}
@@ -60,7 +60,7 @@
           <div class="part"><small>Expense</small><span class="bigfig">{{ inv.freight_amount|money }}</span></div>
         </div>
         <dl class="dl tight" style="margin-top:12px">
-          <dt>Rate source</dt><dd>{% if inv.freight_rate %}<a href="/rates/{{ inv.freight_rate_id }}">Rate #{{ inv.freight_rate_id }}</a> · {{ inv.rate_level|level_label }}<br><span class="muted small">effective {{ inv.freight_rate.effective_from|date }} → {{ inv.freight_rate.effective_to|date or 'open' }}</span>{% elif inv.rate_level == 'MANUAL' %}Manual override (see below){% elif inv.rate_level %}{{ inv.rate_level|level_label }}{% if inv.transporter_id and inv.rate_level == 'TRANSPORTER' %} · <a href="/rate-cards/{{ inv.transporter_id }}">rate card</a>{% endif %}{% else %}Set on the gatepass (transporter rate card){% endif %}</dd>
+          <dt>Rate source</dt><dd>{% if inv.freight_rate %}{% if can('rate.view') %}<a href="/rates/{{ inv.freight_rate_id }}">Rate #{{ inv.freight_rate_id }}</a>{% else %}Rate #{{ inv.freight_rate_id }}{% endif %} · {{ inv.rate_level|level_label }}<br><span class="muted small">effective {{ inv.freight_rate.effective_from|date }} → {{ inv.freight_rate.effective_to|date or 'open' }}</span>{% elif inv.rate_level == 'MANUAL' %}Manual override (see below){% elif inv.rate_level %}{{ inv.rate_level|level_label }}{% if inv.transporter_id and inv.rate_level == 'TRANSPORTER' and can('rate.view') %} · <a href="/rate-cards/{{ inv.transporter_id }}">rate card</a>{% endif %}{% else %}Set on the gatepass (transporter rate card){% endif %}</dd>
           {% if inv.extra_charge %}<dt>Pickup / auto share</dt><dd>{{ inv.extra_charge|money }} <span class="muted small">(total cost {{ inv.total_charge|money }})</span></dd>{% endif %}
           <dt>Basis</dt><dd>{{ inv.freight_basis.replace('_',' ').title() }} · boxes from {{ inv.boxes_source }}</dd>
           <dt>Calculated</dt><dd>{{ inv.freight_calculated_at|dt }}</dd>
@@ -158,12 +158,12 @@
   </div>
 
   <div>
-    <div class="card">
+    {% if can('recon.view') %}<div class="card">
       <div class="card-head"><h3>Reconciliation</h3></div>
       {% if bill_lines %}
         {% for ln, b in bill_lines %}
         <dl class="dl tight">
-          <dt>Bill</dt><dd><a href="/recon/{{ b.id }}">{{ b.bill_no }}</a> {{ badge(b.status) }}</dd>
+          <dt>Bill</dt><dd>{% if can('recon.view') %}<a href="/recon/{{ b.id }}">{{ b.bill_no }}</a>{% else %}{{ b.bill_no }}{% endif %} {{ badge(b.status) }}</dd>
           <dt>Calculated</dt><dd>{{ ln.calculated_amount|money }}</dd>
           <dt>Billed</dt><dd>{{ ln.billed_amount|money }}</dd>
           <dt>Variance</dt><dd>{{ variance(ln.variance) }} {{ badge(ln.match_status) }}</dd>
@@ -171,9 +171,9 @@
         {% if not loop.last %}<hr>{% endif %}
         {% endfor %}
       {% else %}<p class="muted">Not yet on a transporter bill.</p>{% endif %}
-    </div>
+    </div>{% endif %}
     <div class="card">
-      <div class="card-head"><h3>Audit trail</h3><a class="small" href="/reports/audit?q={{ inv.id }}&date_from=2000-01-01">Full log</a></div>
+      <div class="card-head"><h3>Audit trail</h3>{% if can('audit.view') %}<a class="small" href="/reports/audit?q={{ inv.id }}&date_from=2000-01-01">Full log</a>{% endif %}</div>
       <ul class="timeline scroll-y">
         {% for a in history %}
         <li><b>{{ a.action.replace('_',' ').title() }}</b> · {{ a.username }}<br>

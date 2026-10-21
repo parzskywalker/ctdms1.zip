@@ -58,6 +58,8 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
 .topbar .who { text-align: right; line-height: 1.2; font-size: 13px; }
 .topbar .who small { display: block; font-size: 11.5px; }
 .topbar form { margin: 0; }
+.topbar .depot-switch { display: flex; gap: 6px; align-items: center; }
+.topbar .depot-switch select { min-height: 30px; max-width: 230px; }
 .menu-btn { display: none; background: none; border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; font-size: 16px; cursor: pointer; }
 .quick { display: flex; gap: 6px; }
 .quick input { width: 230px; }

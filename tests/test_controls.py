@@ -247,7 +247,10 @@ def test_rate_bulk_upload_and_auto_reprice_of_missing(api, web, db):
     assert inv["status"] == "RATE_MISSING"
     csv_body = ("company,cfa,customer,location,rate_per_box,effective_from,effective_to,is_default,reason\n"
                 f"COC,RPR,,Korba,10.50,{local_today().replace(day=1):%d-%m-%Y},,,Korba rate for Company C\n")
-    r = web("cfa.raipur").post("/rates/import", files={"file": ("rates.csv", csv_body.encode(), "text/csv")})
+    # freight-rate administration belongs to the Administrator (Depot Manager: 403); a checker approves
+    assert web("cfa.raipur").post("/rates/import", files={"file": ("rates.csv", csv_body.encode(), "text/csv")},
+                                  follow_redirects=False).status_code == 403
+    r = web("admin").post("/rates/import", files={"file": ("rates.csv", csv_body.encode(), "text/csv")})
     assert "1 rate(s) uploaded" in r.text
     from app.models import FreightRate, RateStatus
     rate = db.scalar(select(FreightRate).where(FreightRate.rate_per_box == Decimal("10.50"),

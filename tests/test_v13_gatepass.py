@@ -242,10 +242,15 @@ def test_rate_card_versioning_and_maker_checker(db):
 
 
 def test_rate_card_pages(web):
-    w = web("cfa.raipur")
+    w = web("admin")
     assert "Transporter rate cards" in w.get("/rate-cards").text
     db_page = w.get("/rate-cards/1")
     assert db_page.status_code == 200
+    # the Depot Manager has no access to the rate master; the checker opens the card he verifies, not the list
+    dm = web("cfa.raipur")
+    assert dm.get("/rate-cards").status_code == 403 and dm.get("/rate-cards/1").status_code == 403
+    ck = web("checker")
+    assert ck.get("/rate-cards").status_code == 403 and ck.get("/rate-cards/1").status_code == 200
 
 
 # ----------------------------------------------------------------------------- 4 bills: scan, cross-check, review

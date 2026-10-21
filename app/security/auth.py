@@ -31,7 +31,9 @@ class LoginRequired(Exception):
 class PermissionDenied(Exception):
     def __init__(self, perm: str | None = None, message: str | None = None):
         self.perm = perm
-        self.message = message or (f"You do not have permission: {perm}" if perm else "Access denied")
+        # the permission name is kept for the log; the user only learns that the role does not include this
+        self.message = message or ("Your role does not include this screen or action. Ask the Administrator if you "
+                                   "need it." if perm else "Access denied")
         super().__init__(self.message)
 
 
@@ -279,6 +281,8 @@ def _authenticate(request: Request, db: Session) -> User | None:
                 via = "session"
             else:
                 request.session.pop("sid", None)
+    if user is not None and via == "session":
+        _apply_active_depot(request, user)
     request.state.user = user
     # How THIS request was actually authenticated. The API's CSRF rule depends on it: a browser cookie needs the
     # CSRF token, a valid Bearer token does not. Merely *sending* an Authorization header proves nothing.
@@ -288,6 +292,19 @@ def _authenticate(request: Request, db: Session) -> User | None:
         from app.training import progress
         request.state.training_gate = progress.must_train(db, user)
     return user
+
+
+def _apply_active_depot(request: Request, user: User) -> None:
+    """A user assigned to several depots can work in one at a time (Account > depot switcher). The choice lives in the
+    browser session and is only honoured while it is still one of the user's assigned depots."""
+    if user.all_cfas or len(user.cfas) < 2:
+        return
+    try:
+        want = int(request.session.get("depot") or 0)
+    except (TypeError, ValueError):
+        want = 0
+    if want in {c.id for c in user.cfas}:
+        user._active_cfa = want
 
 
 PASSWORD_CHANGE_PATHS = ("/account/password", "/logout", "/login")

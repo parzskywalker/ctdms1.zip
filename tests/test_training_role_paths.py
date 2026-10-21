@@ -105,7 +105,8 @@ LONG = {
         f"lr_{one('select id from customers where code=?', c)}": lr for c, lr in (("DM-C071", "SRL-5501"), ("DM-C080", "SRL-5502"))}
         | {f"lrdate_{one('select id from customers where code=?', c)}": t for c in ("DM-C071", "DM-C080")}),
 }
-EXPORT = lambda w, one, t: w.get("/reports/cfa-freight/export?fmt=xlsx&date_from=2026-01-01")  # noqa: E731
+EXPORT = lambda w, one, t: w.get("/reports/cfa-freight/export?fmt=xlsx&date_from=2026-01-01")  # noqa: E731  (Accounts: final report)
+REGISTER_EXPORT = lambda w, one, t: w.get("/reports/gatepass-register/export?fmt=xlsx&date_from=2026-01-01")  # noqa: E731  (Depot Manager: operational register)
 
 
 def _live(db):
@@ -122,7 +123,7 @@ def test_role_path_completes_with_real_actions(web, db, path, role):
     bill = lambda one: one("select id from transporter_bills order by id desc limit 1")  # noqa: E731
     actions = dict(LONG)
     actions.update({
-        ("dm-reports", "export"): EXPORT,
+        ("dm-reports", "export"): REGISTER_EXPORT,
         ("c-rates", "approve"): lambda w, one, t: w.post("/rate-cards/approve-all", data={"remarks": "checked"}),
         ("c-exceptions", "decide"): lambda w, one, t: w.post(
             f"/overrides/{one('select id from invoice_overrides where status=?', 'PENDING')}/decide",

@@ -54,6 +54,17 @@ def default_path(user: User) -> str:
     return path_for_role(user.role.code if user.role else None, user.can)
 
 
+def allowed_paths(user: User) -> list[str]:
+    """Learning paths the Master may give this user: their own role's tutorial. (A Dispatch Operator is not given the
+    Master Administrator tutorial - its screens would not even open for the role.) An Administrator may take any path
+    because every screen opens for them.)"""
+    if user.role and user.role.has("*"):
+        return list(PATHS)
+    own = default_path(user)
+    code = user.role.code if user.role else None
+    return [k for k, p in PATHS.items() if k == own or code in p["roles"]]
+
+
 def ensure(db: Session, user: User, by: User | None = None) -> TrainingProgress:
     p = get(db, user.id)
     if p is None:

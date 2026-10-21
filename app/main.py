@@ -216,6 +216,10 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(PermissionDenied)
     async def _denied(request: Request, exc: PermissionDenied):
+        if exc.perm:  # a refused permission is worth a log line (security review); no business data is read for it
+            u = getattr(request.state, "user", None)
+            log.warning("access denied: user=%s %s %s needs %s", getattr(u, "username", "-"), request.method,
+                        request.url.path, exc.perm)
         if is_api(request):
             return JSONResponse({"detail": exc.message}, status_code=403)
         return render(request, "error.html", {"code": 403, "title": "Access denied", "message": exc.message},

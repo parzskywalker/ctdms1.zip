@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="crumbs"><a href="/rate-cards">Transporter rate cards</a> › {{ t.name }}</div>
+<div class="crumbs">{% if can('rate.view') %}<a href="/rate-cards">Transporter rate cards</a>{% else %}<a href="/approvals">Approvals</a>{% endif %} › {{ t.name }}</div>
 <div class="page-head">
   <div><h1>{{ t.name }}</h1><div class="sub">{{ t.payment_label }}{% if t.direct_pickup_charge %} · direct pickup {{ t.direct_pickup_charge|money }} {{ 'per case' if t.direct_pickup_basis == 'PER_CASE' else 'per trip' }}{% endif %} · {{ t.contact_person or '' }} {{ t.mobile or '' }}</div></div>
-  <div class="actions"><a class="btn" href="/masters/transporters/{{ t.id }}">Transporter details</a></div>
+  <div class="actions">{% if can('master.view') %}<a class="btn" href="/masters/transporters/{{ t.id }}">Transporter details</a>{% endif %}</div>
 </div>
 <form method="post" action="/rate-cards/{{ t.id }}/propose" class="card flush">
   <input type="hidden" name="csrf_token" value="{{ csrf }}">

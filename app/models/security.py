@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
 from app.models.base import TimestampMixin, utcnow
+from app.security.permissions import baseline_allows
 
 user_companies = Table(
     "user_companies",
@@ -36,7 +37,10 @@ class Role(Base, TimestampMixin):
     users: Mapped[list["User"]] = relationship(back_populates="role")
 
     def has(self, perm: str) -> bool:
-        return "*" in (self.permissions or []) or perm in (self.permissions or [])
+        if not ("*" in (self.permissions or []) or perm in (self.permissions or [])):
+            return False
+        # fixed baseline: Master Settings / administration / Final Reports are decided by the role, not by the list
+        return baseline_allows(self.code, perm)
 
 
 class User(Base, TimestampMixin):
@@ -71,9 +75,24 @@ class User(Base, TimestampMixin):
         """None means unrestricted."""
         return None if self.all_companies else {c.id for c in self.companies}
 
+    # Request-time only (never stored): the depot a multi-depot user has switched to, set from the session by
+    # app.security.auth. While it is set every list, search, report, export and API call of that request is limited to
+    # that one depot - cfa_ids is the single place all scope checks read.
+    _active_cfa = None
+
+    @property
+    def active_cfa(self) -> int | None:
+        if self.all_cfas or self._active_cfa not in {c.id for c in self.cfas}:
+            return None
+        return self._active_cfa
+
     @property
     def cfa_ids(self) -> set[int] | None:
-        return None if self.all_cfas else {c.id for c in self.cfas}
+        if self.all_cfas:
+            return None
+        ids = {c.id for c in self.cfas}
+        act = self._active_cfa
+        return {act} if act in ids else ids
 
 
 class UserSession(Base):

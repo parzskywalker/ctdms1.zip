@@ -53,14 +53,33 @@ docker compose --profile https up -d   # + automatic HTTPS for CTDMS_DOMAIN (Cad
 | `admin` | `Admin@123` | Administrator | all |
 | `management` | `Demo@123` | Management | all companies / CFAs |
 | `accounts` | `Demo@123` | Accounts | all |
-| `cfa.raipur` | `Demo@123` | CFA Manager | Raipur CFA |
+| `cfa.raipur` | `Demo@123` | Depot Manager | Guma depot (Raipur CFA) |
 | `operator.raipur` | `Demo@123` | Dispatch Operator | Raipur CFA |
 | `operator.bilaspur` | `Demo@123` | Dispatch Operator | Bilaspur CFA |
 | `operator.durg` | `Demo@123` | Dispatch Operator | Durg CFA |
 | `checker` | `Demo@123` | Checker / Approver | all |
-| `viewer` | `Demo@123` | Read-only Viewer (reports, no export) | all |
+| `viewer` | `Demo@123` | Read-only Viewer (limited operational screens; no reports, no export) | all |
 
 The login page lists them (click to fill) while `CTDMS_SHOW_DEMO_LOGINS=true`. **Change or remove them before go-live.**
+
+### Who sees what (v1.6.1)
+
+Every screen, export and API call is checked on the server; the menu only shows what the role may open.
+
+| | Admin | Management | Accounts | Depot Manager | Dispatch Operator | Checker | Viewer |
+|---|---|---|---|---|---|---|---|
+| Master Settings, users, roles, settings, ERP, audit log | ✔ | – | – | – | – | – | – |
+| Final Reports / Management MIS (screens, Excel / CSV / PDF, print, API, dashboard figures) | ✔ | ✔ | ✔ | – | – | – | – |
+| Transporter bills, reconciliation, payment | ✔ | – | ✔ | – | – | view + approve | – |
+| Dispatch desk (queue, entry, gatepass, register) | ✔ | view | view | ✔ | ✔ | view | view |
+| Approvals + Approval History | ✔ | – | bills | overrides | – | ✔ | – |
+| Use masters in dropdowns / searches | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
+
+*Using* a master (pick a transporter, customer, depot) and *managing* it are separate permissions; only the
+Administrator manages masters. Master Settings and Final Reports / MIS are a **fixed baseline**: Administration ›
+Roles shows them locked, and they cannot be given to any other role. Users only see the depots assigned to them; a user
+with several depots switches between them in the top bar (Alt+D, or F3 and type the depot name). The two-person approval rules apply to everyone,
+including the Administrator.
 
 ---
 

@@ -86,17 +86,20 @@ env.filters.update(money=fmt_money, kpi_money=_kpi_money, int=fmt_int, date=fmt_
                    barcode_svg=_barcode_svg)
 env.globals.update(app_version=__version__, InvoiceStatus=InvoiceStatus)
 
+# (group, [(label, url, permission(s) - any of "a|b", icon)]). Each entry is shown only when the user really holds the
+# permission, so the menu, the F3 "go to" list and the keyboard order never contain a screen the role cannot open.
+# The routes check the same permissions on the server; hiding is only the first layer.
 NAV = [
     ("Dashboard", [("Dashboard", "/", "dashboard.view", "grid")]),
     ("Dispatch desk", [
         ("Scan & Gatepass", "/gatepass/new", "dispatch.operate", "scan"),
+        ("Pending Dispatch", "/dispatch/pending", "dispatch.view", "truck"),
         ("Gatepasses", "/gatepass", "dispatch.view", "clipboard"),
-        ("Gate Check", "/gatepass/gate", "dispatch.view", "shield"),
-        ("LR Pending", "/gatepass/lr-pending", "dispatch.view", "list"),
+        ("Gate Check", "/gatepass/gate", "dispatch.operate", "shield"),
+        ("LR Pending", "/gatepass/lr-pending", "dispatch.operate", "list"),
         ("Track Shipment", "/track", "dispatch.view", "pin"),
         ("Deliveries Pending", "/deliveries", "dispatch.view", "check"),
-        ("Customer Alerts", "/notifications", "dispatch.view", "bell"),
-        ("Pending Dispatch", "/dispatch/pending", "dispatch.view", "truck"),
+        ("Customer Alerts", "/notifications", "dispatch.operate", "bell"),
     ]),
     ("Operations", [
         ("Add Invoice", "/invoices/new", "invoice.import", "plus"),
@@ -104,10 +107,16 @@ NAV = [
         ("Invoice Register", "/invoices", "invoice.view", "list"),
         ("Dispatch Register", "/dispatch/register", "dispatch.view", "clipboard"),
         ("Freight Exceptions", "/exceptions", "invoice.view", "alert"),
+    ]),
+    ("Approvals", [
         ("Approvals", "/approvals", "override.approve|rate.approve|recon.approve", "check"),
+        ("Approval History", "/approvals/history", "override.approve|rate.approve|recon.approve", "history"),
+    ]),
+    ("Accounts", [
         ("Transporter Bills", "/recon", "recon.view", "scale"),
         ("Scan a Bill", "/recon/scan", "recon.edit", "scan"),
     ]),
+    # Master Settings: Administrator only (fixed baseline). Using a master in a dropdown needs no menu entry.
     ("Master Settings", [
         ("Initial Master Upload", "/masters/upload", "master.edit", "upload"),
         ("Companies", "/masters/companies", "master.view", "building"),
@@ -124,26 +133,27 @@ NAV = [
         ("Principal Freight Rates", "/rates", "rate.view", "rupee"),
         ("ERP Mappings", "/masters/erp-mappings", "master.view", "link"),
     ]),
-    ("Reports", [
-        ("Transportation MIS", "/mis", "report.view", "layers"),
+    # Final Reports / Management MIS: mis.view (Administrator, Accounts, Management). Operational registers and
+    # control reports: report.view (shown as "Operational Reports" to roles without the final reports).
+    ("Reports & MIS", [
+        ("Transportation MIS", "/mis", "mis.view", "layers"),
+        ("Company-wise", "/reports/company-freight", "mis.view", "bar"),
+        ("Depot-wise", "/reports/cfa-freight", "mis.view", "bar"),
+        ("Customer-wise", "/reports/customer-freight", "mis.view", "bar"),
+        ("Customer-type-wise", "/reports/customer-type", "mis.view", "bar"),
+        ("City-wise", "/reports/city-freight", "mis.view", "bar"),
+        ("Location-wise", "/reports/location-freight", "mis.view", "bar"),
+        ("Transporter-wise", "/reports/transporter", "mis.view", "bar"),
+        ("Transporter × Area", "/reports/transporter-area", "mis.view", "bar"),
+        ("Local Auto Trips", "/reports/outside-auto", "mis.view", "bar"),
+        ("Variance", "/reports/freight-variance", "mis.view", "bar"),
+        ("Bill Irregularities", "/reports/bill-irregularities", "mis.view", "bar"),
+        ("Delivery Performance", "/reports/delivery-performance", "mis.view", "bar"),
         ("Gatepass Register", "/reports/gatepass-register", "report.view", "bar"),
-        ("Transporter × Area", "/reports/transporter-area", "report.view", "bar"),
-        ("Customer-type-wise", "/reports/customer-type", "report.view", "bar"),
-        ("Local Auto Trips", "/reports/outside-auto", "report.view", "bar"),
-        ("Delivery Performance", "/reports/delivery-performance", "report.view", "bar"),
         ("Delivery Register", "/reports/delivery-register", "report.view", "bar"),
-        ("Bill Irregularities", "/reports/bill-irregularities", "report.view", "bar"),
-        ("Company-wise", "/reports/company-freight", "report.view", "bar"),
-        ("Customer-wise", "/reports/customer-freight", "report.view", "bar"),
-        ("Depot-wise", "/reports/cfa-freight", "report.view", "bar"),
-        ("City-wise", "/reports/city-freight", "report.view", "bar"),
-        ("Location-wise", "/reports/location-freight", "report.view", "bar"),
-        ("Transporter-wise", "/reports/transporter", "report.view", "bar"),
-        ("Dispatch Register", "/reports/dispatch-register", "report.view", "bar"),
-        ("Variance", "/reports/freight-variance", "report.view", "bar"),
-        ("Audit", "/reports/audit", "audit.view", "bar"),
-        ("All Reports", "/reports", "report.view", "list"),
-        ("E-mailed Reports", "/report-subscriptions", "report.view", "mail"),
+        ("Dispatch Exceptions", "/reports/dispatch-exceptions", "report.view", "bar"),
+        ("All Reports", "/reports", "report.view|mis.view", "list"),
+        ("E-mailed Reports", "/report-subscriptions", "report.view|mis.view", "mail"),
     ]),
     ("Administration", [
         ("Users", "/admin/users", "admin.users", "user"),
@@ -156,6 +166,12 @@ NAV = [
     ("Help", [("Guided Training / Practice", "/training", "any", "help")]),
 ]
 
+# Group names that read better for a role without the full set (same screens, honest label)
+GROUP_ALT = {
+    "Dispatch desk": ("dispatch.operate", "Dispatch Monitoring"),
+    "Reports & MIS": ("mis.view", "Operational Reports"),
+}
+
 
 def nav_for(user: User | None) -> list:
     if not user:
@@ -165,8 +181,20 @@ def nav_for(user: User | None) -> list:
         vis = [(label, url, icon) for label, url, perm, icon in items
            if perm == "any" or any(user.can(p) for p in perm.split("|"))]
         if vis:
-            out.append((group, vis))
+            alt = GROUP_ALT.get(group)
+            out.append((alt[1] if alt and not user.can(alt[0]) else group, vis))
     return out
+
+
+def home_for(user: User) -> str:
+    """The first screen of this user: the Dashboard, else the first working screen their role has."""
+    for perm, url in (("dashboard.view", "/"), ("dispatch.operate", "/dispatch/pending"),
+                      ("override.approve", "/approvals"), ("rate.approve", "/approvals"),
+                      ("recon.approve", "/approvals"), ("recon.view", "/recon"), ("dispatch.view", "/dispatch/pending"),
+                      ("invoice.view", "/invoices"), ("report.view", "/reports")):
+        if user.can(perm):
+            return url
+    return "/training"
 
 
 def flash(request: Request, message: str, kind: str = "info") -> None:
@@ -211,6 +239,7 @@ def render(request: Request, name: str, ctx: dict | None = None, status_code: in
         "user": user,
         "nav": nav,
         "active_url": max(matches, key=len) if matches else None,  # most specific menu entry only
+        "home_url": home_for(user) if user else None,  # the role's first screen (Esc on a top-level screen goes here)
         "csrf": csrf_token(request) if has_session else "",
         "flashes": request.session.pop("flash", []) if has_session else [],
         "app_title": s.app_title,

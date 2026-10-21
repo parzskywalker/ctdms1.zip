@@ -16,13 +16,13 @@ from app.models import CFA, Company, ERPSystem, IntegrationRun, Role, User, User
 from app.security.auth import (
     csrf_protect, hash_password, password_problems, require, sign_out_everywhere,
 )
-from app.security.permissions import PERMISSION_GROUPS, PERMISSIONS
+from app.security.permissions import FIXED_BASELINE, PERMISSION_GROUPS, PERMISSIONS, baseline_allows, locked_for
 from app.services import audit
 from app.services import settings_service as cfg
 from app.services.errors import BusinessError
 from app.services.import_service import TARGET_FIELDS
 from app.services.utils import local_now, safe_int
-from app.web.templating import flash, get_form, redirect, render
+from app.web.templating import flash, get_form, nav_for, redirect, render
 
 router = APIRouter(dependencies=[Depends(csrf_protect)], include_in_schema=False)
 
@@ -68,6 +68,12 @@ def user_save(request: Request, form=Depends(get_form), db: Session = Depends(ge
     dup = db.scalar(select(User).where(User.username == username, User.id != (uid or 0)))
     if dup:
         raise BusinessError(f"Username {username} already exists")
+    # Nobody can hand out (or take over) more access than they hold: the Administrator role is only given and
+    # changed by an Administrator
+    admin_role = bool(role.has("*"))
+    target = db.get(User, uid) if uid else None
+    if (admin_role or (target and target.role and target.role.has("*"))) and not (user.role and user.role.has("*")):
+        raise BusinessError("Only an Administrator can give the Administrator role or change an Administrator")
     companies = list(db.scalars(select(Company).where(Company.id.in_([i for i in (safe_int(x) for x in form.getlist("companies")) if i]))))
     cfas = list(db.scalars(select(CFA).where(CFA.id.in_([i for i in (safe_int(x) for x in form.getlist("cfas")) if i]))))
     values = {"username": username, "full_name": form.get("full_name").strip(), "email": form.get("email") or None,
@@ -79,6 +85,11 @@ def user_save(request: Request, form=Depends(get_form), db: Session = Depends(ge
             raise BusinessError("User not found")
         if u.id == user.id and (not values["is_active"] or not role.has("admin.users")):
             raise BusinessError("You cannot deactivate yourself or remove your own admin rights")
+        if u.id == user.id and (u.role_id != role.id or values["all_companies"] != u.all_companies
+                                or values["all_cfas"] != u.all_cfas
+                                or {c.id for c in companies} != {c.id for c in u.companies}
+                                or {c.id for c in cfas} != {c.id for c in u.cfas}):
+            raise BusinessError("You cannot change your own role, companies or depots - ask another Administrator")
         changes = audit.diff(u, values)
         old_c, old_f = sorted(c.code for c in u.companies), sorted(c.code for c in u.cfas)
         if old_c != sorted(c.code for c in companies):
@@ -142,9 +153,14 @@ def user_password(uid: int, request: Request, password: str = Form(...), must_ch
 # ----------------------------------------------------------------------------- roles
 @router.get("/admin/roles")
 def roles(request: Request, db: Session = Depends(get_db), user: User = Depends(require("admin.roles"))):
+    from types import SimpleNamespace
     rows = list(db.scalars(select(Role).order_by(Role.id)))
-    return render(request, "admin/roles.html", {"title": "Roles & permissions", "roles": rows, "groups": PERMISSION_GROUPS,
-                                                "perms": PERMISSIONS})
+    # what each role will see in the menu (computed with the real menu rules, so this page cannot drift from them)
+    menus = {r.id: nav_for(SimpleNamespace(can=lambda p, r=r: r.has(p))) for r in rows}
+    people = list(db.scalars(select(User).order_by(User.username)))
+    return render(request, "admin/roles.html", {
+        "title": "Roles & permissions", "roles": rows, "groups": PERMISSION_GROUPS, "perms": PERMISSIONS,
+        "fixed": FIXED_BASELINE, "locked": {r.id: locked_for(r.code) for r in rows}, "menus": menus, "people": people})
 
 
 @router.post("/admin/roles/save")
@@ -153,8 +169,18 @@ def roles_save(request: Request, form=Depends(get_form), db: Session = Depends(g
     for role in db.scalars(select(Role)):
         if "*" in (role.permissions or []):
             continue
-        new = sorted(p for p in PERMISSIONS if form.get(f"p_{role.id}_{p}") == "1")
         old = sorted(role.permissions or [])
+        # Fixed-baseline permissions (Master Settings, administration, Final Reports / MIS) are not decided on this
+        # screen: a role that has the right keeps it, every other role never gets it, whatever the form says.
+        keep_fixed = {p for p in old if p in FIXED_BASELINE and baseline_allows(role.code, p)}
+        chosen = {p for p in PERMISSIONS if p not in FIXED_BASELINE and form.get(f"p_{role.id}_{p}") == "1"}
+        attempted = sorted(p for p in FIXED_BASELINE if form.get(f"p_{role.id}_{p}") == "1"
+                           and not baseline_allows(role.code, p))
+        new = sorted(chosen | keep_fixed)
+        if attempted:
+            audit.log(db, user, "ROLE_PERMISSION_REFUSED", "ADMIN", record_type="Role", record_id=role.id, ref=role.code,
+                      details={"fixed_baseline": attempted})
+            flash(request, f"{role.name}: {', '.join(attempted)} cannot be given to this role (fixed baseline).", "warn")
         if new != old:
             added, removed = sorted(set(new) - set(old)), sorted(set(old) - set(new))
             role.permissions = new

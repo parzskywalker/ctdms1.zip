@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% from "_macros.html" import badge, variance with context %}
 {% block content %}
-<div class="page-head"><div><h1>Approvals</h1><div class="sub">Maker-checker queue. You cannot approve your own requests.</div></div></div>
+<div class="page-head"><div><h1>Approvals</h1><div class="sub">Maker-checker queue. You cannot approve your own requests.</div></div>
+  <div class="actions"><a class="btn" href="/approvals/history">Approval History</a></div></div>
 
 {% if can('override.approve') %}
 <div class="card flush">

@@ -1,17 +1,17 @@
 """Management dashboard KPIs / chart data and the hierarchical drill-down MIS."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from app.models import CFA, Company, Customer, Invoice, InvoiceStatus, Location, Transporter, User
+from app.models import CFA, Company, Customer, DispatchSlip, Invoice, InvoiceStatus, Location, Transporter, User
 from app.services.reports import (
     AGG_DERIVED, Filters, _agg_columns, _apply_filters, _finish_agg, _ratio, month_expr,
 )
-from app.services.scope import apply_invoice_scope
+from app.services.scope import apply_cfa_scope, apply_invoice_scope
 from app.services.utils import local_today, money
 
 S = InvoiceStatus
@@ -84,6 +84,61 @@ def dashboard_data(db: Session, user: User, f: Filters) -> dict:
             "ageing": [{"label": kk, **v} for kk, v in ageing.items()]}
 
 
+# ----------------------------------------------------------------------------- operational dashboard (counts only)
+def ops_dashboard_data(db: Session, user: User) -> dict:
+    """Depot / dispatch desk overview for roles WITHOUT Final Reports / MIS: counts and ageing only.
+
+    By design nothing here touches sales value, rate, freight, billed amounts or variance - the figures are not
+    computed, so they cannot reach the page or the API. Everything respects the user's company / depot scope.
+    """
+    today = local_today()
+
+    def n(stmt) -> int:
+        return int(db.scalar(select(func.count()).select_from(apply_invoice_scope(stmt, user).subquery())) or 0)
+
+    inv = lambda *w: select(Invoice.id).where(*w)  # noqa: E731
+    k = {
+        "open": n(inv(Invoice.status.in_(S.OPEN))),
+        "ready": n(inv(Invoice.status.in_([S.PENDING, S.VERIFIED]))),
+        "slip": n(inv(Invoice.status.in_([S.SLIP_GENERATED, S.SLIP_PRINTED]))),
+        "rate_missing": n(inv(Invoice.status == S.RATE_MISSING)),
+        "exceptions": n(inv(Invoice.status == S.EXCEPTION)),
+        "dispatched_today": n(inv(Invoice.status == S.DISPATCHED, Invoice.dispatch_date == today)),
+        "dispatched_7d": n(inv(Invoice.status == S.DISPATCHED, Invoice.dispatch_date >= today - timedelta(days=6))),
+        "lr_pending": n(inv(Invoice.status.in_([S.SLIP_GENERATED, S.SLIP_PRINTED, S.DISPATCHED]),
+                            Invoice.lr_no.is_(None), Invoice.transporter_id.isnot(None))),
+        "deliveries_pending": n(inv(Invoice.status == S.DISPATCHED, Invoice.delivery_status.is_(None),
+                                    Invoice.dispatch_slip_id.isnot(None))),
+    }
+    k["at_gate"] = int(db.scalar(select(func.count()).select_from(
+        apply_cfa_scope(select(DispatchSlip.id), user, DispatchSlip.cfa_id).where(
+            DispatchSlip.is_void.is_(False), DispatchSlip.gate_out_at.is_(None)).subquery())) or 0)
+
+    # per depot (the depots this user may see): the daily picture, counts only
+    depots = []
+    stmt = apply_invoice_scope(
+        select(CFA.id, CFA.name, CFA.city,
+               func.sum(case((Invoice.status.in_(S.OPEN), 1), else_=0)),
+               func.sum(case((Invoice.status.in_([S.PENDING, S.VERIFIED]), 1), else_=0)),
+               func.sum(case((Invoice.status.in_([S.SLIP_GENERATED, S.SLIP_PRINTED]), 1), else_=0)),
+               func.sum(case((Invoice.status.in_([S.RATE_MISSING, S.EXCEPTION]), 1), else_=0)),
+               func.sum(case(((Invoice.status == S.DISPATCHED) & (Invoice.dispatch_date == today), 1), else_=0)))
+        .select_from(Invoice).join(CFA, Invoice.cfa_id == CFA.id), user).group_by(CFA.id, CFA.name, CFA.city).order_by(CFA.name)
+    for cid, name, city, o, rd, sl, ex, dt in db.execute(stmt):
+        depots.append({"id": cid, "name": name, "city": city, "open": int(o or 0), "ready": int(rd or 0),
+                       "slip": int(sl or 0), "exceptions": int(ex or 0), "dispatched_today": int(dt or 0)})
+
+    buckets = [("0–1 days", 0, 1), ("2–3 days", 2, 3), ("4–7 days", 4, 7), ("8–15 days", 8, 15), ("> 15 days", 16, 99999)]
+    ageing = {b[0]: 0 for b in buckets}
+    for (d,) in db.execute(apply_invoice_scope(select(Invoice.invoice_date).where(Invoice.status.in_(S.OPEN)), user)):
+        age = (today - d).days
+        for label, lo, hi in buckets:
+            if lo <= age <= hi:
+                ageing[label] += 1
+                break
+    return {"kpi": k, "depots": depots, "ageing": [{"label": a, "count": c} for a, c in ageing.items()]}
+
+
 # ----------------------------------------------------------------------------- drill-down
 LEVELS = ["company", "customer", "cfa", "location", "invoice"]
 LEVEL_COLS = {
@@ -137,4 +192,4 @@ def drill_totals(db: Session, user: User, f: Filters) -> dict:
     return {kk: (str(v) if isinstance(v, Decimal) else v) for kk, v in d.items()}
 
 
-__all__ = ["dashboard_data", "drill", "drill_totals", "LEVELS", "AGG_DERIVED", "_ratio", "money"]
+__all__ = ["dashboard_data", "ops_dashboard_data", "drill", "drill_totals", "LEVELS", "AGG_DERIVED", "_ratio", "money"]

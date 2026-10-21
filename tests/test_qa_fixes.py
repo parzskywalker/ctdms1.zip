@@ -28,8 +28,35 @@ def _flash(html: str) -> str:
 
 
 # ----------------------------------------------------------------------------- data scope
+def _scoped_user(web, username, role_code, cfa_codes):
+    """A user of `role_code` restricted to the given depots (created through the real Users screen)."""
+    rid = db_role_id(role_code)
+    ids = []
+    from tests.conftest import _test_session
+    s_ = _test_session()
+    try:
+        ids = [str(s_.scalar(select(CFA.id).where(CFA.code == c))) for c in cfa_codes]
+    finally:
+        s_.close()
+    web("admin").post("/admin/users/save", data={"username": username, "full_name": username, "role_id": str(rid),
+                                                 "password": "Scope@2026xy", "is_active": "1", "all_companies": "1",
+                                                 "cfas": ids})
+    return web(username, "Scope@2026xy")
+
+
+def db_role_id(code):
+    from app.models import Role
+    from tests.conftest import _test_session
+    s_ = _test_session()
+    try:
+        return s_.scalar(select(Role.id).where(Role.code == code))
+    finally:
+        s_.close()
+
+
 def test_sec01_transporter_bill_scope(web, db):
-    """[SEC-01] a CFA-restricted user cannot see or approve another CFA's transporter bill."""
+    """[SEC-01] a depot-restricted user cannot see or approve another depot's transporter bill. (A Depot Manager has no
+    bill permission at all since v1.6.1 - 403; the scope rule is shown with a depot-restricted Accounts-type user.)"""
     acc = db.scalar(select(User).where(User.username == "accounts"))
     bsp = db.scalar(select(CFA).where(CFA.code == "BSP"))
     co = db.scalar(select(Company).where(Company.code == "COA"))
@@ -37,7 +64,8 @@ def test_sec01_transporter_bill_scope(web, db):
     bill = recon_service.create_bill(db, acc, transporter_id=tr.id, bill_no="QA-XCFA-1", bill_date=local_today(),
                                      bill_amount="100", company_id=co.id, cfa_id=bsp.id)
     db.commit()
-    cfa = web("cfa.raipur")
+    assert web("cfa.raipur").get(f"/recon/{bill.id}").status_code == 403
+    cfa = _scoped_user(web, "qa.acc.rpr", "ACCOUNTS", ["RPR"])
     assert cfa.get(f"/recon/{bill.id}").status_code == 404
     assert cfa.post(f"/recon/{bill.id}/approve", {"remarks": "cross-cfa approve"},
                     follow_redirects=False).status_code == 404
@@ -82,14 +110,23 @@ def test_sec03_importer_cannot_remap_existing_erp_code(web, db):
 
 
 def test_sec07_rate_cfa_scope(web, db):
-    """[SEC-07] CFA manager (Raipur) cannot create / revise Bilaspur rates."""
+    """[SEC-07] a depot-restricted user cannot create / revise another depot's rates. (A Depot Manager cannot touch
+    rates at all since v1.6.1 - 403; the scope rule is shown with an Administrator-role user limited to Raipur.)"""
     bsp_rate = db.scalar(select(FreightRate).join(CFA, FreightRate.cfa_id == CFA.id)
                          .where(CFA.code == "BSP", FreightRate.status == "APPROVED"))
-    cfa = web("cfa.raipur")
+    loc = db.scalar(select(Location))
+    dm = web("cfa.raipur")
+    assert dm.post(f"/rates/{bsp_rate.id}/revise", {"rate_per_box": "99", "effective_from":
+                   (local_today() + timedelta(days=40)).isoformat(), "change_reason": "x"},
+                   follow_redirects=False).status_code == 403
+    assert dm.post("/rates", {"company_id": str(bsp_rate.company_id), "cfa_id": str(bsp_rate.cfa_id),
+                              "location_id": str(loc.id), "rate_per_box": "9", "effective_from":
+                              (local_today() + timedelta(days=41)).isoformat(), "remarks": "x"},
+                   follow_redirects=False).status_code == 403
+    cfa = _scoped_user(web, "qa.admin.rpr", "ADMIN", ["RPR"])
     r = cfa.post(f"/rates/{bsp_rate.id}/revise", {"rate_per_box": "99", "effective_from":
                  (local_today() + timedelta(days=40)).isoformat(), "change_reason": "cross scope"})
     assert r.status_code == 404 or "outside your" in _flash(r.text)
-    loc = db.scalar(select(Location))
     r = cfa.post("/rates", {"company_id": str(bsp_rate.company_id), "cfa_id": str(bsp_rate.cfa_id),
                             "location_id": str(loc.id), "rate_per_box": "9", "effective_from":
                             (local_today() + timedelta(days=41)).isoformat(), "remarks": "x"})
@@ -299,10 +336,21 @@ def test_ux_blocked_invoices_sorted_last_in_queue(web):
     assert not blocked or not ready or min(blocked) > max(ready)
 
 
-def test_ux_viewer_sees_no_dead_invoice_links(web):
-    v = web("viewer")
+def test_ux_roles_without_invoice_view_see_no_dead_invoice_links(web, db):
+    """A role made by the Master with reports but no invoice register must not get links into invoices."""
+    from app.models import Role
+    a = web("admin")
+    from tests.helpers import roles_matrix
+    a.post("/admin/roles/save", data=roles_matrix(db, {"new_code": "RPT_ONLY", "new_name": "Reports only", "new_desc": "test"}))
+    rid = db.scalar(select(Role.id).where(Role.code == "RPT_ONLY"))
+    a.post("/admin/roles/save", data=roles_matrix(db, {f"p_{rid}_report.view": "1", f"p_{rid}_master.use": "1"}))
+    a.post("/admin/users/save", data={"username": "qa.rptonly", "full_name": "Rpt", "role_id": str(rid),
+                                      "password": "Rptonly@2026", "is_active": "1", "all_companies": "1",
+                                      "all_cfas": "1"})
+    v = web("qa.rptonly", "Rptonly@2026")
     assert 'href="/invoices/' not in v.get("/reports/dispatch-register").text
-    assert "CAN_OPEN_INVOICE = false" in v.get("/mis").text
+    assert v.get("/mis").status_code == 403  # the drill-down MIS is a final report: not for such a role
+    assert "CAN_OPEN_INVOICE = true" in web("management").get("/mis").text
 
 
 def test_ux_irreversible_actions_ask_for_confirmation(web, api):

@@ -249,9 +249,10 @@ def test_24_excel_csv_pdf_export(web):
 # 25 -------------------------------------------------------------------------------------------------
 def test_25_role_based_permissions(web, api, db):
     viewer = web("viewer")
-    assert viewer.get("/reports/customer-freight").status_code == 200
-    assert viewer.get("/reports/customer-freight/export?fmt=csv").status_code == 403   # no export right
-    assert viewer.get("/dispatch/pending").status_code == 403
+    # v1.6.1: a Viewer is not a Management user - no final reports, no exports, only read-only operational screens
+    assert viewer.get("/reports/customer-freight").status_code == 403
+    assert viewer.get("/reports/customer-freight/export?fmt=csv").status_code == 403
+    assert viewer.get("/dispatch/pending").status_code == 200
     assert viewer.get("/admin/users").status_code == 403
     op = web("operator.raipur")
     assert op.get("/rates/new").status_code == 403

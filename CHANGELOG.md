@@ -1,5 +1,51 @@
 # Changelog
 
+## v1.6.1 — Role-based access: every role sees only its own work (21 Oct 2026)
+
+Migration 0009 (applied automatically): re-aligns the stored roles to the new baseline (every changed role is written
+to the audit log as ROLE_BASELINE_APPLIED), pauses e-mailed reports whose owner lost access, moves a Viewer off the
+Management training path. No business data is touched.
+
+- **Master Settings = Administrator only** (fixed baseline in `app/security/permissions.py`, enforced in `Role.has`, so an
+  edited role list, a wildcard or a role made by the Master cannot widen it): Companies, Depots, Customers, Customer
+  Types, Transporters, Locations, Local Autos, Freight Rates and Transporter Rate Cards, Invoice Recognition Code,
+  ERP Mappings, Initial Master Upload, System Settings, Users, Roles, Integrations, Guided Training administration, audit
+  log. *Using* a master (new permission `master.use`: transporter / customer / depot / location dropdowns and lookups)
+  is separate from *managing* it - operators keep their searchable dropdowns.
+- **Final Reports / Management MIS = Administrator, Accounts, Management only** (new `mis.view`, fixed baseline). Every
+  consolidated, financial, variance or management report - page, Excel / CSV / PDF export, print view, the e-mailed
+  reports, `/mis`, `/api/v1/reports*` - checks it on the server. Operational registers (dispatch, gatepass, delivery,
+  pending, exceptions, a new money-free Invoice Register export) stay on `report.view`; audit and rate-change reports stay
+  Administrator-only. `report.view` no longer opens final reports.
+- **Role baselines** (Administration › Roles shows them, locked where fixed): Management and Accounts lose Master access;
+  Depot Manager loses freight-rate creation and transporter bills; Checker loses dashboard / reports / audit and keeps
+  approvals; Viewer is read-only operational (no reports, no exports) and is no longer on the Management path.
+- **Menus per role** (no empty groups, no inaccessible entries; F3 "go to", Tab order and the F10 key follow the menu):
+  new groups Approvals (+ **Approval History**) and Accounts; Dispatch desk reads "Dispatch Monitoring" for read-only
+  roles; Reports & MIS reads "Operational Reports" for roles without final reports. Esc goes to the role's own home.
+- **Dashboards**: roles with MIS see the financial dashboard (Management / Accounts titles, Accounts also bill counts);
+  everyone else gets a counts-only Dispatch Desk / Depot Operations Dashboard - the financial figures are not even
+  computed for them (page and `/api/v1/dashboard/summary`). The Invoice Register totals and invoice-level billed /
+  variance data (reconciliation card, API `actual_freight`) are shown only to roles with bills or MIS.
+- **Depot restrictions**: a user with several depots switches between them in the top bar (Alt+D, or F3 and type the depot name); the choice narrows
+  every list, search, report, export and API call through `User.cfa_ids`, never widens it. Isolation is tested across
+  lists, details, tracking, bulk actions, exports and APIs.
+- **API**: `/api/v1/masters/*` needs only `master.use` and returns lookup fields; full records (GSTIN, PAN, bank details)
+  need Master access. Reports / dashboard API follow the report rules. 403 pages no longer name the permission; denials
+  are logged.
+- **Permission management**: Roles page shows fixed permissions locked, "what each role sees" and every user with role
+  and depots; a forged form cannot grant fixed permissions (ROLE_PERMISSION_REFUSED is audited); nobody can change their
+  own role / companies / depots, and only an Administrator hands out or edits the Administrator role. The two-person
+  rules (overrides, rates, bills) apply to the Administrator too - tested.
+- **Guided Training**: each role gets its own tutorial (new Read-only Viewer path; Depot Manager's last lesson is now
+  Depot registers and delivery status instead of final reports); the Master can only assign a tutorial that fits the
+  user's role; "Act as" in Training Mode offers only the demonstration checker; practice screens use exactly the live
+  role's permissions (Master Settings and final reports stay closed in Training Mode).
+- Tests: `tests/test_rbac.py` (88 tests: baseline, menus, direct URLs, final reports / exports / print / API per role,
+  dashboards, billed data, approvals, depot isolation and switching, role screen, upgrade of a v1.6.0 database);
+  `tests/e2e_rbac.py` - 257 browser checks (keyboard sign-in, menu, F3, Tab order, F10, depot switch, direct URLs, training) on
+  Chromium. Older tests updated where they relied on the previous, wider roles.
+
 ## v1.6.0 — Guided Training and first-time onboarding (21 Oct 2026)
 
 Migration 0008 (applied automatically): `training_progress` - one row per user in the live database.

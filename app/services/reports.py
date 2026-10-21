@@ -173,8 +173,15 @@ class ReportDef:
     filters: list[str] = field(default_factory=lambda: ["date", "company", "customer", "cfa", "city", "ctype",
                                                         "location", "transporter", "erp", "status", "invoice_no",
                                                         "rcode"])
-    perm: str = "report.view"
+    # Who may open / export it. The default is the strict one: every consolidated, financial or management report
+    # is a "final report" and needs mis.view (Administrator, Accounts, Management - fixed baseline). Only operational
+    # registers and control reports name report.view (or another permission) explicitly.
+    perm: str = "mis.view"
     default_range: str = "month"
+
+    @property
+    def final(self) -> bool:
+        return self.perm == "mis.view"
 
 
 def _ratio(a, b, mult=1):
@@ -262,6 +269,33 @@ def rpt_invoice_freight(db, user, f):
                  rcode=r[16] or "")
             for r in db.execute(stmt)]
     return ReportResult(cols, rows, _totals(cols, rows, {"rate": AGG_DERIVED["rate"]}), date_basis="Invoice date")
+
+
+def rpt_invoice_register(db, user, f):
+    """Operational invoice list for the Invoice Register export: who / what / where / status - no sales value, rate or
+    freight (those are the final report 'Invoice-wise Transportation Expense', which needs Final Reports / MIS)."""
+    cols = [Col("invoice_date", "Date", "date"), Col("company", "Company"), Col("cfa", "Depot"), Col("city", "City"),
+            Col("customer", "Customer"), Col("ctype", "Customer Type"), Col("location", "Location"),
+            Col("invoice_no", "Original ERP Invoice No", "invoice"), Col("rcode", "Invoice Recognition Code"),
+            Col("boxes", "Boxes", "int", True), Col("status", "Dispatch Status", "status"),
+            Col("dispatch_no", "Dispatch No"), Col("transporter", "Transporter"), Col("lr_no", "LR No"),
+            Col("vehicle_no", "Vehicle"), Col("erp", "ERP")]
+    stmt = (select(Invoice.id, Invoice.invoice_date, Company.name, CFA.name, Customer.name, Location.name,
+                   Invoice.invoice_no, Invoice.boxes, Invoice.status, ERPSystem.code, CFA.city, Customer.party_type,
+                   Invoice.recognition_code, Invoice.dispatch_no, Transporter.name, Invoice.lr_no, Invoice.vehicle_no)
+            .select_from(Invoice).join(Company).join(CFA).join(Customer)
+            .join(Location, Invoice.location_id == Location.id)
+            .outerjoin(ERPSystem, Invoice.source_erp_id == ERPSystem.id)
+            .outerjoin(Transporter, Invoice.transporter_id == Transporter.id))
+    stmt = _apply_filters(apply_invoice_scope(stmt, user), f, Invoice.invoice_date)
+    stmt = stmt.order_by(Invoice.invoice_date, Invoice.invoice_no)
+    tl = type_labels(db)
+    rows = [dict(invoice_id=r[0], invoice_date=r[1], company=r[2], cfa=r[3], customer=r[4], location=r[5],
+                 invoice_no=r[6], boxes=r[7], status=r[8], erp=r[9], city=r[10], ctype=tl.get(r[11], r[11]),
+                 rcode=r[12] or "", dispatch_no=r[13] or "", transporter=r[14] or "", lr_no=r[15] or "",
+                 vehicle_no=r[16] or "")
+            for r in db.execute(stmt)]
+    return ReportResult(cols, rows, _totals(cols, rows), date_basis="Invoice date")
 
 
 def rpt_customer(db, user, f):
@@ -951,7 +985,10 @@ INV_F = ["date", "company", "customer", "cfa", "location", "transporter", "erp",
 REPORTS: dict[str, ReportDef] = {r.code: r for r in [
     ReportDef("gatepass-register", "Gatepass Register", "Operational",
               "Every gatepass: mode, carrier, invoices, cases, charges, cash paid, to be billed, LR still missing.",
-              rpt_gatepass, filters=["date", "cfa", "transporter"]),
+              rpt_gatepass, filters=["date", "cfa", "transporter"], perm="report.view"),
+    ReportDef("invoice-register", "Invoice Register (operational list)", "Operational",
+              "Invoices with their dispatch status, transporter and LR - no sales value, rate or freight.",
+              rpt_invoice_register, filters=INV_F, default_range="quarter", perm="report.view"),
     ReportDef("customer-type", "Customer-type-wise (Retailer / Stockist / Hospital ...)", "MIS",
               "Volume, sales and cost to serve by customer type.", rpt_customer_type, default_range="fy"),
     ReportDef("sku-dispatch", "SKU-wise Dispatch (per company)", "MIS",
@@ -975,7 +1012,7 @@ REPORTS: dict[str, ReportDef] = {r.code: r for r in [
               default_range="fy"),
     ReportDef("delivery-register", "Delivery Register (POD)", "Operational",
               "Every dispatched consignment with its proof of delivery, e-way bill and LR.", rpt_delivery_register,
-              filters=["date", "company", "customer", "cfa", "location", "transporter"], default_range="month"),
+              filters=["date", "company", "customer", "cfa", "location", "transporter"], default_range="month", perm="report.view"),
     ReportDef("invoice-freight", "Invoice-wise Transportation Expense", "MIS",
               "Every invoice with boxes, rate per box and calculated transportation expense.", rpt_invoice_freight),
     ReportDef("customer-freight", "Customer-wise Transportation Expense", "MIS",
@@ -994,9 +1031,9 @@ REPORTS: dict[str, ReportDef] = {r.code: r for r in [
               "Month-wise invoices, dispatches, freight, freight % of sales and billed variance.", rpt_monthly,
               default_range="fy"),
     ReportDef("dispatch-register", "Daily Dispatch Register", "Operational",
-              "All generated dispatch slips by dispatch date.", rpt_dispatch_register),
+              "All generated dispatch slips by dispatch date.", rpt_dispatch_register, perm="report.view"),
     ReportDef("pending-dispatch", "Pending Dispatch Report", "Operational",
-              "Open invoices not yet dispatched, with ageing.", rpt_pending, default_range="quarter"),
+              "Open invoices not yet dispatched, with ageing.", rpt_pending, default_range="quarter", perm="report.view"),
     ReportDef("freight-vs-actual", "Freight vs Actual Transporter Bill", "Reconciliation",
               "Bill-wise system freight vs actual billed amount.", rpt_freight_vs_actual,
               filters=["date", "company", "cfa", "transporter", "bill_status"], default_range="fy"),
@@ -1005,23 +1042,23 @@ REPORTS: dict[str, ReportDef] = {r.code: r for r in [
               filters=["date", "transporter", "company", "cfa", "q"], default_range="fy"),
     ReportDef("dispatch-exceptions", "Dispatch Exception Report", "Controls",
               "Invoices blocked by rate missing, boxes missing, override pending or rate conflict.", rpt_exceptions,
-              filters=["date", "company", "customer", "cfa", "location", "erp", "invoice_no"], default_range="quarter"),
+              filters=["date", "company", "customer", "cfa", "location", "erp", "invoice_no"], default_range="quarter", perm="report.view"),
     ReportDef("rate-missing", "Rate Missing Report", "Controls",
               "Missing Company/Depot/Location rate combinations with the invoices they block.", rpt_rate_missing,
-              filters=["date", "company", "cfa", "location"], default_range="quarter"),
+              filters=["date", "company", "cfa", "location"], default_range="quarter", perm="report.view"),
     ReportDef("audit", "Audit Report", "Controls", "Every audited action with old/new values, user, IP and reason.",
               rpt_audit, filters=["date", "module", "q", "invoice_no"], perm="audit.view"),
     ReportDef("rate-changes", "Freight Rate Change Report", "Controls",
               "Rate versions with previous rate, change %, effective dates and approvals.", rpt_rate_changes,
-              filters=["date", "company", "cfa", "customer", "location", "rate_status"], default_range="fy"),
+              filters=["date", "company", "cfa", "customer", "location", "rate_status"], default_range="fy", perm="rate.view"),
     ReportDef("overrides", "Manual Override Report", "Controls",
               "Every manual change of boxes, rate or freight with requester, approver and reason.", rpt_overrides,
-              filters=["date", "company", "cfa", "customer", "override_status", "invoice_no"], default_range="fy"),
+              filters=["date", "company", "cfa", "customer", "override_status", "invoice_no"], default_range="fy", perm="report.view"),
     ReportDef("reprints", "Dispatch Slip Reprint Report", "Controls", "All slip reprints with reason and user.",
-              rpt_reprints, filters=["date", "company", "cfa", "invoice_no"], default_range="fy"),
+              rpt_reprints, filters=["date", "company", "cfa", "invoice_no"], default_range="fy", perm="report.view"),
     ReportDef("cancelled", "Cancelled Dispatch Report", "Controls",
               "Cancelled invoices / dispatches with reason and user.", rpt_cancelled,
-              filters=["date", "company", "customer", "cfa", "location", "invoice_no"], default_range="fy"),
+              filters=["date", "company", "customer", "cfa", "location", "invoice_no"], default_range="fy", perm="report.view"),
 ]}
 
 REPORT_GROUPS = ["MIS", "Operational", "Reconciliation", "Controls"]

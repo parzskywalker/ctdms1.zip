@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="page-head"><div><h1>Roles &amp; permissions</h1><div class="sub">Role-based access control. Administrator always has full access.</div></div></div>
+<div class="page-head"><div><h1>Roles &amp; permissions</h1><div class="sub">Role-based access control. Administrator always has full access. <b>Fixed baseline</b> (🔒): Master Settings, administration and the audit log are Administrator-only; Final Reports / MIS are for Administrator, Accounts and Management only - they cannot be given to other roles.</div></div></div>
 <form method="post" action="/admin/roles/save">
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
   <div class="card flush"><div class="table-wrap"><table class="data compact perm-table">
@@ -9,8 +9,12 @@
     {% for g, plist in groups %}
       <tr><td colspan="{{ roles|length + 1 }}" style="background:#f3f6fa"><b>{{ g }}</b></td></tr>
       {% for p in plist %}
-      <tr><td>{{ perms[p] }} <span class="muted small mono">{{ p }}</span></td>
-        {% for r in roles %}<td>{% if '*' in (r.permissions or []) %}✔{% else %}<input type="checkbox" name="p_{{ r.id }}_{{ p }}" value="1" {% if p in (r.permissions or []) %}checked{% endif %} aria-label="{{ r.name }} {{ p }}">{% endif %}</td>{% endfor %}</tr>
+      <tr><td>{% if p in fixed %}🔒 {% endif %}{{ perms[p] }} <span class="muted small mono">{{ p }}</span></td>
+        {% for r in roles %}<td>
+          {%- if '*' in (r.permissions or []) -%}✔
+          {%- elif p in fixed -%}{% if p in locked[r.id] %}<span class="muted" title="Fixed baseline: not available to this role">—</span>{% else %}<span title="Fixed baseline">{{ '✔' if p in (r.permissions or []) else '—' }}</span>{% endif %}
+          {%- else -%}<input type="checkbox" name="p_{{ r.id }}_{{ p }}" value="1" {% if p in (r.permissions or []) %}checked{% endif %} aria-label="{{ r.name }} {{ p }}">
+          {%- endif -%}</td>{% endfor %}</tr>
       {% endfor %}
     {% endfor %}
     </tbody>
@@ -20,4 +24,34 @@
     <span class="muted small">New role:</span><input type="text" name="new_code" placeholder="CODE" style="width:130px"><input type="text" name="new_name" placeholder="Name" style="width:170px"><input type="text" name="new_desc" placeholder="Description" style="width:220px">
   </div></div>
 </form>
+
+<div class="card flush">
+  <div class="card-head"><h2>What each role sees in the menu</h2><span class="muted small">Worked out from the permissions above with the real menu rules.</span></div>
+  <div class="table-wrap"><table class="data compact">
+    <thead><tr><th>Role</th><th>Menu groups</th><th>Master Settings</th><th>Final Reports / MIS</th><th>Data scope</th></tr></thead>
+    <tbody>
+    {% for r in roles %}{% set m = menus[r.id] %}
+      <tr><td><b>{{ r.name }}</b></td>
+        <td class="wrap small">{% for g, items in m %}<b>{{ g }}</b> ({{ items|length }}){% if not loop.last %} · {% endif %}{% endfor %}</td>
+        <td>{{ 'Yes' if r.has('master.view') else 'No' }}</td><td>{{ 'Yes' if r.has('mis.view') else 'No' }}</td>
+        <td class="small">{{ 'Assigned per user' if r.code not in ('ADMIN',) else 'All' }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+<div class="card flush">
+  <div class="card-head"><h2>Users, roles and depots</h2><a class="small" href="/admin/users">Manage users</a></div>
+  <div class="table-wrap"><table class="data compact">
+    <thead><tr><th>User</th><th>Role</th><th>Companies</th><th>Depots</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for u in people %}
+      <tr><td><a href="/admin/users/{{ u.id }}">{{ u.username }}</a> <span class="muted small">{{ u.full_name }}</span></td><td>{{ u.role.name }}</td>
+        <td class="small">{{ 'All' if u.all_companies else (u.companies|map(attribute='code')|join(', ') or 'none') }}</td>
+        <td class="small">{{ 'All' if u.all_cfas else (u.cfas|map(attribute='code')|join(', ') or 'none') }}</td>
+        <td>{{ 'Active' if u.is_active else 'Inactive' }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
 {% endblock %}

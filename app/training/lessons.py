@@ -554,7 +554,7 @@ K00 = Lesson("k00-keys", "Keyboard basics (MARG style)",
     Step("open", "Enter opens the row", do="Press Enter on a row.", keys="Enter", ui={"path": r"^/dispatch/\d+"}),
     Step("combo", "Choose by code", what="Choice boxes (company, depot, customer, transporter, local auto) find "
          "a record by its CODE or part of its NAME.", do="In Transporter type SRL and press Enter.",
-         keys="type SRL · ↓↑ · Enter", ui={"value": ["select[name=transporter_id]", "Shree"]}),
+         keys="type SRL · ↓↑ · Enter", ui={"value": ["select[name=transporter_id]", "Shree"]}, perm="dispatch.operate"),
     Step("esc", "Esc - back without saving", what="Esc goes back one screen; if something was typed it asks first "
          "with 'Stay here' pre-selected.", do="Press Esc, then Y to leave without saving.", keys="Esc · Y",
          ui={"path": r"^/dispatch/pending"}),
@@ -604,16 +604,31 @@ DM2 = Lesson("dm-exceptions", "Transporter selection and freight exceptions",
     Step("inv", "The Durg invoice", do="Add XY/K/2604 (Durg).", ui={"text": ["#gp-lines tbody", "XY/K/2604"]}),
     Step("vijay", "A transporter without a Durg rate", do="Choose Vijay Transport Co.", keys="Enter · Enter · type VTC · Enter",
          ui={"text": ["#gp-why", "no rate for Durg"]}),
-    Step("fix", "Choose one that serves Durg", what="Shree Roadlines has ₹14 per case for Durg. (Or the Depot Manager "
-         "proposes a Vijay rate, which a checker approves.)", do="Choose Shree Roadlines instead.", keys="Shift+Tab "
+    Step("fix", "Choose one that serves Durg", what="Shree Roadlines has ₹14 per case for Durg. (Or ask the Administrator "
+         "to add a Vijay rate, which a checker approves.)", do="Choose Shree Roadlines instead.", keys="Shift+Tab "
          "back to Transporter · SRL · Enter", ui={"value": ["#gp-tr", "Shree"], "notext": ["#gp-why", "no rate"]}),
     Step("exceptions", "Freight Exceptions", what="Invoices with a missing rate, missing boxes or a conflict wait here "
          "for a fix.", do="Open Freight Exceptions.", keys="F3 exceptions Enter", page="/exceptions",
          ui={"path": r"^/exceptions"}),
 ])
 
-DM3 = Lesson("dm-reports", "Depot reporting", "Depot-wise and city-wise freight, export.", start="dispatched",
-             needs="has_dispatches", page="/reports/cfa-freight", steps=[L10.steps[2], L10.steps[3], L10.steps[7]])
+DM3 = Lesson("dm-reports", "Depot registers and delivery status",
+             "Dispatch register, deliveries still pending, the gatepass register and its export - your depots only.",
+             start="dispatched", needs="has_dispatches", page="/dispatch/register", steps=[
+    Step("register", "Dispatch Register", what="Every dispatch slip of your depots by date: transporter, vehicle, LR, "
+         "status. Final financial reports (company-wise freight, MIS, variance) are for Administrator, Accounts and "
+         "Management only - you see the operational registers.", do="Open Dispatch Register.",
+         keys="F3 dispatch register Enter", page="/dispatch/register", ui={"path": r"^/dispatch/register"}),
+    Step("deliveries", "Deliveries pending", what="Consignments that left the gate and have no proof of delivery yet; "
+         "overdue ones are marked.", do="Open Deliveries Pending.", keys="F3 deliveries Enter", page="/deliveries",
+         ui={"path": r"^/deliveries"}),
+    Step("gp-register", "Gatepass Register", what="Every gatepass of your depots with its state, charges paid and LR "
+         "still missing.", do="Open Gatepass Register (Operational Reports).", keys="F10 (Reports) · Enter, or F3 gatepass register",
+         page="/reports/gatepass-register", ui={"path": r"^/reports/gatepass-register"}),
+    Step("export", "Export", what="Operational registers export to Excel, CSV or PDF. In training the file is marked "
+         "TRAINING - NOT VALID FOR BUSINESS USE.", do="On the Gatepass Register press Excel (or CSV / PDF).",
+         keys="Tab to the export buttons · Enter", check="report_exported", perm="data.export"),
+])
 
 C01 = Lesson("c-rates", "Pending rate approvals - two people",
              "Approve rates someone else uploaded; see that your own change waits for another approver.",
@@ -686,8 +701,10 @@ PATHS: dict[str, dict] = {
                 "lessons": ["k00-keys", "c-rates", "c-exceptions", "c-bills"]},
     "ACCOUNTS": {"name": "Accounts", "roles": ["ACCOUNTS"],
                  "lessons": ["k00-keys", "a-expense", "a-bill-entry", "a-pay"]},
-    "MANAGEMENT": {"name": "Management / Viewer", "roles": ["MANAGEMENT", "VIEWER"],
+    "MANAGEMENT": {"name": "Management", "roles": ["MANAGEMENT"],
                    "lessons": ["v-dashboard", "v-reports"]},
+    # a Viewer is not a Management user: no dashboard figures, no final reports - only the keyboard basics
+    "VIEWER": {"name": "Read-only Viewer", "roles": ["VIEWER"], "lessons": ["k00-keys"]},
 }
 
 
@@ -698,6 +715,8 @@ def path_for_role(role_code: str | None, can=lambda p: False) -> str:
     # a role made by the Master: decide by what it may do
     if can("admin.users"):
         return "MASTER"
+    if can("mis.view") and not can("recon.pay"):
+        return "MANAGEMENT"
     if can("recon.pay"):
         return "ACCOUNTS"
     if can("rate.approve") or can("override.approve"):
@@ -706,7 +725,7 @@ def path_for_role(role_code: str | None, can=lambda p: False) -> str:
         return "DEPOT"
     if can("dispatch.operate"):
         return "DISPATCH"
-    return "MANAGEMENT"
+    return "VIEWER"
 
 
 def steps_for(lesson: Lesson, user) -> list[Step]:
