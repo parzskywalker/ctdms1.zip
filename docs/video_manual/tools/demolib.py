@@ -292,7 +292,13 @@ class Demo:
 
     # ------------------------------------------------------------------ keyboard-only part of the video
     def kb_only(self, on: bool = True):
-        self.pg.evaluate("on => { window.__kbOnly && window.__kbOnly(on); if (on && window.__moveCur) window.__moveCur(-200, -200); }", on)
+        for _ in range(20):  # the page may still be navigating after a key press
+            try:
+                self.pg.wait_for_load_state("domcontentloaded")
+                self.pg.evaluate("on => { window.__kbOnly && window.__kbOnly(on); if (on && window.__moveCur) window.__moveCur(-200, -200); }", on)
+                return
+            except Exception:
+                time.sleep(0.3)
 
     def key(self, k: str, show: str | None = None, after: float = 0.7):
         """Press one key and show it on screen (keycap in the corner)."""

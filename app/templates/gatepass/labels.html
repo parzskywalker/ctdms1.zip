@@ -25,14 +25,18 @@
   .label { border: 0; page-break-after: always; }
   {% endif %}
   @media print { .bar { display: none; } }
+  .trn-wm { border: 2px dashed #b45309; color: #b45309; font-weight: 800; text-align: center; padding: 3px 6px; margin: 0 0 6px; letter-spacing: .5px; font-size: 11px; }
+  .trn-wm-bg { position: relative; } .trn-wm-bg::after { content: "TRAINING - NOT VALID"; position: absolute; inset: 0; display: grid; place-items: center; font: 800 34px sans-serif; color: rgba(180, 83, 9, .14); transform: rotate(-24deg); pointer-events: none; }
 </style>
 </head>
 <body>
 <div class="bar"><b>{{ labels|length }} label(s)</b> for gatepass {{ slip.dispatch_no }} · {{ 'A4 sheet, 10 per page' if sheet else '100 × 50 mm label printer' }}<button onclick="window.print()">Print</button></div>
 {% set bc = slip.dispatch_no|barcode_svg %}
 <div class="labels">
+{% set wm = training_watermark() %}
 {% for l in labels %}
-  <div class="label">
+  <div class="label{{ ' trn-wm-bg' if wm }}">
+    {% if wm %}<div class="trn-wm">TRAINING - NOT VALID</div>{% endif %}
     <div class="top"><span>{{ org }}</span><span>{{ slip.dispatch_date.strftime('%d-%m-%Y') if slip.dispatch_date else '' }}</span></div>
     <div class="cust">{{ l.customer.name }}</div>
     <div class="area">{{ l.location.name }}</div>

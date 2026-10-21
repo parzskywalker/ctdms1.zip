@@ -147,11 +147,13 @@ NAV = [
     ]),
     ("Administration", [
         ("Users", "/admin/users", "admin.users", "user"),
+        ("Guided Training", "/admin/training", "admin.users", "help"),
         ("Roles", "/admin/roles", "admin.roles", "shield"),
         ("System Settings", "/admin/settings", "admin.settings", "cog"),
         ("Audit Log", "/reports/audit", "audit.view", "history"),
         ("Integration Settings", "/admin/integrations", "admin.integrations", "plug"),
     ]),
+    ("Help", [("Guided Training / Practice", "/training", "any", "help")]),
 ]
 
 
@@ -160,7 +162,8 @@ def nav_for(user: User | None) -> list:
         return []
     out = []
     for group, items in NAV:
-        vis = [(label, url, icon) for label, url, perm, icon in items if any(user.can(p) for p in perm.split("|"))]
+        vis = [(label, url, icon) for label, url, perm, icon in items
+           if perm == "any" or any(user.can(p) for p in perm.split("|"))]
         if vis:
             out.append((group, vis))
     return out
@@ -174,6 +177,23 @@ def flash(request: Request, message: str, kind: str = "info") -> None:
 
 def redirect(url: str) -> RedirectResponse:
     return RedirectResponse(url, status_code=303)
+
+
+def _training_watermark() -> str | None:
+    from app.training import runtime
+    return runtime.WATERMARK if runtime.active() else None
+
+
+templates.env.globals["training_watermark"] = _training_watermark
+
+
+def _training_ctx(request: Request) -> dict | None:
+    """Training Mode banner / watermark details for templates (None = live work)."""
+    from app.training import runtime
+    t = runtime.active()
+    if not t:
+        return None
+    return {"banner": runtime.BANNER, "watermark": runtime.WATERMARK, "acting": t.get("as")}
 
 
 def render(request: Request, name: str, ctx: dict | None = None, status_code: int = 200):
@@ -199,6 +219,7 @@ def render(request: Request, name: str, ctx: dict | None = None, status_code: in
         "today": today,
         "last_month": (last_month_end.replace(day=1), last_month_end),
         "fy_from": fy_start(today),
+        "training": _training_ctx(request),
     }
     base.update(ctx or {})
     return templates.TemplateResponse(request, name, base, status_code=status_code)

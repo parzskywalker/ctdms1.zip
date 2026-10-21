@@ -1,5 +1,46 @@
 # Changelog
 
+## v1.6.0 — Guided Training and first-time onboarding (21 Oct 2026)
+
+Migration 0008 (applied automatically): `training_progress` - one row per user in the live database.
+
+- **Guided Training** (Help › Guided Training / Practice Mode): new staff learn by doing the real work in the real
+  screens, on the v1.6 demonstration data, step by step: explain → highlight → do it → CTDMS checks → result → next.
+  Practical steps are checked on the server in the trainee's own data (a workbook really imported, a gatepass really
+  generated, printed and gone out, a bill really approved by a second person); clicking through never completes a lesson.
+- **Isolated practice copy per trainee** (`data/training/users/<id>/`): while a session is in Training Mode every screen
+  works on the trainee's own SQLite practice database and upload folder; sign-in and progress stay on the live database.
+  Starting points rebuilt from the v1.6 scenario through the application's own services (same workbook, SAP / MARG / CBO
+  files, transporters and amounts): clean, uploaded, masters, sap, invoices, dispatched, billed. "Prepare practice data"
+  copies one in under a second - no restart; several trainees practise at the same time without touching each other.
+- **Nothing leaves CTDMS in training**: WhatsApp / SMS, e-mailed reports, ERP sync, the AI bill reader and the live
+  import drop folder are blocked on the server; every training print, PDF, Excel and CSV export says
+  "TRAINING - DEMONSTRATION ONLY - NOT VALID FOR BUSINESS USE"; a permanent orange TRAINING MODE bar.
+- **Learning paths by role** (existing roles): Master Administrator (15 lessons, following the v1.6 video plus users &
+  roles, settings & two-person rate approval, delivery / POD, bills / reconciliation / duplicates / payment, audit &
+  exports from the Master manual), Dispatch Operator, Depot Manager, Checker / Approver, Accounts, Management / Viewer.
+  The two-person rule is practised with the practice copy's demonstration checker ("Act as Demo Checker").
+- **Compulsory training (Master switch)**: System Settings › Guided Training or Administration › Guided Training.
+  ON: users created from then on must finish their path before any live screen opens (server-side gate); OFF: everyone
+  works, training stays voluntary. Completions are never removed by the switch. The Master is never locked out of
+  Administration; `python -m app.cli training-release --username <u>` (or `--all-off`) as a last resort.
+- **Administration › Guided Training**: totals (required, not started, in training, completed), every user's path,
+  progress, start / last activity / completion dates; reassign a path, require / release, reset progress (audited).
+- **Keyboard-first panel**: Ctrl+Enter = Next / Check, Ctrl+/ = into the panel (Tab between Back, Check, Watch
+  demonstration, Replay lesson, Save & exit; Esc back to the screen). Every step lists the CTDMS keys to use.
+  "Watch demonstration" opens the v1.6 guide video at the lesson's chapter (range requests, Esc returns to practice).
+- Progress per user: path, current lesson and step, lessons passed with their checks, %, start, last activity,
+  completion; logging out and in resumes at the same step.
+- Fixes found while building the lessons: the demonstration workbook gave Ravi Tempo a default ₹20 per box, so the
+  Durg invoice was charged silently instead of showing the missing-rate warning the v1.6 video describes (workbook,
+  video and demonstration database re-made); Esc on a top-level list now goes to the user's first menu screen (roles
+  without the Dashboard got an error); after gate-out the cursor starts in the first empty LR box.
+- `python -m app.cli training-build` prepares the starting points (otherwise done in the background at start-up).
+- Tests: `test_training.py`, `test_training_master_path.py` (all 15 Master lessons with real actions),
+  `test_training_role_paths.py` (Depot, Checker, Accounts); `tests/e2e_training.py` - the Dispatch Operator path
+  completed in Edge with the keyboard only, compulsory switch, resume after logout, live database unchanged.
+- Guide: supplementary video `CTDMS_v1.6_Guided_Training.mp4` (+ transcript, subtitles); manual chapter "Guided Training".
+
 ## v1.6.0 — keyboard-first operation (21 Oct 2026)
 
 For staff used to MARG: every daily screen works from the keyboard, the mouse is optional. No database change.

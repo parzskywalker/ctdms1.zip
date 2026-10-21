@@ -85,7 +85,8 @@ def locked() -> bool:
 
 
 def available() -> bool:
-    if locked():
+    from app.training import runtime
+    if locked() or runtime.active():  # the paid reader never runs on practice data
         return False
     try:
         import anthropic  # noqa: F401

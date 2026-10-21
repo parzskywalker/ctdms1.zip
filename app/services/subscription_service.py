@@ -140,6 +140,8 @@ def smtp_ready() -> bool:
 
 
 def send_mail(to: list[str], subject: str, text: str, attachments: list[tuple[str, bytes, str]]) -> None:
+    from app.training import runtime
+    runtime.guard("e-mail")
     s = get_settings()
     if not smtp_ready():
         raise BusinessError("E-mail is not set up: CTDMS_SMTP_HOST and CTDMS_SMTP_FROM are needed in .env")

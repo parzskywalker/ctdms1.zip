@@ -22,6 +22,8 @@ def field_map_for(db: Session, erp: ERPSystem) -> dict[str, str]:
 
 def run_sync(db: Session, erp: ERPSystem, user: User | None, trigger: str = "MANUAL",
              since: datetime | None = None, until: datetime | None = None) -> IntegrationRun:
+    from app.training import runtime
+    runtime.guard("ERP synchronisation")
     run = IntegrationRun(erp_system_id=erp.id, trigger=trigger, triggered_by_id=user.id if user else None)
     db.add(run)
     db.flush()

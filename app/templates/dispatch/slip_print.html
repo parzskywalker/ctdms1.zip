@@ -32,12 +32,16 @@
   .bar { position: sticky; top: 0; background: #10233a; color: #fff; padding: 8px 14px; display: flex; gap: 10px; align-items: center; font-size: 13px; }
   .bar button { font: inherit; padding: 5px 12px; border-radius: 5px; border: 0; cursor: pointer; }
   @media print { body { background: #fff; } .sheet { margin: 0; box-shadow: none; width: auto; min-height: 0; padding: 0; } .bar { display: none; } }
+  .trn-wm { border: 2px dashed #b45309; color: #b45309; font-weight: 800; text-align: center; padding: 3px 6px; margin: 0 0 6px; letter-spacing: .5px; font-size: 11px; }
+  .trn-wm-bg { position: relative; } .trn-wm-bg::after { content: "TRAINING - NOT VALID"; position: absolute; inset: 0; display: grid; place-items: center; font: 800 34px sans-serif; color: rgba(180, 83, 9, .14); transform: rotate(-24deg); pointer-events: none; }
 </style>
 </head>
 <body>
 <div class="bar"><b>{{ items|length }} gatepass{{ 'es' if items|length > 1 }} · {{ size }}</b><span>Print event recorded.</span><button onclick="window.print()">Print again (same print event)</button><button onclick="window.close()">Close</button></div>
+{% set wm = training_watermark() %}
 {% for snap, label, line in items %}
-<div class="sheet">
+<div class="sheet{{ ' trn-wm-bg' if wm }}">
+  {% if wm %}<div class="trn-wm">{{ wm }}</div>{% endif %}
   <div class="head">
     <div>
       <div class="org">{{ snap.org_name }}</div>

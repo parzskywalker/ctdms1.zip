@@ -117,3 +117,29 @@ class MasterUpload(Base):
 
     uploaded_by = relationship("User", foreign_keys=[uploaded_by_id])
     committed_by = relationship("User", foreign_keys=[committed_by_id])
+
+
+class TrainingProgress(Base):
+    """v1.6 Guided Training: one row per user, kept in the LIVE database (the practice data itself lives in the
+    trainee's own practice database, see app.training.runtime)."""
+
+    __tablename__ = "training_progress"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True)
+    path: Mapped[str] = mapped_column(String(20))                       # MASTER / DISPATCH / DEPOT / CHECKER / ...
+    required: Mapped[bool] = mapped_column(Boolean, default=False)      # must finish before live work (when ON)
+    status: Mapped[str] = mapped_column(String(12), default="NOT_STARTED")  # NOT_STARTED / IN_PROGRESS / COMPLETED
+    current_lesson: Mapped[str | None] = mapped_column(String(40))
+    current_step: Mapped[int] = mapped_column(Integer, default=0)
+    lessons: Mapped[dict] = mapped_column(JSON, default=dict)           # code -> {status, started, done, checks{}}
+    started_at: Mapped[datetime | None] = mapped_column(DateTime)
+    last_activity_at: Mapped[datetime | None] = mapped_column(DateTime)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    assigned_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    assigned_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    reset_at: Mapped[datetime | None] = mapped_column(DateTime)
+    reset_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+    user = relationship("User", foreign_keys=[user_id])
+    assigned_by = relationship("User", foreign_keys=[assigned_by_id])

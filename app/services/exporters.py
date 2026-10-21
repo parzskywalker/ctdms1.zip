@@ -30,9 +30,16 @@ def _plain(v, kind):
     return v
 
 
+def _training_mark() -> str | None:
+    from app.training import runtime
+    return runtime.WATERMARK if runtime.active() else None
+
+
 def to_csv(res: ReportResult) -> bytes:
     buf = io.StringIO()
     w = csv.writer(buf)
+    if _training_mark():
+        w.writerow([_training_mark()])
     w.writerow([c.label for c in res.columns])
     for r in res.rows:
         row = []
@@ -78,7 +85,8 @@ def to_xlsx(res: ReportResult, title: str, subtitle: str) -> bytes:
     ws["A1"].font = Font(bold=True, size=13, color="1F3A5F")
     ws.append([subtitle])
     ws["A2"].font = Font(italic=True, size=9, color="5B6675")
-    ws.append([])
+    ws.append([_training_mark()])  # Guided Training: "TRAINING - ... NOT VALID FOR BUSINESS USE" (else empty)
+    ws["A3"].font = Font(bold=True, size=12, color="B45309")
     head_row = 4
     ws.append([c.label for c in res.columns])
     fill = PatternFill("solid", fgColor="1F3A5F")

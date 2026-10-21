@@ -193,6 +193,7 @@ table(["#", "Request", "What was done", "Where in CTDMS"], [
     ["19", "Reports and search", "Filters for recognition code, depot, city, customer type, local-auto method; City-wise, Depot-wise, Local Auto Trips; ERP number and code in separate columns", "Reports, Invoice Register"],
     ["20-21", "Demo data and video", "New v1.6 demonstration workbook and invoices; the guide video re-recorded in the same style", "this manual, the video"],
     ["22", "Keyboard first, mouse optional (MARG style)", "Same function keys on every screen (F1 help, F2 new, F3 go to, F4 search, F6 save, F7 edit, F8 gatepass / print, F9 complete dispatch, F10 reports, Esc back); Enter moves field to field and then to the main button; choice boxes find a company, depot, customer, customer type, area or transporter by code or name; arrows + Enter in every list; return to the same row; clear yellow focus; key bar at the bottom of every screen; delete / void / cancel ask first with No pre-selected", "every screen - F1 shows the keys"],
+    ["23", "Guided Training / onboarding", "New users practise their real workflow in their own practice copy (v1.6 demonstration data), every step checked by CTDMS; learning paths per role; compulsory ON/OFF by the Master; progress, reset, reassign; nothing reaches live data", "Help › Guided Training; Administration › Guided Training"],
 ], [1.2, 3.4, 8.2, 4.2])
 
 # ------------------------------------------------------------------------- 2 summary
@@ -234,6 +235,7 @@ table(["Delivered", "File"], [
     ["This manual", "v1.6/CTDMS_v1.6_Master_User_Manual_Demonstration_Edition.pdf"],
     ["Guide video (screen recording, captions, voice)" + (f", {VIDEO_LEN}" if VIDEO_LEN else ""), "v1.6/CTDMS_v1.6_Guide_Video.mp4"],
     ["Transcript with time stamps, subtitles", "v1.6/CTDMS_v1.6_Guide_Video_Transcript.txt, …_Subtitles.srt"],
+    ["Guided Training video (first-time users, 5 min) + transcript", "v1.6/CTDMS_v1.6_Guided_Training.mp4, …_Transcript.txt"],
     ["Demonstration master workbook and invoice files", "v1.6/demo_files/"],
     ["Exports produced during the demonstration", "v1.6/exports/"],
     ["Demonstration database + starter", "v1.6/demo_database/, start_demonstration_v16.bat"],
@@ -461,6 +463,47 @@ num(["Start from an empty database (init-db, create-admin) - do not reuse the de
      "Create the real users and roles; keep paid services locked unless the business decides otherwise.",
      "Back up the database and test a restore."])
 P(f"Audit entries written during the demonstration: {audit_n}.")
+
+# ------------------------------------------------------------------------- 11 guided training
+h1("11. Guided Training - first-time users")
+P("New staff learn their work by doing it on the real screens, with the v1.6 demonstration data, in their own private "
+  "practice copy of CTDMS. Live data is never touched; only their training progress is saved.")
+table(["", "How it works"], [
+    ["Start", "Help › Guided Training / Practice Mode › Start (or Continue). A practice copy is prepared from the v1.6 "
+              "demonstration (same workbook, invoices, transporters and amounts as the video) and the first screen opens."],
+    ["Each step", "The panel on the right explains what the feature does, why it matters, what to do, which keys to press "
+                  "and what to expect, and highlights the field. The trainee does it on the real screen."],
+    ["Checked", "Practical steps pass only when CTDMS finds the real result in the practice copy (workbook imported, "
+                "gatepass generated / printed / gone out, bill approved by a second person …). Clicking through is not enough."],
+    ["Keys", "Ctrl+Enter = Next / Check · Ctrl+/ = into the panel (Tab, Enter, Esc back) · every CTDMS key works as usual."],
+    ["Video", "Watch demonstration plays the matching chapter of the v1.6 guide video; Esc returns to the same step."],
+    ["Safe", "Orange TRAINING MODE bar; prints and exports say TRAINING - NOT VALID FOR BUSINESS USE; no WhatsApp / SMS / "
+             "e-mail / ERP sync; every trainee has a separate practice copy (no restart, several at once)."],
+    ["Progress", "Saved after every step; logging out and in resumes at the same step; Replay lesson and Prepare practice "
+                 "data reset only the trainee's own practice copy."],
+], [3, 14])
+h2("Learning paths (from the user's role)")
+import importlib.util  # noqa: E402 - the lesson list itself (no app import: this venv has no web framework)
+_spec = importlib.util.spec_from_file_location("ctdms_lessons", Path(__file__).parents[3] / "app" / "training" / "lessons.py")
+_les = importlib.util.module_from_spec(_spec)
+sys.modules["ctdms_lessons"] = _les
+_spec.loader.exec_module(_les)
+LESSONS, PATHS = _les.LESSONS, _les.PATHS
+table(["Path", "Lessons"], [[p["name"], " · ".join(f"{n}. {LESSONS[c].title}" for n, c in enumerate(p["lessons"], 1))]
+                             for p in PATHS.values()], [3.6, 13.4])
+h2("For the Master - compulsory training")
+bl(["Administration › Guided Training (or System Settings › Guided Training): switch compulsory training ON or OFF; "
+    "every change is in the audit log.",
+    "ON: users created from then on must finish their path before any live screen opens - the server enforces it.",
+    "OFF: everyone works according to their permissions; training stays voluntary under Help. Completed training is never removed.",
+    "Per user: path, required / voluntary, status, progress, start, last activity and completion dates; Assign another "
+    "path, Require / Not required, Reset (progress and practice copy).",
+    "The Master is never locked out of Administration; last resort: python -m app.cli training-release --username <name>."])
+for n, cap in (("t02_training_home", "First login of a new operator: Guided Training opens; live screens stay closed."),
+               ("t05_long_distance", "A practical step: the panel explains and checks; the trainee works with the keyboard."),
+               ("t07_no_rate", "Lesson 9: the missing per-box rate for Durg, explained in the panel."),
+               ("t09_master_dashboard", "Administration › Guided Training: compulsory switch, totals and every user's progress.")):
+    shot(n, cap, w=15)
 
 Doc(OUT).multiBuild(S)
 print("pdf written", OUT)

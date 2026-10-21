@@ -30,7 +30,7 @@ from app.models import (
     CFA, ChargeBasis, Company, Customer, CustomerTypeMaster, ERPCodeMapping, ERPSystem, InvoiceMarking,
     LocalAutoRate, Location, MasterUpload, OutsideAuto, PaymentMode, Transporter, User, utcnow,
 )
-from app.services import audit
+from app.services import audit, storage
 from app.services import transporter_rate_service as trs
 from app.services.errors import BusinessError
 
@@ -528,7 +528,7 @@ def preview(db: Session, user: User, content: bytes, filename: str) -> MasterUpl
     sheets = read_workbook(content, filename)
     rows, counts = validate(db, sheets)
     digest = hashlib.sha256(content).hexdigest()
-    folder = Path(get_settings().upload_dir) / "masters"
+    folder = storage.upload_dir() / "masters"
     folder.mkdir(parents=True, exist_ok=True)
     up = MasterUpload(file_name=Path(filename).name[:200], file_hash=digest, status="PREVIEW", counts=counts,
                       rows=rows, uploaded_by_id=user.id, uploaded_at=utcnow())

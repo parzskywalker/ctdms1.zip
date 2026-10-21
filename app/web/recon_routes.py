@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import BillStatus, Transporter, TransporterBill, User
 from app.security.auth import csrf_protect, require
-from app.services import audit
+from app.services import audit, storage
 from app.services import bill_scan_service as scan_svc
 from app.services import recon_service as rs
 from app.services import settings_service as cfg
@@ -130,7 +130,7 @@ def _scan_create(request: Request, db: Session, user: User, form, uploads: list)
     if not can_change(user, co_id, cf_id):
         raise BusinessError("Select a company and depot you are assigned to")
     files, stored = [], []
-    folder = get_settings().upload_dir / BILL_DIR
+    folder = storage.upload_dir() / BILL_DIR
     folder.mkdir(parents=True, exist_ok=True)
     for up in uploads:
         ext = Path(up.filename or "").suffix.lower()
@@ -203,7 +203,7 @@ def scan_file(bill_id: int, n: int, request: Request, db: Session = Depends(get_
     files = b.scan_files or []
     if not (0 <= n < len(files)):
         raise HTTPException(404)
-    path = get_settings().upload_dir / BILL_DIR / Path(files[n]["name"]).name
+    path = storage.upload_dir() / BILL_DIR / Path(files[n]["name"]).name
     if not path.exists():
         raise HTTPException(404)
     return FileResponse(path, media_type=files[n].get("type") or "application/octet-stream")

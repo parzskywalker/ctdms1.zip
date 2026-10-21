@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="crumbs"><a href="/admin/training">Guided Training</a> › {{ u.full_name }}</div>
+<div class="page-head">
+  <div><h1>{{ u.full_name }} <span class="muted small">{{ u.username }} · {{ u.role.name if u.role else '' }}</span></h1>
+    <div class="sub">{{ sum.path_name or paths['MANAGEMENT'].name }} · {{ sum.label }} · {{ sum.done }} of {{ sum.total }} lessons ({{ sum.percent }}%)
+      {% if p and p.required %} · <b>training required</b>{% endif %}</div></div>
+</div>
+{% if not p %}<div class="alert alert-info">This user has not opened Guided Training yet.</div>{% else %}
+<div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+  <div class="kpi"><div class="lbl">Started</div><div class="val" style="font-size:15px">{{ p.started_at|dt if p.started_at else '—' }}</div></div>
+  <div class="kpi"><div class="lbl">Last activity</div><div class="val" style="font-size:15px">{{ p.last_activity_at|dt if p.last_activity_at else '—' }}</div></div>
+  <div class="kpi {{ 'good' if p.completed_at }}"><div class="lbl">Completed</div><div class="val" style="font-size:15px">{{ p.completed_at|dt if p.completed_at else '—' }}</div></div>
+  <div class="kpi"><div class="lbl">Assigned</div><div class="val" style="font-size:15px">{{ p.assigned_at|dt if p.assigned_at else '—' }}</div><div class="hint">{{ p.assigned_by.full_name if p.assigned_by else 'from the role' }}</div></div>
+</div>
+<div class="card flush">
+  <div class="table-wrap"><table class="data">
+    <thead><tr><th>#</th><th>Lesson</th><th>Attempts</th><th>Completed</th><th>Practical steps passed (what CTDMS found)</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr class="{% if p.current_lesson == r.l.code and not r.r.done %}sel{% endif %}">
+        <td>{{ loop.index }}</td><td><b>{{ r.l.title }}</b><div class="small muted">{{ r.l.summary }}</div></td>
+        <td class="num">{{ r.r.attempts or 0 }}</td>
+        <td class="small nowrap">{{ r.r.done[:16].replace('T', ' ') if r.r.done else ('in progress' if p.current_lesson == r.l.code else '—') }}</td>
+        <td class="small">{% for title, c in r.checks %}<div>{{ '✓' if c else '·' }} {{ title }}{% if c and c.msg and c.msg != 'done on screen' %} <span class="muted">— {{ c.msg }}</span>{% endif %}</div>{% endfor %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endif %}
+<div class="card">
+  <h3 style="margin-top:0">Training history (audit log)</h3>
+  <ul class="timeline">{% for a in history %}<li><b>{{ a.action.replace('TRAINING_', '').replace('_', ' ').title() }}</b> {{ a.ref or '' }} · {{ a.username }} · <span class="muted">{{ a.ts|dt }}</span>{% if a.reason %}<br><i>{{ a.reason }}</i>{% endif %}</li>{% else %}<li class="muted">No entries yet.</li>{% endfor %}</ul>
+</div>
+{% endblock %}

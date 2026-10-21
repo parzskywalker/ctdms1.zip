@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Guided Training</h1>
+    <div class="sub">Who has trained on the v1.6 demonstration data, who is in training and who has not started. Every action here is recorded in the audit log.</div></div>
+  <div class="actions"><a class="btn" href="/training">My own training</a></div>
+</div>
+{% if training %}<div class="alert alert-info">This page manages the <b>live</b> training records of your users (not practice data).</div>{% endif %}
+
+<div class="card">
+  <div class="row" style="justify-content:space-between">
+    <div><h3 style="margin:0">Compulsory training for new users: <span class="badge {{ 'b-ACTIVE' if compulsory else 'b-NIL' }}">{{ 'ON' if compulsory else 'OFF' }}</span></h3>
+      <div class="small muted">{{ 'Users created from now on must finish their learning path before they can work on live data. The Master is never locked out of Administration.' if compulsory else 'Everyone works according to their permissions; training is voluntary under Help › Guided Training.' }}
+        Switching it changes nobody's completed training.</div></div>
+    {% if can('admin.settings') %}
+    <form method="post" action="/admin/training/switch" class="row" style="margin:0">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="on" value="{{ '' if compulsory else '1' }}">
+      <input type="text" name="reason" placeholder="Reason (audited)" style="width:220px">
+      <button class="btn {{ '' if compulsory else 'btn-primary' }}" type="submit" data-confirm="{{ 'Switch compulsory training OFF?' if compulsory else 'Switch compulsory training ON for users created from now on?' }}">Switch {{ 'OFF' if compulsory else 'ON' }}</button>
+    </form>{% endif %}
+  </div>
+</div>
+
+<div class="kpis" style="grid-template-columns:repeat(5,minmax(0,1fr))">
+  <div class="kpi"><div class="lbl">Active users</div><div class="val">{{ counts.total }}</div></div>
+  <div class="kpi warn"><div class="lbl">Training required</div><div class="val">{{ counts.required }}</div></div>
+  <div class="kpi"><div class="lbl">Not started</div><div class="val">{{ counts.NOT_STARTED }}</div></div>
+  <div class="kpi"><div class="lbl">In training</div><div class="val">{{ counts.IN_PROGRESS }}</div></div>
+  <div class="kpi good"><div class="lbl">Completed</div><div class="val">{{ counts.COMPLETED }}</div></div>
+</div>
+
+<div class="card flush">
+  <div class="table-wrap"><table class="data" data-grid="off">
+    <thead><tr><th>User</th><th>Role · depot</th><th>Learning path</th><th>Required</th><th>Status</th><th class="num">Progress</th><th>Started · last activity</th><th>Completed</th><th style="min-width:260px">Actions</th></tr></thead>
+    <tbody>
+    {% for r in rows %}{% set u = r.u %}
+      <tr class="{% if not u.is_active %}row-muted{% endif %}">
+        <td><a href="/admin/training/{{ u.id }}"><b>{{ u.full_name }}</b></a><div class="small muted">{{ u.username }}</div></td>
+        <td>{{ u.role.name if u.role else '' }}<div class="small muted">depots: {{ r.depots }}</div></td>
+        <td>{{ paths[r.path].name }}{% if r.p and r.p.current_lesson and r.s.status != 'COMPLETED' %}<div class="small muted">now: {{ lessons[r.p.current_lesson].title if r.p.current_lesson in lessons else r.p.current_lesson }}</div>{% endif %}</td>
+        <td>{% if r.p and r.p.required %}<span class="badge b-WARNING">Required</span>{% else %}<span class="badge b-NIL">Voluntary</span>{% endif %}</td>
+        <td><span class="badge {{ {'COMPLETED': 'b-COMPLETED', 'IN_PROGRESS': 'b-SLIP_GENERATED', 'NOT_STARTED': ''}[r.s.status] }}">{{ labels[r.s.status] }}</span></td>
+        <td class="num">{{ r.s.done }} / {{ r.s.total or paths[r.path].lessons|length }}<div class="small muted">{{ r.s.percent }}%</div></td>
+        <td class="small">{{ r.p.started_at|dt if r.p and r.p.started_at else '—' }}<br><span class="muted">{{ r.p.last_activity_at|dt if r.p and r.p.last_activity_at else '' }}</span></td>
+        <td class="small">{{ r.p.completed_at|dt if r.p and r.p.completed_at else '—' }}</td>
+        <td>
+          <form method="post" action="/admin/training/{{ u.id }}" class="row" style="gap:4px;margin:0 0 4px">
+            <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="do" value="assign">
+            <select name="path" style="width:auto" aria-label="Learning path for {{ u.username }}" data-native>{% for k, pth in paths.items() %}<option value="{{ k }}" {% if k == r.path %}selected{% endif %}>{{ pth.name }}</option>{% endfor %}</select>
+            <button class="btn btn-sm" type="submit">Assign</button>
+          </form>
+          <form method="post" action="/admin/training/{{ u.id }}" class="inline-form"><input type="hidden" name="csrf_token" value="{{ csrf }}">
+            {% if r.p and r.p.required %}<button class="btn btn-sm" name="do" value="release" type="submit">Not required</button>{% else %}<button class="btn btn-sm" name="do" value="require" type="submit">Require</button>{% endif %}
+            <button class="btn btn-sm btn-danger" name="do" value="reset" type="submit" data-confirm="Reset {{ u.full_name }}'s training progress and practice data? Their completion date is removed.">Reset</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+<div class="card">
+  <h3 style="margin-top:0">Required lessons per learning path</h3>
+  <div class="grid g3">
+  {% for k, pth in paths.items() %}
+    <div><b>{{ pth.name }}</b> <span class="small muted">({{ pth.lessons|length }} lessons)</span>
+      <ol class="small" style="padding-left:18px;margin:4px 0 0">{% for c in pth.lessons %}<li>{{ lessons[c].title }}{% if lessons[c].practical %} <span class="muted">· practical</span>{% endif %}</li>{% endfor %}</ol></div>
+  {% endfor %}
+  </div>
+</div>
+{% endblock %}

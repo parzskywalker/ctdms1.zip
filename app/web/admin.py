@@ -106,6 +106,10 @@ def user_save(request: Request, form=Depends(get_form), db: Session = Depends(ge
         db.flush()
         audit.log(db, user, "USER_CREATED", "ADMIN", record_type="User", record_id=u.id, ref=u.username,
                   details={"role": role.code})
+        from app.training import progress as training
+        if training.on_user_created(db, u, user):  # compulsory training ON (live database only)
+            flash(request, f"{u.username} must finish Guided Training ({training.summary(training.get(db, u.id))['path_name']}) "
+                           "before working on live data.", "info")
     db.commit()
     flash(request, f"User {u.username} saved.", "success")
     return redirect(f"/admin/users/{u.id}")

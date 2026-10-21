@@ -14,4 +14,6 @@ from app.models.invoice import (  # noqa: F401
 )
 from app.models.recon import BillStatus, LineMatch, TransporterBill, TransporterBillLine  # noqa: F401
 from app.models.notify import Notification, NotifyEvent, NotifyStatus  # noqa: F401
-from app.models.system import AuditLog, IntegrationRun, MasterUpload, ReportSubscription, Sequence, Setting  # noqa: F401
+from app.models.system import (  # noqa: F401
+    AuditLog, IntegrationRun, MasterUpload, ReportSubscription, Sequence, Setting, TrainingProgress,
+)

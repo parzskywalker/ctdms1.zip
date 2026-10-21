@@ -144,7 +144,10 @@ def rebind(url: str) -> None:
 
 
 def get_db() -> Iterator[Session]:
-    db = SessionLocal()
+    # Training Mode (v1.6 Guided Training): the trainee's own practice database, never the live one.
+    from app.training import runtime
+    t = runtime.active()
+    db = runtime.session_for(t["uid"]) if t else SessionLocal()
     try:
         yield db
     finally:

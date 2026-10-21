@@ -59,6 +59,10 @@ DEFAULTS: dict[str, tuple[str, str, str, str, str | None]] = {
                         "/ HTTP_SMS (your SMS gateway). WhatsApp and SMS are PAID and stay locked unless CTDMS_PAID_SERVICES=true; "
                         "the API token goes in CTDMS_NOTIFY_TOKEN (.env).",
                         "OFF,LOG,WHATSAPP_CLOUD,HTTP_SMS"),
+    "training.required_for_new_users": ("false", "bool", "Guided Training",
+                                        "Compulsory training: users created from now on must finish their Guided Training "
+                                        "(practice on demonstration data) before they can work on live data. Switching it "
+                                        "OFF lets everyone work; completed training is never removed", None),
     "notify.on_gate_out": ("true", "bool", "Customer notifications", "Tell the customer when their goods leave the gate",
                            None),
     "notify.on_lr": ("true", "bool", "Customer notifications", "Tell the customer the LR / bilty number when it is entered",

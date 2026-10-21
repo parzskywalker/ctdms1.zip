@@ -60,7 +60,8 @@ TRANSPORTERS = [  # code, name, type, payment, method, usual, trip, box, vehicle
     ("DM-SRL", "Shree Roadlines (Demo)", "LONG_DISTANCE", "TBB", "", "", "", "", "", "9000002001"),
     ("DM-VTC", "Vijay Transport Co (Demo)", "LONG_DISTANCE", "TBB", "", "", "", "", "", "9000002002"),
     ("DM-LA1", "Sharma Local Auto (Demo)", "LOCAL_AUTO", "", "PER_TRIP", "", "500", "", "CG04-AB-1001", "9000003001"),
-    ("DM-LA2", "Ravi Tempo (Demo)", "LOCAL_AUTO", "", "PER_BOX", "", "", "20", "CG04-AB-1002", "9000003002"),
+    # no default rate per box: Ravi is paid only where a Local Auto Box Rate exists (so Durg shows the missing-rate warning)
+    ("DM-LA2", "Ravi Tempo (Demo)", "LOCAL_AUTO", "", "PER_BOX", "", "", "", "CG04-AB-1002", "9000003002"),
     ("DM-LA3", "Kishore Mini Truck (Demo)", "LOCAL_AUTO", "", "BOTH", "PER_TRIP", "600", "18", "CG04-AB-1003", "9000003003"),
 ]
 

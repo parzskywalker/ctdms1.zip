@@ -33,7 +33,9 @@ SUFFIXES = (".csv", ".xlsx", ".xls", ".xlsm", ".txt")
 
 
 def inbox_dir() -> Path:
-    p = get_settings().data_dir / "inbox"
+    from app.training import runtime
+    # Training Mode: the trainee's own (empty) drop folder - the live ERP drop folder is never read while practising
+    p = runtime.inbox_dir() if runtime.active() else get_settings().data_dir / "inbox"
     for sub in ("", "processed", "failed"):
         (p / sub).mkdir(parents=True, exist_ok=True)
     return p

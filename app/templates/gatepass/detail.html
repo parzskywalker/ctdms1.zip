@@ -39,6 +39,7 @@
     <div class="table-wrap"><table class="data compact">
       <thead><tr><th>Customer · area</th><th>Invoices</th><th class="num">Cases</th><th class="num">Rate</th><th class="num">Charge</th><th style="width:230px">LR no / date</th></tr></thead>
       <tbody>
+      {% set lrf = namespace(done=false) %}
       {% for g in groups %}
         {% set locked = g.locked %}
         <tr>
@@ -50,7 +51,7 @@
           <td class="num">{% for inv, ln in g.invs %}<div>{{ ((ln.freight + ln.extra_charge) if ln else inv.freight_amount)|money }}</div>{% endfor %}</td>
           <td>{% set first = g.invs[0][0] %}
             {% if slip.transporter_id and not slip.is_void and can('dispatch.operate') and not locked %}
-              <div class="row" style="gap:4px;flex-wrap:nowrap"><input type="text" name="lr_{{ g.customer.id }}" value="{{ first.lr_no or '' }}" placeholder="LR no" data-upper style="min-height:28px;padding:3px 6px;width:110px"><input type="date" name="lrdate_{{ g.customer.id }}" value="{{ first.lr_date.isoformat() if first.lr_date else '' }}" style="min-height:28px;padding:3px 4px;width:118px"></div>
+              <div class="row" style="gap:4px;flex-wrap:nowrap"><input type="text" name="lr_{{ g.customer.id }}" value="{{ first.lr_no or '' }}" placeholder="LR no" data-upper{% if slip.gate_out_at and not first.lr_no and not lrf.done %} data-autofocus{% set lrf.done = true %}{% endif %} style="min-height:28px;padding:3px 6px;width:110px"><input type="date" name="lrdate_{{ g.customer.id }}" value="{{ first.lr_date.isoformat() if first.lr_date else '' }}" style="min-height:28px;padding:3px 4px;width:118px"></div>
               {% if first.lr_updated_by %}<div class="small muted">by {{ first.lr_updated_by.full_name }} {{ first.lr_updated_at|dt }}</div>{% endif %}
             {% else %}<span class="mono">{{ first.lr_no or '—' }}</span>{% if first.lr_date %} <span class="small muted">{{ first.lr_date|date }}</span>{% endif %}{% if locked %}<div class="small muted">locked: {{ locked }}</div>{% endif %}{% endif %}
           </td>

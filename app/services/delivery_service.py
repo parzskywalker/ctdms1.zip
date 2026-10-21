@@ -25,7 +25,7 @@ from app.config import get_settings
 from app.models import (
     DeliveryStatus, DispatchSlip, Invoice, InvoiceStatus, TransporterBill, User, utcnow,
 )
-from app.services import audit
+from app.services import audit, storage
 from app.services import settings_service as cfg
 from app.services.errors import BusinessError
 from app.services.scope import apply_invoice_scope
@@ -67,7 +67,7 @@ def save_pod_file(content: bytes, filename: str) -> str:
     ext = Path(filename or "").suffix.lower()
     if ext not in POD_MEDIA:
         raise BusinessError("The proof of delivery must be a photo (JPG / PNG / WEBP) or a PDF")
-    folder = get_settings().upload_dir / POD_DIR
+    folder = storage.upload_dir() / POD_DIR
     folder.mkdir(parents=True, exist_ok=True)
     name = f"{local_today():%Y%m%d}-{uuid.uuid4().hex[:12]}{ext}"
     (folder / name).write_bytes(content)
@@ -75,7 +75,7 @@ def save_pod_file(content: bytes, filename: str) -> str:
 
 
 def pod_path(name: str) -> Path | None:
-    p = get_settings().upload_dir / POD_DIR / Path(name).name
+    p = storage.upload_dir() / POD_DIR / Path(name).name
     return p if p.exists() else None
 
 

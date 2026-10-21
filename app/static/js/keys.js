@@ -207,13 +207,18 @@
     else {
       const cr = $$('.crumbs a');
       if (cr.length) href = cr[cr.length - 1].href;
-      else if ($('.side') && location.pathname !== '/') href = '/';
+      else if ($('.side') && location.pathname !== homePath()) href = homePath();
     }
     if (!href) return;
     if (dirty()) {
       ask('Leave this screen? What you typed here has not been saved.', {danger: true, yes: 'Leave without saving', no: 'Stay here'})
         .then((ok) => { if (ok) location.href = href; });
     } else location.href = href;
+  }
+  function homePath() {  // the Dashboard, or the first screen of the menu for roles without the Dashboard
+    if ($('.side a[href="/"]')) return '/';
+    const first = $('.side a[href]');
+    return first ? first.getAttribute('href') : '/';
   }
   function onEsc(e) {
     if (e.defaultPrevented) return;
@@ -658,7 +663,10 @@
         if (cameFrom()) out.push({k, label: 'Back to the list', on: true});
         else if (ex) out.push({k, label: shortLabel(ex, k), on: true});
         else if (cr.length) out.push({k, label: 'Back to ' + cr[cr.length - 1].textContent.trim(), on: true});
-        else if (location.pathname !== '/') out.push({k, label: 'Dashboard', on: true});
+        else if (location.pathname !== homePath()) {
+          const h = $(`.side a[href="${homePath()}"]`);
+          out.push({k, label: h ? h.textContent.trim() : 'Dashboard', on: true});
+        }
         return;
       }
       const t = resolve(k);
@@ -702,6 +710,8 @@
       + '<tr><td><kbd>Space</kbd></td><td>Tick / untick a checkbox or a ticked table row</td></tr>'
       + '<tr><td><kbd>Esc</kbd></td><td>Close the list or dialog; otherwise back one screen (asks first if something is not saved)</td></tr>'
       + '<tr><td><kbd>/</kbd></td><td>Find an invoice / LR / gatepass from any screen</td></tr>'
+      + ($('#trn-panel') ? '<tr><td><kbd>Ctrl</kbd>+<kbd>Enter</kbd></td><td>Guided Training: Next / Check the step</td></tr>'
+        + '<tr><td><kbd>Ctrl</kbd>+<kbd>/</kbd></td><td>Guided Training: into the panel (Tab between its buttons, Esc back)</td></tr>' : '')
       + '</table><h3>On this screen</h3><div class="kb-here">'
       + (here.length ? here.map((it) => '<span' + (it.on ? '' : ' class="off"') + '><kbd>' + it.k + '</kbd> ' + esc(it.label) + '</span>').join('') : '<span class="muted">Only the general keys.</span>')
       + '</div><p class="small muted" style="margin-top:12px">Delete, void, cancel and reject always ask first, and the safe answer (<b>No</b>) is already selected - Enter alone never deletes or cancels anything.</p></div></div></div>';

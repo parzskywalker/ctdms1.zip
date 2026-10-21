@@ -1,267 +1,267 @@
 1
-00:00:03,200 --> 00:00:31,885
+00:00:03,960 --> 00:00:32,645
 Welcome to the version 1.6 walkthrough. It shows the changes asked for after the management review: one master workbook, depots instead of C F A, customer types and codes, the invoice recognition code, local autos charged per trip or per box, and keyboard-first operation for staff used to MARG. The database is empty. Every record you will see is a demonstration entry.
 
 2
-00:00:33,640 --> 00:00:45,318
+00:00:34,490 --> 00:00:46,168
 This is the dashboard of a brand-new installation. The menu now says Depot wherever it used to say C F A, and all the master records live under Master Settings.
 
 3
-00:00:45,920 --> 00:00:53,269
+00:00:46,770 --> 00:00:54,119
 First, one more person: a checker, because rates still need a second person's approval.
 
 4
-00:00:59,590 --> 00:01:11,758
+00:01:02,500 --> 00:01:14,668
 Step one. On the first day, all the master data compiled from MARG, SAP, CBO and Intrect is uploaded once, in one cleaned workbook.
 
 5
-00:01:13,530 --> 00:01:43,755
+00:01:16,530 --> 00:01:46,755
 Master Settings, Initial Master Upload. The blank workbook can be downloaded here. Its first sheet explains every column; the other sheets are companies, depots, customers, customer types, transporters, locations, local auto rates, freight rates, invoice code mappings and E R P mappings. Product and S K U sheets are not part of version one point six.
 
 6
-00:01:44,350 --> 00:01:52,653
+00:01:47,350 --> 00:01:55,653
 We upload the demonstration workbook. Nothing is saved yet: CTDMS first checks every row.
 
 7
-00:01:53,250 --> 00:02:17,006
+00:01:56,250 --> 00:02:20,006
 The preview gives accepted and rejected counts for each sheet. Four rows have problems, and each one says why: a depot without a city, a customer typed twice, a customer whose delivery location does not exist, and the Retailer customer type, which already exists in CTDMS and is therefore skipped, not duplicated.
 
 8
-00:02:17,610 --> 00:02:22,484
+00:02:20,610 --> 00:02:25,484
 Only the valid rows will be imported. We press Import.
 
 9
-00:02:23,080 --> 00:02:38,377
+00:02:26,480 --> 00:02:41,777
 Fifty two master records were created in one go. The rejected rows stay in the history with an Excel error report, so they can be corrected. From now on, single new records are added under Master Settings.
 
 10
-00:02:38,980 --> 00:02:44,229
+00:02:42,380 --> 00:02:47,629
 Step two. A quick look at the masters the workbook created.
 
 11
-00:02:46,010 --> 00:03:01,632
+00:02:49,500 --> 00:03:05,122
 The Company Master. Each company keeps its code and has a short recognition code: A B C, X Y Z, P Q R and T D L for our own distribution. Each is linked to its billing system.
 
 12
-00:03:02,230 --> 00:03:18,472
+00:03:05,720 --> 00:03:21,962
 The Depot Master. Raipur has two depots, Guma and Kamal Vihar. They are in the same city but are separate depots, each with its own code, locality and recognition code. Bilaspur has its own depot.
 
 13
-00:03:19,070 --> 00:03:27,468
+00:03:22,560 --> 00:03:30,958
 Inside a depot: locality, city, address, the companies it handles and its usual billing system.
 
 14
-00:03:28,070 --> 00:03:52,491
+00:03:31,560 --> 00:03:55,981
 Customer Types are now a master of their own, not fixed in the program: retailer, stockist, distributor, hospital, institution, chain pharmacy, other, plus the two the workbook added. Each has a short code, like R E T. Notice that Government Supply has no code yet. We will come back to that.
 
 15
-00:03:53,090 --> 00:04:04,832
+00:03:56,580 --> 00:04:08,322
 The Customer Master: customer code, name, customer type, recognition code like C zero two five, delivery location and the companies served.
 
 16
-00:04:05,430 --> 00:04:14,378
+00:04:08,920 --> 00:04:17,868
 Each customer also keeps its source E R P and the code that E R P uses, so imports find the customer automatically.
 
 17
-00:04:14,980 --> 00:04:24,423
+00:04:18,470 --> 00:04:27,913
 Long-distance transporters work exactly as in version one point five: a rate card per area, L R numbers and a monthly bill.
 
 18
-00:04:25,020 --> 00:04:40,127
+00:04:28,510 --> 00:04:43,617
 Local autos are listed separately. Sharma Local Auto charges per trip, usually five hundred rupees. Ravi Tempo charges per box. Kishore Mini Truck can be charged either way.
 
 19
-00:04:40,730 --> 00:04:55,187
+00:04:44,220 --> 00:04:58,677
 Per-box rates can depend on the location, the company and the depot. Ravi Tempo charges twenty rupees a box in Raipur, twenty five to Bhilai, and twenty two for P Q R's goods in Raipur.
 
 20
-00:04:55,790 --> 00:05:12,062
+00:04:59,280 --> 00:05:15,552
 Invoice Code Mappings hold the markings our billing systems already put in their invoice numbers. In MARG, an invoice starting with X Y slash G is X Y Z Healthcare from the Guma depot; X Y slash K is from Kamal Vihar.
 
 21
-00:05:12,660 --> 00:05:23,313
+00:05:16,150 --> 00:05:26,803
 The freight rates from the workbook wait for the checker. The checker reviews them and presses Approve all. The person who uploaded them could not approve them.
 
 22
-00:05:23,910 --> 00:05:34,103
+00:05:27,400 --> 00:05:37,593
 Step three. After the first day, nobody re-uploads the whole workbook. A new record is simply added in Master Settings.
 
 23
-00:05:35,860 --> 00:05:44,118
+00:05:39,500 --> 00:05:47,758
 A new local auto has joined: Mohan's e-rickshaw, charged per trip, usually three hundred rupees.
 
 24
-00:05:44,720 --> 00:05:50,179
+00:05:50,560 --> 00:05:56,019
 It is saved, and it will be in the local auto list on the gatepass straight away.
 
 25
-00:05:50,780 --> 00:06:02,308
+00:05:56,620 --> 00:06:08,148
 Step four, the new provision: one internal code that tells, at a glance, which company, customer type, customer and depot an invoice belongs to.
 
 26
-00:06:04,080 --> 00:06:32,135
+00:06:10,120 --> 00:06:38,175
 The code is built from the short codes in the masters: company, customer type, customer, depot, and the number part of the E R P invoice number. For example A B C, R E T, C zero two five, GUMA, then zero zero one two four five. The pattern can be changed here, and the whole feature can be switched off. The original invoice number is never touched.
 
 27
-00:06:32,740 --> 00:06:42,153
+00:06:38,780 --> 00:06:48,193
 Step five. Invoices arrive from the billing systems, and CTDMS recognises everything it can from the masters.
 
 28
-00:06:51,110 --> 00:07:06,052
+00:06:59,020 --> 00:07:13,962
 A B C Pharma's SAP export. The plant column tells the depot, through the E R P mapping from the workbook, and SAP's own customer numbers find our customers. All six rows are valid.
 
 29
-00:07:06,650 --> 00:07:20,212
+00:07:14,560 --> 00:07:28,122
 X Y Z Healthcare's MARG file has no company or depot column at all. The marking X Y slash G or X Y slash K in each bill number tells CTDMS both the company and the depot.
 
 30
-00:07:20,810 --> 00:07:26,344
+00:07:28,730 --> 00:07:34,264
 And P Q R Lifesciences from CBO, recognised the same way.
 
 31
-00:07:26,940 --> 00:07:46,687
+00:07:34,860 --> 00:07:54,607
 The Invoice Register now shows two numbers side by side. On the left, the original E R P invoice number, exactly as it came. Next to it, the Invoice Recognition Code. Company, depot, customer and customer type are all identified.
 
 32
-00:07:47,290 --> 00:08:09,957
+00:07:55,210 --> 00:08:17,877
 Here is invoice zero zero one two four five from SAP. Its number is unchanged. Its recognition code is A B C dash R E T dash C zero two five dash GUMA dash zero zero one two four five: A B C Pharma, a retailer, customer C zero two five, from the Guma depot.
 
 33
-00:08:10,560 --> 00:08:25,827
+00:08:18,480 --> 00:08:33,747
 One invoice could not get a code. The reason is clear: the customer type Government Supply has no recognition code. CTDMS does not guess. The invoice can still be dispatched normally.
 
 34
-00:08:26,430 --> 00:08:31,519
+00:08:34,350 --> 00:08:39,439
 We give Government Supply the code G O V in Master Settings and save.
 
 35
-00:08:32,130 --> 00:08:41,348
+00:08:40,040 --> 00:08:49,258
 The code is made at once: A B C dash G O V dash C zero nine zero dash B S P, then the invoice number.
 
 36
-00:08:41,950 --> 00:08:53,473
+00:08:49,860 --> 00:09:01,383
 Because every code starts with the same parts, searching is simple. Typing A B C dash R E T lists every A B C Pharma invoice to retailers.
 
 37
-00:08:54,070 --> 00:09:04,033
+00:09:01,980 --> 00:09:11,943
 Filtering by the city Raipur brings both Raipur depots together, Guma and Kamal Vihar. The depot filter would show just one of them.
 
 38
-00:09:04,630 --> 00:09:13,453
+00:09:12,540 --> 00:09:21,363
 Step six, dispatch. First the normal long-distance transporter, which works exactly as before.
 
 39
-00:09:15,270 --> 00:09:28,507
+00:09:23,390 --> 00:09:36,627
 Three invoices from the Bilaspur depot go with Shree Roadlines, a long-distance transporter. Freight comes from its rate card for each area, and Shree Roadlines will send its bill later.
 
 40
-00:09:37,800 --> 00:09:45,143
+00:09:50,850 --> 00:09:58,193
 Printed, out of the gate, L R numbers entered later. Nothing changed in this part.
 
 41
-00:09:45,740 --> 00:09:50,534
+00:09:58,790 --> 00:10:03,584
 Step seven. A local auto charged per trip.
 
 42
-00:09:52,300 --> 00:10:01,663
+00:10:05,480 --> 00:10:14,843
 Sharma Local Auto takes four invoices from the Guma depot to customers in Raipur: five, fifteen, six and four boxes.
 
 43
-00:10:02,260 --> 00:10:20,522
+00:10:16,710 --> 00:10:34,972
 The operator types the actual trip charge, five hundred rupees today. It could be four fifty or five fifty on another day. The total stays five hundred: one trip, one amount. It is not five hundred times four invoices.
 
 44
-00:10:21,120 --> 00:10:35,562
+00:10:35,580 --> 00:10:50,022
 For the M I S, the five hundred is shared by boxes: about eighty three, two hundred and fifty, one hundred, and sixty seven rupees. The shares always add up to five hundred.
 
 45
-00:10:36,160 --> 00:10:45,068
+00:10:50,620 --> 00:10:59,528
 The dispatch slip prints the trip charge once, for the whole trip, with each invoice's original number and its recognition code.
 
 46
-00:10:45,670 --> 00:10:50,359
+00:11:01,010 --> 00:11:05,699
 Step eight. A local auto charged per box.
 
 47
-00:10:52,130 --> 00:11:01,108
+00:11:07,620 --> 00:11:16,598
 Ravi Tempo charges per box. From the Kamal Vihar depot, the operator first adds an invoice for Durg as well.
 
 48
-00:11:01,710 --> 00:11:10,148
+00:11:17,840 --> 00:11:26,278
 CTDMS warns that Ravi Tempo has no per-box rate for Durg. That invoice is taken off this trip.
 
 49
-00:11:10,750 --> 00:11:25,012
+00:11:26,880 --> 00:11:41,142
 Now: fifteen boxes at twenty rupees is three hundred, and six boxes of P Q R's goods at its own rate of twenty two is one hundred and thirty two. Total four hundred and thirty two rupees.
 
 50
-00:11:25,610 --> 00:11:38,043
+00:11:42,780 --> 00:11:55,213
 Kishore Mini Truck can be charged either way, so both choices appear. Today it is per trip, five hundred and fifty rupees, for one invoice to Bhilai.
 
 51
-00:11:40,630 --> 00:11:51,543
+00:12:00,720 --> 00:12:11,633
 Step nine. A complete dispatch done only with the keyboard, the way the staff already work in MARG. The mouse is not touched in this part.
 
 52
-00:11:53,340 --> 00:12:13,927
+00:12:13,560 --> 00:12:34,147
 Every screen shows its keys in the dark bar at the bottom, and F1 lists all of them. A key means the same thing on every screen: F2 new, F4 search, F6 save, F8 gatepass or print, F9 complete the dispatch, F10 reports, and Escape goes back.
 
 53
-00:12:14,530 --> 00:12:28,118
+00:12:34,750 --> 00:12:48,338
 F2 starts a new gatepass. The cursor is already in the Depot box. Typing the depot code, K V R, finds the Kamal Vihar depot, and Enter selects it.
 
 54
-00:12:28,720 --> 00:12:39,033
+00:12:48,940 --> 00:12:59,253
 The invoice number is typed, or scanned, and Enter adds it. The down arrow goes into the waiting list, and Enter adds the highlighted invoice.
 
 55
-00:12:39,630 --> 00:12:59,656
+00:12:59,870 --> 00:13:19,896
 This is the Durg invoice that Ravi Tempo could not take per box. Today both go by Shree Roadlines. Enter on the empty box moves on to who carries the goods, and Enter moves from field to field. In the transporter box, typing S R L finds Shree Roadlines.
 
 56
-00:13:00,260 --> 00:13:04,964
+00:13:20,500 --> 00:13:25,204
 Enter, Enter, through the date and time to the remarks.
 
 57
-00:13:06,930 --> 00:13:13,888
+00:13:27,500 --> 00:13:34,458
 After the last field the cursor lands on Generate gatepass. One more Enter generates it.
 
 58
-00:13:14,490 --> 00:13:24,288
+00:13:35,060 --> 00:13:44,858
 F8 prints the gatepass. F9 completes the dispatch: CTDMS asks first, and Enter answers yes.
 
 59
-00:13:24,890 --> 00:13:36,303
+00:13:45,460 --> 00:13:56,873
 Escape goes back to the list. The arrows move through the gatepasses, Enter opens one, and Escape returns to the same row, ready for the next record.
 
 60
-00:13:36,900 --> 00:13:50,452
+00:13:57,470 --> 00:14:11,022
 Delete, void, cancel and reject always ask first with No already selected, so a stray Enter never cancels anything. And F3 jumps to any screen by typing part of its name.
 
 61
-00:13:51,050 --> 00:13:55,044
+00:14:11,620 --> 00:14:15,614
 Last step: the reports management sees.
 
 62
-00:13:56,800 --> 00:14:16,027
+00:14:17,520 --> 00:14:36,747
 The Local Auto Trips report. One row per trip. The amount owed to the auto, and the amount booked on its invoices, are always equal. The four-invoice trip shows five hundred rupees, not two thousand. Nothing is counted twice.
 
 63
-00:14:16,630 --> 00:14:21,339
+00:14:37,350 --> 00:14:42,059
 City-wise freight puts Guma and Kamal Vihar together under Raipur.
 
 64
-00:14:21,940 --> 00:14:26,794
+00:14:42,660 --> 00:14:47,514
 Depot-wise freight shows each depot separately, with its city.
 
 65
-00:14:27,390 --> 00:14:46,876
+00:14:48,110 --> 00:15:07,596
 Every invoice report shows the original E R P invoice number and the Invoice Recognition Code in separate columns, together with company, depot, city, customer type, boxes and transportation expense. All of it exports to Excel, C S V or P D F.
 
 66
-00:14:47,480 --> 00:14:53,923
+00:15:08,200 --> 00:15:14,643
 And the dashboard now shows the figures, including freight by depot with each depot's city.
 
 67
-00:14:54,520 --> 00:15:17,021
+00:15:15,240 --> 00:15:37,741
 That completes version one point six: one master workbook, depots with several in one city, customer types and codes, the invoice recognition code beside the unchanged E R P number, local autos charged per trip or per box without double counting, and a dispatch desk that runs from the keyboard. Thank you.

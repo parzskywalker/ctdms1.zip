@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Guided Training</h1>
+    <div class="sub">Learn your work by doing it - in your own practice copy of CTDMS with the v1.6 demonstration data.
+      Nothing you do in training reaches live data; only your progress is saved.</div></div>
+  <div class="actions">
+    {% if active %}
+    <form method="post" action="/training/exit" class="inline-form"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn" type="submit" data-key="Esc" data-key-hint="off">Save &amp; exit Training Mode</button></form>
+    {% endif %}
+    <form method="post" action="/training/start" class="inline-form"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn btn-primary" type="submit" data-key="F2" data-key-label="Continue training" autofocus>{{ 'Continue' if sum.done or p.current_lesson else 'Start' }} training</button></form>
+  </div>
+</div>
+{% if gated %}<div class="alert alert-warn"><b>Training required.</b> Your Master Administrator has made Guided Training compulsory for new users. Live work opens as soon as you complete the lessons below.</div>{% endif %}
+{% if missing %}<div class="alert alert-error">The demonstration files are missing ({{ missing|join(', ') }}) - ask the administrator to restore docs/video_manual/v1.6/demo_files.</div>{% endif %}
+{% if sum.status == 'COMPLETED' %}<div class="alert alert-success"><b>Training complete</b>{% if p.completed_at %} on {{ p.completed_at|dt }}{% endif %}. Practice Mode: replay any lesson whenever you like - still with demonstration data only.</div>{% endif %}
+
+<div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+  <div class="kpi"><div class="lbl">Learning path</div><div class="val" style="font-size:17px">{{ sum.path_name }}</div><div class="hint">assigned by your role{% if p.assigned_by %} · {{ p.assigned_by.full_name }}{% endif %}</div></div>
+  <div class="kpi {{ 'good' if sum.status == 'COMPLETED' }}"><div class="lbl">Progress</div><div class="val">{{ sum.done }} of {{ sum.total }}</div><div class="hint">{{ sum.percent }}% · {{ sum.label }}</div></div>
+  <div class="kpi"><div class="lbl">Started</div><div class="val" style="font-size:15px">{{ p.started_at|dt if p.started_at else '—' }}</div><div class="hint">last activity {{ p.last_activity_at|dt if p.last_activity_at else '—' }}</div></div>
+  <div class="kpi"><div class="lbl">Compulsory training</div><div class="val" style="font-size:17px">{{ 'ON' if compulsory else 'OFF' }}</div><div class="hint">{{ 'required for you' if p.required else 'voluntary for you' }}</div></div>
+</div>
+
+<div class="grid g-side">
+  <div class="card flush">
+    <div class="card-head"><h3>Lessons</h3><span class="small muted">↓↑ choose · Enter starts or replays · lessons open in order</span></div>
+    <div class="table-wrap"><table class="data">
+      <thead><tr><th>#</th><th>Lesson</th><th>Practice</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+      {% for r in rows %}
+        <tr class="{% if not r.unlocked %}row-muted{% endif %}">
+          <td>{{ loop.index }}</td>
+          <td><b>{{ r.l.title }}</b><div class="small muted">{{ r.l.summary }}</div><div class="small muted">from: {{ r.l.source }}{% if r.video %} · video {{ '%d:%02d'|format(r.video[0] // 60, r.video[0] % 60) }} – {{ '%d:%02d'|format(r.video[1] // 60, r.video[1] % 60) }}{% endif %}</div></td>
+          <td class="small">{{ 'practical - checked by CTDMS' if r.l.practical else 'guided tour' }}</td>
+          <td class="nowrap">{% if r.done %}<span class="badge b-COMPLETED">Done</span><div class="small muted">{{ r.done[:10] }}</div>{% elif r.current and r.attempts %}<span class="badge b-SLIP_GENERATED">In progress</span>{% elif r.unlocked %}<span class="badge">Next</span>{% else %}<span class="badge b-NIL">Locked</span>{% endif %}</td>
+          <td>{% if r.unlocked %}<form method="post" action="/training/start" class="inline-form"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="lesson" value="{{ r.l.code }}"><button class="btn btn-sm {{ 'btn-primary' if r.current and not r.done else '' }}" type="submit" data-row-enter>{{ 'Replay' if r.done else ('Continue' if r.attempts else 'Start') }}</button></form>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  </div>
+  <div>
+    <div class="card">
+      <h3 style="margin-top:0">How training works</h3>
+      <ol class="small" style="padding-left:18px;margin:0">
+        <li>Press <b>Start</b>: CTDMS gives you a private practice copy with the v1.6 demonstration data and opens the first screen.</li>
+        <li>The panel on the right explains each step, highlights the field and tells you which keys to press.</li>
+        <li>You do the real work on the real screen. CTDMS checks the result in your practice copy - clicking through is not enough.</li>
+        <li>Progress is saved after every step. Log out at any time; next time press <b>Continue</b>.</li>
+      </ol>
+      <p class="small" style="margin-top:8px"><b>Keys:</b> Ctrl+Enter = Next / Check · Ctrl+/ = into the panel · all CTDMS keys work as usual (F1 lists them).</p>
+    </div>
+    {% if video %}<div class="card"><h3 style="margin-top:0">Videos</h3>
+      <p class="small"><a href="/training/video" target="_blank">CTDMS v1.6 guide video</a> - every lesson has a <i>Watch demonstration</i> button that opens it at the matching chapter.</p>
+      {% if training_video %}<p class="small"><a href="/training/video?which=training" target="_blank">Guided Training - how it works</a></p>{% endif %}</div>{% endif %}
+    {% if has_practice and not active %}<div class="card"><h3 style="margin-top:0">Your practice copy</h3><p class="small muted">Kept between sessions. Each lesson can prepare it from its demonstration starting point when needed.</p></div>{% endif %}
+  </div>
+</div>
+{% endblock %}

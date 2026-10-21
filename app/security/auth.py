@@ -235,6 +235,31 @@ def client_ip(request: Request) -> str | None:
 def current_user_optional(request: Request, db: Session = Depends(get_db)) -> User | None:
     if getattr(request.state, "user_loaded", False):
         return request.state.user
+    from app.training import runtime
+    trn = runtime.active()
+    if trn is None:
+        return _authenticate(request, db)
+    # Training Mode: sign-in is checked on the LIVE database; the screens then act as the trainee's own user inside
+    # the practice database (same role), so nothing a trainee does can reach live data.
+    from app.db import SessionLocal
+    live = SessionLocal()
+    try:
+        real = _authenticate(request, live)
+        if real is not None and (request.state.auth_via != "session" or real.id != trn["uid"]):
+            real = None  # a practice database belongs to exactly one signed-in user
+        if real is None:
+            request.state.user = None
+            return None
+        from app.training import trainee
+        request.state.real_user = real
+        request.state.training_gate = False
+        request.state.user = trainee.practice_user(db, real, trn.get("as"))
+        return request.state.user
+    finally:
+        live.close()
+
+
+def _authenticate(request: Request, db: Session) -> User | None:
     user, via = None, None
     auth = request.headers.get("authorization", "")
     if auth[:7].lower() == "bearer ":
@@ -259,18 +284,30 @@ def current_user_optional(request: Request, db: Session = Depends(get_db)) -> Us
     # CSRF token, a valid Bearer token does not. Merely *sending* an Authorization header proves nothing.
     request.state.auth_via = via
     request.state.user_loaded = True
+    if user is not None and via == "session":
+        from app.training import progress
+        request.state.training_gate = progress.must_train(db, user)
     return user
 
 
 PASSWORD_CHANGE_PATHS = ("/account/password", "/logout", "/login")
 
 
+class TrainingRequired(Exception):
+    pass
+
+
 def current_user(request: Request, user: User | None = Depends(current_user_optional)) -> User:
     if not user:
         raise LoginRequired()
-    if user.must_change_password and not request.url.path.startswith(PASSWORD_CHANGE_PATHS):
+    real = getattr(request.state, "real_user", None) or user
+    if real.must_change_password and not request.url.path.startswith(PASSWORD_CHANGE_PATHS):
         # First login / admin reset: nothing else is usable until the password is changed.
         raise PasswordChangeRequired()
+    if getattr(request.state, "training_gate", False):
+        from app.training import progress
+        if not progress.gate_allows(request.url.path, real):
+            raise TrainingRequired()  # compulsory training not finished: live work stays closed (server-side)
     return user
 
 

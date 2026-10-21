@@ -1,0 +1,103 @@
+1
+00:00:00,250 --> 00:00:14,807
+This short video shows Guided Training. New staff learn their work by doing it, in their own practice copy of CTDMS with the version one point six demonstration data, before they work on live data.
+
+2
+00:00:22,600 --> 00:00:39,432
+The Master opens Administration, Guided Training. Compulsory training is off. The Master switches it on, for users created from now on, and gives a reason. Every change here is recorded in the audit log.
+
+3
+00:00:40,030 --> 00:00:49,288
+A new dispatch operator joins: Mohan Lal. The Master creates his login as usual, as a Dispatch Operator.
+
+4
+00:00:49,890 --> 00:00:56,868
+CTDMS confirms: Mohan must finish Guided Training before he can work on live data.
+
+5
+00:00:57,480 --> 00:01:00,374
+Mohan logs in for the first time.
+
+6
+00:01:07,130 --> 00:01:22,382
+Instead of the normal screens, Guided Training opens: his learning path for a Dispatch Operator, five lessons, all of them practice on demonstration data. Live screens stay closed until he has finished.
+
+7
+00:01:22,980 --> 00:01:27,964
+The cursor is already on Start training, so Enter starts it.
+
+8
+00:01:28,560 --> 00:01:44,502
+The orange bar says Training Mode: demonstration data only. The panel on the right explains each step: what it does, why it matters, what to do and which keys to press. Control and Enter moves on.
+
+9
+00:01:45,100 --> 00:01:56,083
+Now he does the step on the real screen. F1 lists the keys; CTDMS sees it at once and moves on. Escape closes it.
+
+10
+00:01:56,680 --> 00:02:04,523
+F3 jumps to any screen: he types pending, and Enter. The guide checks that he got there.
+
+11
+00:02:05,120 --> 00:02:16,823
+The down arrow moves into the list, Enter opens the invoice, and in the transporter box he types the code S R L. Each step turns green by itself.
+
+12
+00:02:17,420 --> 00:02:26,768
+Escape asks before leaving unsaved work, and Y leaves. Nothing was saved, and nothing ever reaches live data.
+
+13
+00:02:27,370 --> 00:02:36,383
+Lesson one is complete. Progress: one of five. The next lesson is a real long-distance dispatch.
+
+14
+00:02:36,990 --> 00:02:45,353
+He opens Scan and Gatepass, types the Bilaspur depot code B S P, and adds the three invoices by number.
+
+15
+00:02:49,960 --> 00:03:00,123
+Enter on the empty box moves on, he types S R L for Shree Roadlines, and Enter, Enter, takes him to Generate gatepass.
+
+16
+00:03:00,720 --> 00:03:11,273
+When he generates it, CTDMS does not trust a click: it looks in his practice data and confirms the gatepass with its three invoices and its freight.
+
+17
+00:03:11,870 --> 00:03:19,273
+He saves and exits for now. The Guided Training page shows his progress and the lesson in progress.
+
+18
+00:03:19,870 --> 00:03:22,774
+The next day Mohan logs in again.
+
+19
+00:03:29,570 --> 00:03:36,159
+Continue takes him back to exactly where he stopped: print the gatepass, with F8.
+
+20
+00:03:36,760 --> 00:03:47,048
+Every print in training says: training, not valid for business use. F9 records the gate-out, and Enter answers yes.
+
+21
+00:03:47,650 --> 00:03:55,878
+Later the same day, Mohan finishes the remaining lessons: local auto per trip, per box, and the gate check.
+
+22
+00:04:00,420 --> 00:04:08,673
+All five lessons are complete. The completion date is recorded, and live work opens according to his role.
+
+23
+00:04:09,270 --> 00:04:13,654
+Pending Dispatch now opens normally, on live data.
+
+24
+00:04:17,830 --> 00:04:33,437
+The Master sees every user: training required, not started, in training or completed, with dates. A path can be reassigned, a requirement released, and progress reset, all recorded.
+
+25
+00:04:34,040 --> 00:04:45,378
+Switching compulsory training off lets everyone work again. Completed training is never removed, and practice stays available under Help, Guided Training.
+
+26
+00:04:45,980 --> 00:04:58,153
+That is Guided Training: real screens, demonstration data, every step checked, fully keyboard driven, and controlled by the Master. Thank you.

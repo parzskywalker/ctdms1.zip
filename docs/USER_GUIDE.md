@@ -16,6 +16,31 @@
   Long-distance transporters work as before.
 * Product / SKU lines are not used in v1.6.
 
+## Guided Training (first-time users) and Practice Mode
+
+**Help › Guided Training / Practice Mode.** Press *Start* (or *Continue*): CTDMS gives you a private practice copy with
+the v1.6 demonstration data, opens the first screen and a panel on the right. The panel explains each step (what it
+does, why it matters, what to do, which keys to press, what you should see) and highlights the field. You do the work
+on the real screen; CTDMS checks the result in your practice copy and moves on. Practical steps only pass when the
+result is really there (a gatepass generated, printed and gone out; a bill approved by a second person ...).
+
+* Keys: **Ctrl+Enter** = Next / Check · **Ctrl+/** = into the panel (Tab between its buttons, Esc back to the screen) ·
+  all CTDMS keys work as usual. *Watch demonstration* plays the matching chapter of the v1.6 guide video.
+* The orange **TRAINING MODE** bar is always on screen. Prints and exports say *TRAINING - NOT VALID FOR BUSINESS USE*.
+  No message, e-mail or ERP sync leaves CTDMS. Live data is never touched - only your progress is saved.
+* Log out at any time; *Continue* resumes at the same step. *Replay lesson* repeats a lesson; *Prepare practice data*
+  resets your practice copy to the lesson's starting point. *Save & exit* returns to live work.
+* Two-person steps (rate or bill approval): press *Act as Demo Checker* in the panel, then *Act as myself*.
+* Learning paths: Master Administrator (15 lessons), Dispatch Operator, Depot Manager, Checker / Approver, Accounts,
+  Management / Viewer - chosen from your role; the Master can assign another.
+
+**For the Master - Administration › Guided Training:** switch compulsory training ON / OFF (also in System Settings ›
+Guided Training). ON: users created from then on must finish their path before live screens open; OFF: everybody works,
+training stays voluntary; completed training is never removed. Per user: path, required or voluntary, status,
+progress, dates; *Assign* another path, *Require* / *Not required*, *Reset* (progress and practice copy). Every action
+is in the audit log. The Master is never locked out of Administration; as a last resort
+`python -m app.cli training-release --username <name>` (or `--all-off`).
+
 ## Keyboard (v1.6) - the mouse is optional
 
 The same key does the same job on every screen; the dark bar at the bottom shows the keys of the screen, **F1** shows

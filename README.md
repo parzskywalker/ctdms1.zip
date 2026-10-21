@@ -14,7 +14,10 @@ configurable **Customer Types**, the **Invoice Recognition Code** beside the unc
 (e.g. `ABC-RET-C025-GUMA-001245`), and **Local Autos** charged per trip (one amount per trip, shared by boxes) or per box.
 **Keyboard-first** (MARG style): the same function keys on every screen (F2 new, F4 search, F6 save, F8 gatepass /
 print, F9 complete dispatch, Esc back; F1 lists them), Enter moves field to field, choice boxes find masters by code.
-The v1.6 guide (video, transcript, manual) is in `docs/video_manual/v1.6/`.
+**Guided Training** (Help › Guided Training): new staff practise their real workflow on the v1.6 demonstration data
+in a private practice copy - every step checked by CTDMS, live data untouched; the Master can make it compulsory for
+new users (Administration › Guided Training).
+The v1.6 guide (video, transcript, manual, Guided Training video) is in `docs/video_manual/v1.6/`.
 
 It does not replace the ERPs. Invoices come in by Excel/CSV import, REST push or ERP adapters, are normalised into one
 schema, priced with an effective-dated freight-rate engine, dispatched through a controlled workflow and reported in

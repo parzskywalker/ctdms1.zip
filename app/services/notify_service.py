@@ -215,6 +215,9 @@ def _sms(db: Session, n: Notification, token: str | None) -> str:
 def deliver(db: Session, n: Notification) -> str:
     """Send one message with the configured provider. Returns the provider's reference; raises SendError."""
     from app.config import get_settings
+    from app.training import runtime
+    if runtime.active():
+        raise SendError("Training Mode - customer messages are never sent from practice data")
     prov = provider(db)
     if prov == "OFF":
         raise SendError("Notifications are switched off (System Settings › notify.provider)")

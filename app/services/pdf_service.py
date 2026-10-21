@@ -252,6 +252,28 @@ def _gatepass_flowables(snap: dict, width: float, base: float, print_label: str,
     return out
 
 
+def _training_page(canvas, doc) -> None:
+    """Guided Training: every page made from practice data says it is not valid for business use."""
+    from app.training import runtime
+    if not runtime.active():
+        return
+    w, h = doc.pagesize
+    reg, bold = _fonts()
+    canvas.saveState()
+    canvas.setFillColor(colors.Color(0.71, 0.33, 0.04, alpha=0.16))
+    canvas.setFont(bold, 30 if w < 500 else 44)
+    canvas.translate(w / 2, h / 2)
+    canvas.rotate(35)
+    canvas.drawCentredString(0, 12, "TRAINING - DEMONSTRATION ONLY")
+    canvas.drawCentredString(0, -30, "NOT VALID FOR BUSINESS USE")
+    canvas.restoreState()
+    canvas.saveState()
+    canvas.setFillColor(colors.Color(0.71, 0.33, 0.04))
+    canvas.setFont(bold, 7)
+    canvas.drawCentredString(w / 2, h - 7, runtime.WATERMARK)
+    canvas.restoreState()
+
+
 def dispatch_slips_pdf(items: list[tuple[dict, str, str]], size: str = "A5") -> bytes:
     """items: [(snapshot, print_label, printed_line)] -> one PDF, one slip per page."""
     pagesize = A5 if size == "A5" else A4
@@ -268,7 +290,7 @@ def dispatch_slips_pdf(items: list[tuple[dict, str, str]], size: str = "A5") -> 
             story.extend(_gatepass_flowables(snap, doc.width, base, label, line))
         else:
             story.append(KeepTogether(_slip_flowables(snap, doc.width, base, label, line)))
-    doc.build(story)
+    doc.build(story, onFirstPage=_training_page, onLaterPages=_training_page)
     return buf.getvalue()
 
 
@@ -344,7 +366,11 @@ def table_pdf(title: str, subtitle: str, columns: list[tuple[str, str]], rows: l
                 cut = len(text) if len(text) <= 3000 else (text.rfind(" ", 0, 3000) + 1 or 3000)
                 story.append(Paragraph(_esc(text[:cut]), note_body))
                 text = text[cut:]
-    doc.build(story, onFirstPage=_footer, onLaterPages=_footer)
+    def _page(c, d):
+        _footer(c, d)
+        _training_page(c, d)
+
+    doc.build(story, onFirstPage=_page, onLaterPages=_page)
     return buf.getvalue()
 
 

@@ -22,7 +22,7 @@ from app.models import (
     CFA, BatchStatus, Company, Customer, DispatchMode, ERPCodeMapping, ERPSystem, ImportBatch, ImportRow,
     ImportTemplate, Invoice, InvoiceItem, InvoiceStatus, Location, RowStatus, Transporter, User, utcnow,
 )
-from app.services import audit, recognition
+from app.services import audit, recognition, storage
 from app.services import settings_service as cfg
 from app.services.errors import BusinessError
 from app.services.freight_engine import find_rate
@@ -411,7 +411,7 @@ def create_batch_from_file(db: Session, user: User, content: bytes, filename: st
                          company_id=company_id, cfa_id=cfa_id, template=template, file_name=filename,
                          file_hash=fhash, file_type=Path(filename).suffix.lower().lstrip("."))
     try:  # keep the original file for traceability
-        dest = s.upload_dir / f"{batch.batch_no}{Path(filename).suffix.lower()}"
+        dest = storage.upload_dir() / f"{batch.batch_no}{Path(filename).suffix.lower()}"
         dest.write_bytes(content)
     except OSError:
         pass

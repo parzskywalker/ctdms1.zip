@@ -304,6 +304,40 @@ def reports_mail(args) -> None:
     print(f"Sent {res['sent']}, failed {res['failed']}")
 
 
+def training_build(args) -> None:
+    """Prepare the Guided Training starting points now (otherwise built on the first training start, ~10 s)."""
+    from app.training import scenario
+    scenario.build_all()
+    print("Guided Training starting points ready:", ", ".join(scenario.CHECKPOINTS))
+
+
+def training_release(args) -> None:
+    """Safety valve: a user no longer has to finish Guided Training first (or switch compulsory training off)."""
+    from sqlalchemy import select
+    from app.db import SessionLocal
+    from app.models import User
+    from app.services import audit
+    from app.services import settings_service as cfg
+    from app.training import progress
+    with SessionLocal() as db:
+        if args.all_off:
+            cfg.set_value(db, progress.SETTING, "false")
+            audit.log(db, None, "SETTING_CHANGED", "ADMIN", record_type="Setting", record_id=progress.SETTING,
+                      ref=progress.SETTING, field=progress.SETTING, new=False, reason="command line: training-release --all-off")
+            print("Compulsory training switched OFF.")
+        if args.username:
+            u = db.scalar(select(User).where(User.username == args.username.strip().lower()))
+            if not u:
+                print(f"No user {args.username}")
+                sys.exit(2)
+            p = progress.ensure(db, u)
+            p.required = False
+            audit.log(db, None, "TRAINING_NOT_REQUIRED", progress.MODULE, record_type="User", record_id=u.id, ref=u.username,
+                      reason="command line: training-release")
+            print(f"{u.username} no longer has to finish Guided Training first.")
+        db.commit()
+
+
 def main(argv=None) -> None:
     p = argparse.ArgumentParser(prog="ctdms")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -334,6 +368,12 @@ def main(argv=None) -> None:
     sp.add_argument("--limit", type=int, default=200)
     sp.set_defaults(fn=notify)
     sub.add_parser("reports-mail", help="e-mail the report subscriptions that are due").set_defaults(fn=reports_mail)
+    sub.add_parser("training-build", help="prepare the Guided Training practice starting points").set_defaults(
+        fn=training_build)
+    sp = sub.add_parser("training-release", help="release a user from compulsory training (or switch it off)")
+    sp.add_argument("--username")
+    sp.add_argument("--all-off", action="store_true", help="switch compulsory training OFF for everyone")
+    sp.set_defaults(fn=training_release)
     args = p.parse_args(argv)
     args.fn(args)
 

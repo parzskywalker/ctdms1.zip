@@ -8,7 +8,11 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f4e79'/%3E%3Cpath d='M7 20h12V11H7zm12-6h4l3 3v3h-7z' fill='%23fff'/%3E%3Ccircle cx='11' cy='22' r='2' fill='%2310b9a8'/%3E%3Ccircle cx='23' cy='22' r='2' fill='%2310b9a8'/%3E%3C/svg%3E">
   {% block head %}{% endblock %}
 </head>
-<body>
+<body{% if training %} class="trn-on"{% endif %}>
+{% if training %}
+<div class="trn-banner" role="status"><b>{{ training.banner }}</b>{% if training.acting %} · acting as {{ training.acting }} (practice user){% endif %}
+  <span class="trn-banner-r">your own practice copy · nothing reaches live data · <a href="/training">Lessons</a></span></div>
+{% endif %}
 {% if user %}
 <div class="app">
   <aside class="side">
@@ -57,5 +61,7 @@
 <script src="/static/js/app.js?v={{ app_version }}"></script>
 {% block scripts %}{% endblock %}
 <script src="/static/js/keys.js?v={{ app_version }}"></script>
+{% if training and user %}<aside id="trn-panel" class="trn-panel no-print" aria-label="Guided Training" data-csrf="{{ csrf }}" hidden></aside>
+<script src="/static/js/training.js?v={{ app_version }}"></script>{% endif %}
 </body>
 </html>

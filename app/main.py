@@ -18,12 +18,14 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app import __version__
 from app.config import get_settings
-from app.security.auth import LoginRequired, PasswordChangeRequired, PermissionDenied, client_ip
+from app.security.auth import LoginRequired, PasswordChangeRequired, PermissionDenied, TrainingRequired, client_ip
 from app.services import context
 from app.services.errors import BusinessError
 from app.web.templating import back_url, flash, redirect, render
 
 log = logging.getLogger("ctdms")
+# Never in Training Mode, even while a session is practising (they touch sign-in or the Master's training controls)
+LIVE_ONLY_PATHS = ("/static", "/login", "/logout", "/account/password", "/admin/training", "/health")
 
 # Everything (JS, CSS, Chart.js) is served locally; inline <script>/<style> blocks are still used by a few templates.
 CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
@@ -122,6 +124,16 @@ async def lifespan(app: FastAPI):
         notify_service.start_sender()  # queued WhatsApp / SMS dispatch alerts go out in the background
         from app.services import subscription_service
         subscription_service.start_sender()  # e-mailed reports (when SMTP is set up)
+        import threading
+
+        def _prepare_training():  # Guided Training starting points, so the first trainee does not wait
+            try:
+                from app.training import scenario
+                scenario.ensure()
+            except Exception as exc:  # pragma: no cover - training stays available, it is built on first use
+                log.warning("Guided Training starting points not prepared yet: %s", exc)
+
+        threading.Thread(target=_prepare_training, name="training-prepare", daemon=True).start()
     yield
     if s.environment != "test":
         from app.services import inbox_service, notify_service
@@ -143,7 +155,19 @@ def create_app() -> FastAPI:
         rid = uuid.uuid4().hex[:12]
         context.begin(request_id=rid, ip=client_ip(request), session=None)
         start = time.perf_counter()
-        response = await call_next(request)
+        # Guided Training: a browser session in Training Mode works on the trainee's own practice database.
+        # Sign-in / sign-out / password and the Master's training controls always use the live database.
+        trn_token = None
+        trn = request.session.get("trn") if "session" in request.scope else None
+        if (trn and not request.headers.get("authorization") and not request.url.path.startswith(LIVE_ONLY_PATHS)):
+            from app.training import runtime
+            if runtime.has_practice_db(int(trn.get("uid") or 0)):
+                trn_token = runtime.activate(int(trn["uid"]), trn.get("as"))
+        try:
+            response = await call_next(request)
+        finally:
+            if trn_token is not None:
+                runtime.deactivate(trn_token)
         ms = (time.perf_counter() - start) * 1000
         response.headers["X-Request-ID"] = rid
         response.headers["X-Content-Type-Options"] = "nosniff"
@@ -182,6 +206,13 @@ def create_app() -> FastAPI:
                                 status_code=403)
         flash(request, "Please set a new password before continuing.", "warn")
         return redirect("/account/password")
+
+    @app.exception_handler(TrainingRequired)
+    async def _training(request: Request, exc: TrainingRequired):
+        if is_api(request):
+            return JSONResponse({"detail": "Guided Training must be completed first"}, status_code=403)
+        flash(request, "Please finish your Guided Training first. Live work opens as soon as it is complete.", "warn")
+        return redirect("/training")
 
     @app.exception_handler(PermissionDenied)
     async def _denied(request: Request, exc: PermissionDenied):
@@ -241,11 +272,11 @@ def create_app() -> FastAPI:
     from app.web import (
         admin, approvals, auth_routes, dashboard_routes, dispatch_routes, gatepass_routes, imports_routes,
         invoices_routes, master_upload_routes, masters_routes, notify_routes, rate_card_routes, rates_routes,
-        recon_routes, reports_routes, subscription_routes, tracking_routes,
+        recon_routes, reports_routes, subscription_routes, tracking_routes, training_routes,
     )
     for mod in (auth_routes, dashboard_routes, invoices_routes, imports_routes, dispatch_routes, gatepass_routes,
                 notify_routes, tracking_routes, approvals, master_upload_routes, masters_routes, rates_routes, rate_card_routes, recon_routes,
-                subscription_routes, reports_routes, admin):
+                subscription_routes, reports_routes, training_routes, admin):
         app.include_router(mod.router)
     app.include_router(v1.router)
 
