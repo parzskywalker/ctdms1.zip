@@ -93,8 +93,10 @@ L01 = Lesson("m01-intro", "Introduction and the Dashboard", "What CTDMS does, ho
     Step("back", "Back with Esc", do="Press Esc to go back.", keys="Esc", expect="You are back on the Dashboard.",
          ui={"path": r"^/$"}),
     Step("menus", "The menus",
-         what="Dispatch desk (daily gatepasses), Operations (invoices, imports, bills, approvals), Master Settings "
-              "(companies, depots, customers, transporters, rates, codes), Reports, Administration and Help.",
+         what="Dispatch desk (daily gatepasses, Gate Check, Garage Pawati, LR Books), Operations (invoices, imports, bills, "
+              "approvals), Master Settings (companies, depots, customers, transporters, rates, codes), Reports, "
+              "Administration and Help. You only see the menus your role allows, and the sidebar stays where you "
+              "scrolled it.",
          why="Masters come first: every invoice, dispatch and report depends on them. That is the next lesson.",
          do="Press Ctrl+Enter to finish this lesson."),
 ])
@@ -166,15 +168,18 @@ L03 = Lesson("m03-masters", "Understanding the created Masters",
          page="/masters/customer-types", ui={"path": r"^/masters/customer-types"}),
     Step("customers", "Customer Master",
          what="Customer code, name, type, recognition code (C025), delivery location, companies served, and the code "
-              "the source ERP uses (SAP 100025), so imports find the customer automatically.",
+              "the source ERP uses (SAP 100025), so imports find the customer automatically. A customer has one usual "
+              "delivery area and may have more (Delivery locations on the customer): an invoice whose area is unclear "
+              "waits until the operator chooses one.",
          do="Open Customers and open DM-C025 Sharma Medical Store.", keys="F3 customers Enter · F4 · type C025 · Enter · ↓ Enter",
          page="/masters/customers", ui={"path": r"^/masters/customers/\d+"}),
     Step("locations", "Areas / Locations", what="Delivery areas: Raipur City, Bhilai, Durg, Bilaspur City, Korba. "
          "Freight rates are per area.", do="Open Areas / Locations.", keys="F3 locations Enter",
          page="/masters/locations", ui={"path": r"^/masters/locations"}),
     Step("transporters", "Long-distance transporters",
-         what="Shree Roadlines and Vijay Transport work exactly as in v1.5: a rate card per area, LR numbers, a "
-              "monthly bill.", do="Open Transporters (long-distance).", keys="F3 transporters Enter",
+         what="Shree Roadlines and Vijay Transport: a rate card per area, LR numbers, a monthly bill. Each transporter "
+              "can be limited to the depots it serves (none ticked = every depot) and can be marked 'uses builty book' "
+              "when it gives its own LR book (see LR Books).", do="Open Transporters (long-distance).", keys="F3 transporters Enter",
          page="/masters/transporters", ui={"path": r"^/masters/transporters"}),
     Step("autos", "Local Auto Transporters",
          what="Sharma Local Auto charges per trip (usually ₹500), Ravi Tempo per box, Kishore Mini Truck either way.",
@@ -186,7 +191,8 @@ L03 = Lesson("m03-masters", "Understanding the created Masters",
          page="/masters/local-auto-rates", ui={"path": r"^/masters/local-auto-rates"}),
     Step("rate-cards", "Freight rates (rate cards)",
          what="Each long-distance transporter has a rate per case for each area (Shree Roadlines: Bilaspur ₹22, "
-              "Korba ₹30, Durg ₹14, Bhilai ₹15).", do="Open Transporter Rate Cards.", keys="F3 rate cards Enter",
+              "Korba ₹30, Durg ₹14, Bhilai ₹15). A rate can also be made for one depot or one company only (an "
+              "exception); the most specific approved rate wins and the gatepass shows how freight was calculated.", do="Open Transporter Rate Cards.", keys="F3 rate cards Enter",
          page="/rate-cards", ui={"path": r"^/rate-cards"}),
     Step("markings", "Invoice Code Mappings",
          what="The markings billing systems already put in invoice numbers: in MARG, XY/G/ = XYZ Healthcare from Guma, "
@@ -332,13 +338,19 @@ L07 = Lesson("m07-long", "Regular long-distance dispatch",
          ui={"value": ["#gp-tr", "Shree"]}, hl="#gp-tr-q"),
     Step("rates", "Freight from the rate card",
          what="Rate/case comes from Shree Roadlines' card for each area (Bilaspur ₹22 per case); the charge column "
-              "and the total update at once.", do="Check the Charges panel, then Next."),
+              "and the total update at once. After generating, the gatepass shows 'How freight was calculated' "
+              "for every line.", do="Check the Charges panel, then Next."),
     Step("generate", "Generate the gatepass", do="Generate gatepass.",
          keys="Enter through the fields to Generate gatepass, Enter - or F8 at any time", check="long_generated",
          hl="#gp-submit"),
     Step("print", "Print", what="Nothing leaves the gate without a printed gatepass. In training it prints "
          "TRAINING - NOT VALID.", do="Print the gatepass.", keys="F8", check="long_printed",
          hl="[data-key=F8]"),
+    Step("cases", "Depots with case barcodes",
+         what="Where the Master has switched on case control for a depot (Guma first), every carton gets its own "
+              "barcode label (gatepass › Print the labels) and the guard scans every carton at Gate Check: gate-out "
+              "is refused until all are scanned, or a manager records an exception with a reason. This practice depot "
+              "works without labels - the next steps are the same.", do="Next."),
     Step("gate-out", "Gate-out", do="Record gate-out and answer Yes.", keys="F9 · Enter (Yes)", check="long_gone",
          hl="[data-key=F9]"),
     Step("lr", "LR numbers", what="The transporter gives the LR (bilty) numbers later - one per customer.",
@@ -350,7 +362,9 @@ L08 = Lesson("m08-trip", "Local auto - per trip",
              "Sharma Local Auto: four invoices (5, 15, 6, 4 boxes), ONE trip charge of ₹500.",
              start="invoices", needs="trip_waiting", video=("Step 7 ",), page="/gatepass/new", steps=[
     Step("idea", "One trip, one amount",
-         what="A per-trip local auto is owed one amount for the whole trip, however many invoices or boxes it carries.",
+         what="A per-trip local auto is owed one amount for the whole trip, however many invoices or boxes it carries. "
+              "Here the auto delivers to the customers itself (mode Local auto). A local auto that takes goods to "
+              "transporters' garages is a different trip - see the Garage Pawati lesson.",
          why="₹500 is the charge for the trip - not ₹500 per invoice (that would be ₹2,000).", do="Next."),
     GP_OPEN,
     Step("depot", "Guma depot", do="Depot: type GUMA, Enter.", ui={"value": ["#gp-cfa", "GUMA|Guma"]}, hl="#gp-cfa-q"),
@@ -435,6 +449,11 @@ L10 = Lesson("m10-reports", "Reports and MIS",
     Step("export", "Export", what="Every report exports to Excel, CSV or PDF. In training the file is marked "
          "TRAINING - NOT VALID FOR BUSINESS USE.", do="Open any report and press Excel (or CSV / PDF).",
          keys="Tab to the export buttons · Enter", check="report_exported", perm="data.export"),
+    Step("pawati-reports", "Garage Pawati and Gate Exceptions (v1.7)",
+         what="Garage Pawati Register: every slip with its receipt state and days open. Gate Exception Report: trips "
+              "that left with cartons not scanned, with who allowed it and why.",
+         do="Open Reports › Garage Pawati Register.", keys="F3 pawati Enter", page="/reports/garage-pawati",
+         ui={"path": r"^/reports/garage-pawati"}, perm="report.view"),
 ], source="v1.6 guide video")
 
 L11 = Lesson("m11-users", "Users, roles and depot permissions",
@@ -443,7 +462,9 @@ L11 = Lesson("m11-users", "Users, roles and depot permissions",
              steps=[
     Step("idea", "Who may do what",
          what="Every person has their own login and one role (Administrator, Management, Accounts, Depot Manager, "
-              "Dispatch Operator, Checker / Approver, Read-only Viewer); company and depot access can be limited.",
+              "Dispatch Operator, Checker / Approver, Read-only Viewer, or a role the Master made). Beyond the role, "
+              "the Master can limit companies, depots, delivery areas, customer types and customers per person, and "
+              "grant or deny a single permission.",
          why="Approvals and audit only work when everyone signs in as themselves.",
          do="Next. (Users made here exist only in your practice CTDMS - no real login is created.)"),
     Step("list", "Administration › Users", do="Open Users.", keys="F3 users Enter", page="/admin/users",
@@ -452,9 +473,15 @@ L11 = Lesson("m11-users", "Users, roles and depot permissions",
          do="F2 New user: username demo.guma.op, name Guma Operator, role Dispatch Operator, NOT all depots - tick "
             "DM-GUMA only, a password, Save.",
          keys="F2 · type, Enter to move on · role: type Dispatch Enter · Space ticks · F6", check="trainee_user_created"),
-    Step("roles", "Roles and permissions", what="Administration › Roles lists every permission per role; changing a "
-         "role is audited and signs its users out.", do="Open Roles.", keys="F3 roles Enter", page="/admin/roles",
-         ui={"path": r"^/admin/roles"}),
+    Step("roles", "Roles and permissions", what="Administration › Roles lists every permission per role. Roles are "
+         "editable starting points: you can add a role of your own, and changing a role is audited and signs its users "
+         "out. Nobody can give a permission they do not hold themselves.", do="Open Roles.", keys="F3 roles Enter",
+         page="/admin/roles", ui={"path": r"^/admin/roles"}),
+    Step("scope", "Scope and exceptions per person",
+         what="On a user, 'Individual exceptions' grant or deny one permission with a reason, and the scope boxes limit "
+              "what the person sees: companies, depots, delivery areas, customer types, customers. A gatepass is "
+              "visible only when every invoice on it is inside the person's scope. Every change is audited, and the "
+              "last Administrator cannot be removed.", do="Next."),
     Step("leavers", "Leavers", what="A leaver is made inactive (never deleted) - history keeps their name - and "
          "'sign out everywhere' ends their sessions at once.", do="Finish."),
 ])
@@ -481,6 +508,11 @@ L12 = Lesson("m12-controls", "System settings and rate approval controls",
          keys="F3 approvals Enter · Tab to Approve · Enter", page="/approvals", acting="demo.checker",
          check="rate_second_person"),
     Step("self", "Back to yourself", do="Press 'Act as myself' in this panel.", ui={"self": True}),
+    Step("v17", "Switches added in v1.7",
+         what="Master Settings › Depots: 'Case barcode label scanning' per depot (switch a depot on when its printer and "
+              "scanner are ready). System Settings: label size, and what happens when an invoice's area is not one of its "
+              "customer's areas (accept, or hold for the operator). Administration › Pawati Numbering: the first Garage "
+              "Pawati number of each depot, set before the first trip.", do="Finish."),
 ])
 
 L13 = Lesson("m13-delivery", "Delivery tracking and proof of delivery",
@@ -538,7 +570,8 @@ L15 = Lesson("m15-audit", "Audit log, exports and demo-versus-live safety",
              start="masters", needs="anything", page="/reports/audit",
              source="Master User Manual (audit, exports, demonstration data)", steps=[
     Step("audit", "The audit log", what="Every business change: who, when, the old and new value and the reason. It "
-         "cannot be edited.", do="Open Reports › Audit.", keys="F3 audit Enter", page="/reports/audit",
+         "cannot be edited. v1.7 adds permission and scope changes, transporter overrides, label prints and reprints, "
+         "gate exceptions, Garage Pawati prints, receipts and cancellations, and LR book numbers.", do="Open Reports › Audit.", keys="F3 audit Enter", page="/reports/audit",
          ui={"path": r"^/reports/audit"}),
     Step("filter", "Filter the log", do="Choose Module = MASTER and Apply.", keys="Tab to Module · type MASTER · Enter",
          ui={"path": r"^/reports/audit", "query": "module=MASTER"}),
@@ -582,6 +615,13 @@ D02 = Lesson("d02-gate", "Gate check, LR pending and common errors",
          keys="F3 gate check Enter", page="/gatepass/gate", ui={"path": r"^/gatepass/gate"}),
     Step("wrong", "A wrong number", do="Type DS/XX/0000 and press Enter.", keys="type · Enter",
          expect="'No gatepass … Do not let the goods out'", ui={"text": [".alert-error", "No gatepass"]}),
+    Step("cases", "Case barcodes at the gate",
+         what="For a depot with case control, scan the barcode of every carton in the same box (the cursor stays "
+              "there): a green tick and a beep for each, a red STOP with the reason for a wrong, repeated, void or "
+              "foreign label. 'Scanned / total' and the missing cartons are shown, and gate-out is refused until all "
+              "are scanned. A manager with the exception permission can let it leave with a reason - the missing "
+              "cartons are marked and the exception is reported. This practice gatepass is without labels.",
+         do="Next."),
     Step("confirm", "Confirm Kishore Mini Truck's gatepass",
          do="Type the Kishore gatepass number (in 'Waiting at the gate'), Enter, check the cases, Confirm gate-out.",
          keys="type the last digits · Enter · F9", check="kishore_gone"),
@@ -591,7 +631,8 @@ D02 = Lesson("d02-gate", "Gate check, LR pending and common errors",
     Step("errors", "Common messages", what="'no rate for <area> on this transporter's rate card' - choose another "
          "transporter or ask for the rate. 'enter the trip charge' - type the amount. 'no per-box rate' - take the "
          "invoice off or ask for the rate. 'same depot' - one gatepass per depot. 'must be printed' - F8 first. "
-         "A reprint needs a reason.", do="Finish."),
+         "A reprint needs a reason. 'N cases not scanned' - scan the rest, or a manager records an exception. "
+         "'Garage Pawati not printed' - print the slips of the trip first.", do="Finish."),
 ])
 
 D03 = Lesson("d03-pawati", "Local-auto trip to transporters: Garage Pawati",
@@ -667,8 +708,17 @@ DM1 = Lesson("dm-monitor", "Depot operations and dispatch monitoring",
          ui={"path": r"^/dispatch/pending", "query": "cfa_id="}),
     Step("gatepasses", "Gatepasses", what="Every pickup with its state: not printed, printed, gone out, void; LR missing.",
          do="Open Gatepasses.", keys="F3 gatepasses Enter", page="/gatepass", ui={"path": r"^/gatepass$"}),
-    Step("gate", "At the gate", what="Gate Check shows what is waiting at the gate.", do="Open Gate Check.",
+    Step("gate", "At the gate", what="Gate Check shows what is waiting at the gate, and for case-control depots the "
+         "scanned / total count of cartons.", do="Open Gate Check.",
          keys="F3 gate check Enter", page="/gatepass/gate", ui={"path": r"^/gatepass/gate"}),
+    Step("pawati", "Garage Pawati register",
+         what="Slips for goods a local auto took to the transporters' garages: open, received (ticked, or by the LR "
+              "that follows), not printed, cancelled - with days open. Follow up the ones that stay open.",
+         do="Open Garage Pawati.", keys="F3 garage pawati Enter", page="/pawati", ui={"path": r"^/pawati"}),
+    Step("lrbooks", "LR Books",
+         what="The builty numbers each transporter gave you. CTDMS hands the next number to each consignment; a "
+              "warning appears when a book is nearly empty.", do="Open LR Books.", keys="F3 lr books Enter",
+         page="/lr-books", ui={"path": r"^/lr-books"}, perm="lr_book.manage"),
 ])
 
 DM2 = Lesson("dm-exceptions", "Transporter selection and freight exceptions",
@@ -677,11 +727,15 @@ DM2 = Lesson("dm-exceptions", "Transporter selection and freight exceptions",
     GP_OPEN,
     Step("depot", "Kamal Vihar", do="Depot: KVR, Enter.", ui={"value": ["#gp-cfa", "KVR|Kamal"]}),
     Step("inv", "The Durg invoice", do="Add XY/K/2604 (Durg).", ui={"text": ["#gp-lines tbody", "XY/K/2604"]}),
-    Step("vijay", "A transporter without a Durg rate", do="Choose Vijay Transport Co.", keys="Enter · Enter · type VTC · Enter",
-         ui={"text": ["#gp-why", "no rate for Durg"]}),
-    Step("fix", "Choose one that serves Durg", what="Shree Roadlines has ₹14 per case for Durg. (Or ask the Administrator "
-         "to add a Vijay rate, which a checker approves.)", do="Choose Shree Roadlines instead.", keys="Shift+Tab "
-         "back to Transporter · SRL · Enter", ui={"value": ["#gp-tr", "Shree"], "notext": ["#gp-why", "no rate"]}),
+    Step("vijay", "Only eligible transporters are offered",
+         what="Vijay Transport Co has no rate for Durg, so it is not offered at all. The line under the box says who "
+              "can carry the goods and how many were hidden, and why.",
+         do="Open the Transporter box and read the line below it.", keys="Enter · Enter · (the list shows only "
+         "eligible transporters)", ui={"text": ["#gp-elig-msg", "without a rate for Durg"]}, hl="#gp-elig-msg"),
+    Step("fix", "Choose the one that serves Durg", what="Shree Roadlines has ₹14 per case for Durg. (Or ask the "
+         "Administrator to add a Vijay rate, which a checker approves. A transporter that does not serve the depot is "
+         "offered only to a person who may override it, with a reason - audited.)", do="Choose Shree Roadlines.",
+         keys="SRL · Enter", ui={"value": ["#gp-tr", "Shree"], "notext": ["#gp-why", "no rate"]}),
     Step("exceptions", "Freight Exceptions", what="Invoices with a missing rate, missing boxes or a conflict wait here "
          "for a fix.", do="Open Freight Exceptions.", keys="F3 exceptions Enter", page="/exceptions",
          ui={"path": r"^/exceptions"}),
@@ -700,6 +754,11 @@ DM3 = Lesson("dm-reports", "Depot registers and delivery status",
     Step("gp-register", "Gatepass Register", what="Every gatepass of your depots with its state, charges paid and LR "
          "still missing.", do="Open Gatepass Register (Operational Reports).", keys="F10 (Reports) · Enter, or F3 gatepass register",
          page="/reports/gatepass-register", ui={"path": r"^/reports/gatepass-register"}),
+    Step("pawati-register", "Garage Pawati Register and Gate Exceptions",
+         what="Two registers added in v1.7: Garage Pawati Register (every slip, receipt state, days open) and Gate "
+              "Exception Report (trips that left with cartons not scanned - who allowed it and why).",
+         do="Open Garage Pawati Register (Operational Reports).", keys="F10 (Reports) · type pawati · Enter, or F3 pawati",
+         page="/reports/garage-pawati", ui={"path": r"^/reports/garage-pawati"}),
     Step("export", "Export", what="Operational registers export to Excel, CSV or PDF. In training the file is marked "
          "TRAINING - NOT VALID FOR BUSINESS USE.", do="On the Gatepass Register press Excel (or CSV / PDF).",
          keys="Tab to the export buttons · Enter", check="report_exported", perm="data.export"),
@@ -710,7 +769,8 @@ C01 = Lesson("c-rates", "Pending rate approvals - two people",
              start="uploaded", needs="rates_waiting", video=("Step 2 ", "The freight rates from the workbook"), page="/approvals",
              source="v1.6 guide video, Master User Manual (approvals)", steps=[
     Step("idea", "Maker and checker", what="Rates proposed by one person are approved by another. A checker never "
-         "approves their own change.", why="The rate decides what every transporter is paid.", do="Next."),
+         "approves their own change. A rate made for one depot or one company only (an exception) waits for approval "
+         "in the same way.", why="The rate decides what every transporter is paid.", do="Next."),
     Step("open", "Approvals", do="Open Approvals.", keys="F3 approvals Enter", page="/approvals", ui={"path": r"^/approvals"}),
     Step("approve", "Approve all", do="Review the rate-card rates uploaded by the demo master and press Approve all.",
          keys="Tab to Approve all · Enter", check="rates_approved_by_checker"),
@@ -724,6 +784,10 @@ C02 = Lesson("c-exceptions", "Verification and exception handling",
     Step("decide", "Decide the request", do="Approvals › the 001250 request: type remarks, Approve (or Reject).",
          keys="F3 approvals Enter · Tab to Remarks · type · Tab to Approve · Enter", page="/approvals",
          check="override_decided"),
+    Step("others", "Other things that wait",
+         what="An invoice whose area is unclear (the customer has several delivery areas, or the file shows another) "
+              "waits for the operator's choice, which is audited. A transporter outside a depot's list is used only by "
+              "a person with the override permission, with a reason. Both show in the audit log.", do="Finish."),
 ])
 
 C03 = Lesson("c-bills", "Reconciliation and bill approval", "Review Shree Roadlines' bill and approve it.",
@@ -767,7 +831,7 @@ PATHS: dict[str, dict] = {
     "MASTER": {"name": "Master Administrator", "roles": ["ADMIN"],
                "lessons": ["m01-intro", "m02-workbook", "m03-masters", "m04-add-record", "m05-recognition",
                            "m06-imports", "m07-long", "m08-trip", "m09-box", "m10-reports", "m11-users",
-                           "m12-controls", "m13-delivery", "m14-bills", "m15-audit"]},
+                           "m12-controls", "m13-delivery", "m14-bills", "m15-audit", "d03-pawati"]},
     "DISPATCH": {"name": "Dispatch Operator", "roles": ["DISPATCH_OPERATOR"],
                  "lessons": ["k00-keys", "m07-long", "m08-trip", "m09-box", "d02-gate", "d03-pawati"]},
     "DEPOT": {"name": "Depot Manager", "roles": ["CFA_MANAGER"],

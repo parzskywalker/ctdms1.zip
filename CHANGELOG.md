@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.7.0 — Guided Training brought up to date for v1.7
+
+- **Garage Pawati lesson is now on every path that dispatches**: Master Administrator (16 lessons, last), Dispatch Operator and
+  Depot Manager. It needs invoice 001250 to be waiting; if a trainee reaches it from a practice copy where that invoice
+  carries a box-change request, the panel offers *Prepare practice data*.
+- **Corrected: "Transporter selection" (Depot Manager).** It still told the trainee to pick Vijay Transport Co and read "no rate
+  for Durg". Since v1.7 only eligible transporters are offered, so the step now has the trainee read the eligibility line
+  ("1 transporter can carry Durg - hidden: 1 without a rate for Durg") and choose Shree Roadlines; it explains the audited
+  depot override.
+- **Updated lessons**: Introduction (new menus, role-based sidebar), Masters (customer delivery locations, depots a transporter
+  serves, builty-book flag, depot / company rate exceptions), Long distance (how freight was calculated, case barcodes at
+  depots that use them), Local auto (what differs from the Garage Pawati trip), Users (editable roles, scope by company /
+  depot / area / customer type / customer, individual exceptions), System settings (case control per depot, label size, area
+  mismatch, Pawati numbering), Audit (new audited actions), Gate check (scanning cartons, gate exception, Pawati blocker),
+  Depot monitoring (Pawati register, LR Books), Depot registers and Reports (Garage Pawati Register, Gate Exception Report),
+  Rate approvals and Exceptions (rate exceptions, area choice, transporter override).
+- Tests: the Depot Manager path test now drives the Pawati lesson; the Master path test covers 16 lessons.
+
 ## v1.7.0 — Guided Training: Garage Pawati lesson
 
 - The lesson is now also the last lesson of the **Depot Manager** path (after *Depot registers and delivery status*); its test runs for both roles.

@@ -118,7 +118,9 @@ def box_waiting(db, ctx):
 
 @needs
 def korba_waiting(db, ctx):
-    return _pending(db, ["001250"]), "invoice 001250 (Korba) is not waiting for dispatch"
+    inv = _inv(db, "001250")
+    ok = inv is not None and inv.dispatch_slip_id is None and inv.status in ("PENDING", "VERIFIED")
+    return ok, "invoice 001250 (Korba) is not waiting for dispatch (it may carry a pending box-change request)"
 
 
 @needs

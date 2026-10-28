@@ -59,7 +59,7 @@ def _step(w, action="next") -> dict:
 
 # ----------------------------------------------------------------------------- lesson catalogue
 def test_lessons_paths_checks_and_starting_points_are_consistent():
-    assert len(PATHS["MASTER"]["lessons"]) == 15
+    assert len(PATHS["MASTER"]["lessons"]) == 16
     for code, p in PATHS.items():
         assert p["lessons"], code
         for c in p["lessons"]:

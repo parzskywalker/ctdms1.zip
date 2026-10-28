@@ -31,7 +31,7 @@ result is really there (a gatepass generated, printed and gone out; a bill appro
 * Log out at any time; *Continue* resumes at the same step. *Replay lesson* repeats a lesson; *Prepare practice data*
   resets your practice copy to the lesson's starting point. *Save & exit* returns to live work.
 * Two-person steps (rate or bill approval): press *Act as Demo Checker* in the panel, then *Act as myself*.
-* Learning paths: Master Administrator (15 lessons), Dispatch Operator, Depot Manager, Checker / Approver, Accounts,
+* Learning paths: Master Administrator (16 lessons), Dispatch Operator, Depot Manager, Checker / Approver, Accounts,
   Management, Read-only Viewer - chosen from your role; the Master can only assign the tutorial that belongs to the
   user's role (a Dispatch Operator is not given the Master Administrator tutorial).
 

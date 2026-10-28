@@ -106,6 +106,39 @@ LONG = {
         f"lr_{one('select id from customers where code=?', c)}": lr for c, lr in (("DM-C071", "SRL-5501"), ("DM-C080", "SRL-5502"))}
         | {f"lrdate_{one('select id from customers where code=?', c)}": t for c in ("DM-C071", "DM-C080")}),
 }
+
+def _pawati_trip(w, one, t):
+    inv = one("select id from invoices where invoice_no='001250'")
+    srl, vtc = (one("select id from transporters where code=?", c) for c in ("DM-SRL", "DM-VTC"))
+    return w.post("/gatepass/new", data={
+        "ids": [str(inv)], "dispatch_date": t, "mode": "TRANSPORTER", "pickup_mode": "OUTSIDE_AUTO",
+        "outside_auto_id": str(one("select id from outside_autos where code='DM-LA1'")), "auto_method": "PER_TRIP",
+        "trip_charge": "500", f"cases_{inv}": "8", f"recv_{inv}": f"{srl}:5,{vtc}:3"})
+
+
+def _pawati_ids(one):
+    c = sqlite3.connect(runtime_path[0])
+    try:
+        return [str(r[0]) for r in c.execute("select id from garage_pawatis order by pawati_no")]
+    finally:
+        c.close()
+
+
+runtime_path: list = [None]
+PAWATI = {
+    ("d03-pawati", "generate"): _pawati_trip,
+    ("d03-pawati", "print"): lambda w, one, t: w.post(f"/gatepass/{_slip(one)}/print", data={"size": "A5", "mode": "pdf"}),
+    ("d03-pawati", "blocked"): lambda w, one, t: w.post(f"/gatepass/{_slip(one)}/gate-out"),
+    ("d03-pawati", "pawati-print"): lambda w, one, t: w.post("/pawati/print", data={"ids": _pawati_ids(one)}),
+    ("d03-pawati", "out"): lambda w, one, t: w.post(f"/gatepass/{_slip(one)}/gate-out"),
+    ("d03-pawati", "receive-hand"): lambda w, one, t: w.post(
+        f"/pawati/{one('select id from garage_pawatis where receiving_transporter_id=?', one('select id from transporters where code=?', 'DM-SRL'))}/receive",
+        data={"note": "signed"}),
+    ("d03-pawati", "receive-lr"): lambda w, one, t: w.post(f"/gatepass/{_slip(one)}/lr", data={
+        f"lr_{one('select customer_id from invoices where invoice_no=?', '001250')}_{one('select id from transporters where code=?', 'DM-VTC')}": "VTC-7001",
+        f"lrdate_{one('select customer_id from invoices where invoice_no=?', '001250')}_{one('select id from transporters where code=?', 'DM-VTC')}": t}),
+}
+
 EXPORT = lambda w, one, t: w.get("/reports/cfa-freight/export?fmt=xlsx&date_from=2026-01-01")  # noqa: E731  (Accounts: final report)
 REGISTER_EXPORT = lambda w, one, t: w.get("/reports/gatepass-register/export?fmt=xlsx&date_from=2026-01-01")  # noqa: E731  (Depot Manager: operational register)
 
@@ -123,6 +156,8 @@ def test_role_path_completes_with_real_actions(web, db, path, role):
     uid = _user(web, username, role)
     bill = lambda one: one("select id from transporter_bills order by id desc limit 1")  # noqa: E731
     actions = dict(LONG)
+    actions.update(PAWATI)
+    runtime_path[0] = runtime.db_path(uid)
     actions.update({
         ("dm-reports", "export"): REGISTER_EXPORT,
         ("c-rates", "approve"): lambda w, one, t: w.post("/rate-cards/approve-all", data={"remarks": "checked"}),
