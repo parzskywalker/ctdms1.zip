@@ -21,6 +21,7 @@ from app.models import (
     FreightRate, Invoice, InvoiceItem, InvoiceOverride, InvoiceStatus, Location, OutsideAuto, RateLevel,
     SlipPrintLog, Transporter, TransporterBill, TransporterBillLine, User,
 )
+from app.models.pawati import GaragePawati
 from app.services.scope import (
     apply_bill_scope, apply_invoice_scope, apply_scope_allow_null_cfa, apply_slip_scope, apply_strict_scope,
 )
@@ -981,11 +982,80 @@ def rpt_delivery_register(db, user, f):
                         note="Days = transit days when delivered, otherwise days since gate-out.")
 
 
+def rpt_garage_pawati(db, user, f):
+    """Garage Pawati slips with their receipt state; an uncancelled slip with no receipt is 'open' and ages."""
+    cols = [Col("date", "Date", "date"), Col("depot", "Depot"), Col("pawati_no", "Pawati no."),
+            Col("transporter", "Receiving transporter"), Col("customer", "Customer"), Col("company", "Company"),
+            Col("cartons", "Cartons", "int", True), Col("bill_nos", "Bill no."), Col("amount", "Amount", "money", True),
+            Col("freight", "Freight", "money", True), Col("state", "State"), Col("received", "Received"),
+            Col("days_open", "Days open", "int")]
+    slips = apply_slip_scope(select(DispatchSlip.id), user)
+    stmt = (select(GaragePawati, DispatchSlip).join(DispatchSlip, DispatchSlip.id == GaragePawati.slip_id)
+            .where(GaragePawati.slip_id.in_(slips)))
+    if f.date_from:
+        stmt = stmt.where(DispatchSlip.dispatch_date >= f.date_from)
+    if f.date_to:
+        stmt = stmt.where(DispatchSlip.dispatch_date <= f.date_to)
+    if f.cfa_id:
+        stmt = stmt.where(GaragePawati.cfa_id == f.cfa_id)
+    if f.transporter_id:
+        stmt = stmt.where(GaragePawati.receiving_transporter_id == f.transporter_id)
+    if f.company_id:
+        stmt = stmt.where(GaragePawati.company_id == f.company_id)
+    if f.customer_id:
+        stmt = stmt.where(GaragePawati.customer_id == f.customer_id)
+    today = local_today()
+    rows = []
+    for p, sl in db.execute(stmt.order_by(GaragePawati.cfa_id, GaragePawati.pawati_no)):
+        if p.status == "CANCELLED":
+            state, open_days = "Cancelled", None
+        elif p.received_at:
+            state, open_days = "Received", None
+        else:
+            state = "Not printed" if not p.print_count else "Open"
+            open_days = (today - sl.gate_out_at.date()).days if sl.gate_out_at else None
+        rows.append(dict(date=sl.dispatch_date, depot=p.cfa.name, pawati_no=p.pawati_no, transporter=p.transporter.name,
+                         customer=p.customer.name, company=p.company.name, cartons=p.cartons, bill_nos=p.bill_nos,
+                         amount=p.amount, freight=p.freight, state=state,
+                         received=(f"{p.received_at:%d-%m-%Y} ({'by LR' if p.received_via == 'LR' else 'ticked'})"
+                                   if p.received_at else "—"), days_open=open_days))
+    return ReportResult(cols, rows, _totals(cols, rows), date_basis="Dispatch date",
+                        note="Open = printed, trip gone out, receipt not yet recorded. Days open counts from gate-out.")
+
+
+def rpt_gate_exceptions(db, user, f):
+    """Gatepasses that were allowed to leave with cases not scanned (gate exception), with the reason and the person."""
+    cols = [Col("date", "Date", "date"), Col("dispatch_no", "Gatepass"), Col("depot", "Depot"),
+            Col("cases", "Cases", "int", True), Col("missing", "Not scanned", "int", True), Col("by", "Allowed by"),
+            Col("at", "At", "datetime"), Col("reason", "Reason")]
+    from app.models import DispatchCase
+    stmt = apply_slip_scope(select(DispatchSlip), user).where(DispatchSlip.gate_exception_at.isnot(None))
+    if f.date_from:
+        stmt = stmt.where(DispatchSlip.dispatch_date >= f.date_from)
+    if f.date_to:
+        stmt = stmt.where(DispatchSlip.dispatch_date <= f.date_to)
+    if f.cfa_id:
+        stmt = stmt.where(DispatchSlip.cfa_id == f.cfa_id)
+    miss = dict(db.execute(select(DispatchCase.slip_id, func.count(DispatchCase.id)).where(
+        DispatchCase.status == "MISSING").group_by(DispatchCase.slip_id)).all())
+    rows = [dict(date=s.dispatch_date, dispatch_no=s.dispatch_no, depot=s.cfa.name if s.cfa else "", cases=s.total_cases,
+                 missing=miss.get(s.id, 0), by=db.get(User, s.gate_exception_by_id).full_name if s.gate_exception_by_id else "",
+                 at=s.gate_exception_at, reason=s.gate_exception_reason)
+            for s in db.scalars(stmt.order_by(DispatchSlip.gate_exception_at))]
+    return ReportResult(cols, rows, _totals(cols, rows), date_basis="Dispatch date")
+
+
 INV_F = ["date", "company", "customer", "cfa", "location", "transporter", "erp", "status", "invoice_no"]
 REPORTS: dict[str, ReportDef] = {r.code: r for r in [
     ReportDef("gatepass-register", "Gatepass Register", "Operational",
               "Every gatepass: mode, carrier, invoices, cases, charges, cash paid, to be billed, LR still missing.",
               rpt_gatepass, filters=["date", "cfa", "transporter"], perm="report.view"),
+    ReportDef("garage-pawati", "Garage Pawati Register", "Operational",
+              "Every Garage Pawati: receiving transporter, customer, cartons, bills, amount, freight, receipt state and days open.",
+              rpt_garage_pawati, filters=["date", "company", "customer", "cfa", "transporter"], perm="report.view"),
+    ReportDef("gate-exceptions", "Gate Exception Report (cases not scanned)", "Controls",
+              "Gatepasses that left with unscanned cases: how many, who allowed it, when and why.",
+              rpt_gate_exceptions, filters=["date", "cfa"], default_range="fy", perm="report.view"),
     ReportDef("invoice-register", "Invoice Register (operational list)", "Operational",
               "Invoices with their dispatch status, transporter and LR - no sales value, rate or freight.",
               rpt_invoice_register, filters=INV_F, default_range="quarter", perm="report.view"),

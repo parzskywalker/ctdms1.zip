@@ -112,7 +112,7 @@ Delete, void, cancel and reject always ask first with **No** pre-selected.
    is reprinted from *Reprint* (same code, a reason is asked). The label size is a setting (System Settings › Case labels).
    **v1.7 – local auto, several transporters, Garage Pawati.** For a *Transporter + Local auto* trip, choose the receiving transporter on each
    invoice (use *split* to send some cases to another). After the gatepass is made, open *Garage Pawati* on it and print the
-   yellow slips (4 per A4) - the auto cannot be gated out before that. When the garage signs, press *Received* (or just enter the LR
+   white slips (4 per A4) - the auto cannot be gated out before that. When the garage signs, press *Received* (or just enter the LR
    later; that records it). A reprint needs a reason. *LR Books* (Dispatch desk) holds each transporter's builty numbers; CTDMS gives the next
    one to each consignment and you may change it.
    (Older description, depots without case control:) **Case labels** (gatepass page): one label per case — customer, area, invoices, carrier, "case 3 / 12" and the

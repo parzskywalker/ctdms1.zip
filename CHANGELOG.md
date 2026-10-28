@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.7.0 — Phase 7: release readiness
+
+- **Garage Pawati is white** (plain white A4, 4 slips; no coloured stock needed).
+- **Two new reports**: *Garage Pawati Register* (receiving transporter, customer, cartons, bills, amount, freight, receipt state,
+  days open) and *Gate Exception Report* (gatepasses that left with unscanned cases: who, when, why). Both are scoped like the
+  gatepass they belong to and export to CSV / Excel / PDF.
+- **PostgreSQL release gate passed**: the full test suite on PostgreSQL 16, migrations 0 -> 0015, 0015 -> 0009 -> 0015.
+- **End-to-end test** of the whole workflow (case control + receivers + Pawati + LR book + audit trail + report scope).
+- **docs/RELEASE_v1.7.md**: upgrade steps, rollback, depot-by-depot switch-on (Guma first), hardware trial sheet, acceptance
+  checklist and the points still to be confirmed by the owner. Version is now 1.7.0.
+
 ## v1.7 (in progress) — Phase 6: receiving transporters, Garage Pawati, LR books
 
 Migration 0015 (applied automatically, additive): `dispatch_allocations`, `garage_pawatis` (+ lines, print log), `lr_books`,
@@ -10,7 +21,7 @@ slip get `pawati.cancel` (audited). A depot's training/practice database is upgr
   transporter, and an invoice may be **split** (some cases to a second transporter). Freight is priced per receiver from its
   rate card; the allocation (invoice line x receiver) is the unit of freight, LR and Pawati. One gatepass = one local-auto trip;
   *Direct pickup* + local auto is refused. Regular transporter gatepasses are unchanged.
-- **Garage Pawati** (Dispatch desk): one yellow slip per receiving transporter x customer x company (No., Date, Garage, To,
+- **Garage Pawati** (Dispatch desk): one white slip (printed on plain white A4) per receiving transporter x customer x company (No., Date, Garage, To,
   Cartons, Bill No., Amount, Freight, signatures), 4 per A4. Numbered per depot; the Administrator sets the starting number
   (Administration > Pawati Numbering). **The auto cannot go out until every Pawati is printed.** Reprint = reason + permission.
   Receipt is recorded by hand or automatically when the LR is entered after gate-out; the Pawati stays with the transporter.

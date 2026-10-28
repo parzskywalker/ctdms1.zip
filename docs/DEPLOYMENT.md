@@ -70,6 +70,8 @@ refuses, so nobody is promoted by accident. Every recovery is written to the aud
 Business controls (print-before-complete, approvals, tolerances, LR/vehicle mandatory, reprint reasons, dispatch
 number prefix, organisation name on slips) are in *Administration › System Settings*, not env vars.
 
+> **Upgrading to v1.7?** Follow docs/RELEASE_v1.7.md (backup, migration 0010–0015, rollback, depot-by-depot switch-on).
+
 ## Go-live checklist
 
 - [ ] Strong `CTDMS_SECRET_KEY`, `CTDMS_SHOW_DEMO_LOGINS=false`, HTTPS + `CTDMS_SESSION_COOKIE_SECURE=true`
