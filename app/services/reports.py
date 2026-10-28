@@ -21,7 +21,9 @@ from app.models import (
     FreightRate, Invoice, InvoiceItem, InvoiceOverride, InvoiceStatus, Location, OutsideAuto, RateLevel,
     SlipPrintLog, Transporter, TransporterBill, TransporterBillLine, User,
 )
-from app.services.scope import apply_invoice_scope, apply_scope_allow_null_cfa, apply_strict_scope
+from app.services.scope import (
+    apply_bill_scope, apply_invoice_scope, apply_scope_allow_null_cfa, apply_slip_scope, apply_strict_scope,
+)
 from app.services.utils import fy_start, local_today, money, parse_date, safe_int, utc_start
 
 S = InvoiceStatus
@@ -174,7 +176,7 @@ class ReportDef:
                                                         "location", "transporter", "erp", "status", "invoice_no",
                                                         "rcode"])
     # Who may open / export it. The default is the strict one: every consolidated, financial or management report
-    # is a "final report" and needs mis.view (Administrator, Accounts, Management - fixed baseline). Only operational
+    # is a "final report" and needs mis.view (Administrator, Accounts, Management in the default roles). Only operational
     # registers and control reports name report.view (or another permission) explicitly.
     perm: str = "mis.view"
     default_range: str = "month"
@@ -458,7 +460,7 @@ def rpt_monthly(db, user, f):
 
 def _bill_base(user, f):
     stmt = select(TransporterBill).join(Transporter)
-    stmt = apply_strict_scope(stmt, user, TransporterBill)
+    stmt = apply_bill_scope(stmt, user, TransporterBill)
     if f.date_from:
         stmt = stmt.where(TransporterBill.bill_date >= f.date_from)
     if f.date_to:
@@ -763,8 +765,7 @@ def rpt_gatepass(db, user, f):
             Col("total", "Total charged", "money", True), Col("paid", "Paid at dispatch", "money", True),
             Col("balance", "To be billed", "money", True), Col("lr_missing", "LR missing", "int", True),
             Col("state", "State")]
-    from app.services.scope import apply_cfa_scope
-    stmt = apply_cfa_scope(select(DispatchSlip), user, DispatchSlip.cfa_id).where(DispatchSlip.is_void.is_(False))
+    stmt = apply_slip_scope(select(DispatchSlip), user).where(DispatchSlip.is_void.is_(False))
     if f.date_from:
         stmt = stmt.where(DispatchSlip.dispatch_date >= f.date_from)
     if f.date_to:
@@ -817,9 +818,8 @@ def rpt_outside_auto(db, user, f):
             Col("cases", "Boxes", "int", True), Col("trip_charge", "Trip / box charge (owed to the auto)", "money", True),
             Col("allocated", "Booked on the invoices (MIS)", "money", True), Col("per_box", "Cost / box", "rate"),
             Col("paid", "Paid at dispatch", "money", True), Col("state", "State")]
-    from app.services.scope import apply_cfa_scope
     stmt = (select(DispatchSlip).where(DispatchSlip.is_void.is_(False), DispatchSlip.outside_auto_id.isnot(None)))
-    stmt = apply_cfa_scope(stmt, user, DispatchSlip.cfa_id)
+    stmt = apply_slip_scope(stmt, user)
     if f.date_from:
         stmt = stmt.where(DispatchSlip.dispatch_date >= f.date_from)
     if f.date_to:
@@ -883,7 +883,7 @@ def rpt_bill_irregularities(db, user, f):
             Col("ours", "Our freight", "money", True), Col("result", "Result"), Col("findings", "Findings"),
             Col("bill_status", "Bill status")]
     stmt = select(TransporterBillLine, TransporterBill).join(TransporterBill)
-    stmt = apply_strict_scope(stmt, user, TransporterBill)
+    stmt = apply_bill_scope(stmt, user, TransporterBill)
     if f.date_from:
         stmt = stmt.where(TransporterBill.bill_date >= f.date_from)
     if f.date_to:

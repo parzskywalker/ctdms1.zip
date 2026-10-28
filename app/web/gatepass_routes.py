@@ -23,7 +23,7 @@ from app.services import settings_service as cfg
 from app.services import transporter_rate_service as trs
 from app.services.errors import BusinessError
 from app.services.pdf_service import dispatch_slips_pdf
-from app.services.scope import apply_cfa_scope, apply_invoice_scope, can_see, can_see_invoice, visible_cfas
+from app.services.scope import apply_invoice_scope, apply_slip_scope, can_see, can_see_invoice, visible_cfas
 from app.services.utils import local_now, local_today, parse_date, parse_time, safe_int
 from app.web.templating import flash, get_form, redirect, render, templates
 
@@ -45,7 +45,7 @@ def _find_slip(db: Session, user: User, text: str) -> DispatchSlip | None:
     t = (text or "").strip().upper()
     if not t:
         return None
-    stmt = apply_cfa_scope(select(DispatchSlip), user, DispatchSlip.cfa_id)
+    stmt = apply_slip_scope(select(DispatchSlip), user)
     slip = db.scalar(stmt.where(func.upper(DispatchSlip.dispatch_no) == t))
     if slip:
         return slip
@@ -221,7 +221,7 @@ def register(request: Request, db: Session = Depends(get_db), user: User = Depen
         d_to = parse_date(qp.get("date_to")) if qp.get("date_to") else local_today()
     except ValueError:
         d_from, d_to = local_today() - timedelta(days=30), local_today()
-    stmt = apply_cfa_scope(select(DispatchSlip), user, DispatchSlip.cfa_id).where(
+    stmt = apply_slip_scope(select(DispatchSlip), user).where(
         DispatchSlip.dispatch_date >= d_from, DispatchSlip.dispatch_date <= d_to)
     tid = safe_int(qp.get("transporter_id"))
     if tid:
@@ -400,7 +400,7 @@ def gate(request: Request, db: Session = Depends(get_db), user: User = Depends(r
     invs = ds.slip_invoices(db, slip) if slip else []
     blockers = sorted({b for i in invs for b in ds.completion_blockers(db, i) if b != "Already dispatched"}) \
         if slip and not slip.gate_out_at and not slip.is_void else []
-    waiting = list(db.scalars(apply_cfa_scope(select(DispatchSlip), user, DispatchSlip.cfa_id).where(
+    waiting = list(db.scalars(apply_slip_scope(select(DispatchSlip), user).where(
         DispatchSlip.is_void.is_(False), DispatchSlip.gate_out_at.is_(None)).order_by(DispatchSlip.id.desc()).limit(30)))
     return render(request, "gatepass/gate.html", {"title": "Gate check", "code": code, "slip": slip, "invs": invs,
                                                   "blockers": blockers, "waiting": waiting,

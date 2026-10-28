@@ -370,7 +370,7 @@ with sync_playwright() as p:
     check("Master Administrator" in pg.locator("main").inner_text(), "Training: the Administrator gets the full Master tutorial")
     pg.goto(B + "/admin/roles"); settle(pg)
     shot(pg, "admin_roles")
-    check("Fixed baseline" in pg.content() and "What each role sees in the menu" in pg.content(), "Administrator: Roles page shows the locked baseline and the menu summary")
+    check("Fixed baseline" not in pg.content() and "What each role sees in the menu" in pg.content() and pg.locator("input[name^=name_]").count() >= 7, "Administrator: Roles page is editable (rename, every permission) and shows the menu summary")
     ctx.close()
 
     br.close()

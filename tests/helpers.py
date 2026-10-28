@@ -50,16 +50,16 @@ def get_inv(invoice_id: int) -> Invoice:
 
 
 def roles_matrix(db, extra: dict | None = None, drop: set | None = None) -> dict:
-    """The full Roles & permissions form as the screen posts it: every role's ticked, non-fixed permissions (the form
-    always carries all roles, so a partial post would clear the others). `extra` adds fields, `drop` removes some."""
+    """The full Roles & permissions form as the screen posts it: every role's ticked permissions (the form always carries
+    all roles, so a partial post would clear the others). `extra` adds fields, `drop` removes some."""
     from app.models import Role
-    from app.security.permissions import FIXED_BASELINE, PERMISSIONS
+    from app.security.permissions import PERMISSIONS
     data = {}
     for r in db.scalars(select(Role)):
         if "*" in (r.permissions or []):
             continue
         for p in r.permissions or []:
-            if p in PERMISSIONS and p not in FIXED_BASELINE:
+            if p in PERMISSIONS:
                 data[f"p_{r.id}_{p}"] = "1"
     data.update(extra or {})
     for k in drop or ():

@@ -14,7 +14,7 @@ from app.models import (
 from app.security.auth import csrf_protect, require, require_any
 from app.services import invoice_service
 from app.services.reports import Filters, rpt_exceptions, rpt_rate_missing
-from app.services.scope import apply_invoice_scope, apply_strict_scope, can_see_invoice
+from app.services.scope import apply_bill_scope, apply_invoice_scope, apply_strict_scope, can_see_invoice
 from app.services.utils import safe_int
 from app.web.templating import back_url, filter_options, flash, redirect, render
 
@@ -51,7 +51,7 @@ def approvals(request: Request, db: Session = Depends(get_db),
                                  .order_by(TransporterRate.created_at)))
     bills = []
     if user.can("recon.approve"):
-        bills = list(db.scalars(apply_strict_scope(select(TransporterBill), user, TransporterBill)
+        bills = list(db.scalars(apply_bill_scope(select(TransporterBill), user, TransporterBill)
                                 .where(TransporterBill.status.in_([BillStatus.MATCHED, BillStatus.VARIANCE]))
                                 .order_by(TransporterBill.bill_date)))
     tprev = {r.id: db.get(TransporterRate, r.previous_rate_id) if r.previous_rate_id else None for r in trates}
@@ -142,7 +142,7 @@ def approval_history(request: Request, db: Session = Depends(get_db),
                          "remarks": (r.rejected_reason if rej else r.change_reason) or ""})
 
     if user.can("recon.approve"):
-        bl = list(db.scalars(apply_strict_scope(select(TransporterBill), user, TransporterBill).where(
+        bl = list(db.scalars(apply_bill_scope(select(TransporterBill), user, TransporterBill).where(
             TransporterBill.status.in_([BillStatus.APPROVED, BillStatus.PAID, BillStatus.REJECTED]),
             (TransporterBill.approved_at >= since) | (TransporterBill.updated_at >= since))))
         rejections("TransporterBill", "BILL_REJECTED", [b.id for b in bl if b.status == BillStatus.REJECTED])

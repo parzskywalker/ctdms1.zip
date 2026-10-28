@@ -1,28 +1,82 @@
 {% extends "base.html" %}
 {% block content %}
+{% set open_areas = (not u) or u.all_areas %}{% set open_types = (not u) or u.all_customer_types %}{% set open_customers = (not u) or u.all_customers %}
 <div class="crumbs"><a href="/admin/users">Users</a> › {{ u.username if u else 'New' }}</div>
-<div class="page-head"><div><h1>{{ ('User · ' ~ u.full_name) if u else 'New user' }}</h1></div></div>
+<div class="page-head"><div><h1>{{ ('User · ' ~ u.full_name) if u else 'New user' }}</h1><div class="sub">The <b>role</b> sets what this person may do; the <b>scope</b> sets whose data they see. Individual permission changes are for exceptions only and need a reason.</div></div></div>
 <div class="grid g-side">
-<form method="post" action="/admin/users/save" class="card" data-main-form>
-  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+<form method="post" action="/admin/users/save" class="card" data-main-form id="user-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="access_form" value="1">
   {% if u %}<input type="hidden" name="id" value="{{ u.id }}">{% endif %}
+  <h3 class="sect">1 · Identity &amp; role</h3>
   <div class="form-grid">
     <div><label>Username <span class="req">*</span></label><input type="text" name="username" value="{{ u.username if u else '' }}" required autocomplete="off"></div>
     <div><label>Full name <span class="req">*</span></label><input type="text" name="full_name" value="{{ u.full_name if u else '' }}" required></div>
     <div><label>Email</label><input type="email" name="email" value="{{ u.email or '' if u else '' }}"></div>
     <div><label>Mobile</label><input type="text" name="mobile" value="{{ u.mobile or '' if u else '' }}"></div>
-    <div><label>Role <span class="req">*</span></label><select name="role_id" required>{% for r in roles %}<option value="{{ r.id }}" {% if u and u.role_id == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}</select></div>
+    <div><label>Role <span class="req">*</span></label><select name="role_id" id="role-select" required>{% for r in roles %}<option value="{{ r.id }}" {% if u and u.role_id == r.id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}</select></div>
+    <div><label>Responsibility <span class="muted small">(note)</span></label><input type="text" name="responsibility" value="{{ (u.responsibility or '') if u else '' }}" maxlength="200" placeholder="e.g. Guma depot dispatch, Company A"></div>
     {% if not u %}<div><label>Password <span class="req">*</span></label><input type="text" name="password" required autocomplete="off"><label class="check" style="margin-top:6px"><input type="checkbox" name="must_change" value="1" checked>Must change it at first login</label></div>{% endif %}
     <div><label>&nbsp;</label><label class="check"><input type="checkbox" name="is_active" value="1" {% if not u or u.is_active %}checked{% endif %}>Active</label></div>
+  </div>
+
+  <h3 class="sect">2 · Operational scope <span class="muted small">whose data this person sees - every condition must match</span></h3>
+  <div class="form-grid">
     <div class="full"><label class="check"><input type="checkbox" name="all_companies" value="1" {% if u and u.all_companies %}checked{% endif %}>All companies</label>
       <div class="checks" style="margin-top:6px">{% for c in companies %}<label class="check"><input type="checkbox" name="companies" value="{{ c.id }}" {% if u and c in u.companies %}checked{% endif %}>{{ c.code }} <span class="muted">· {{ c.name }}</span></label>{% endfor %}</div></div>
     <div class="full"><label class="check"><input type="checkbox" name="all_cfas" value="1" {% if u and u.all_cfas %}checked{% endif %}>All Depots</label>
       <div class="checks" style="margin-top:6px">{% for c in cfas %}<label class="check"><input type="checkbox" name="cfas" value="{{ c.id }}" {% if u and c in u.cfas %}checked{% endif %}>{{ c.code }} <span class="muted">· {{ c.name }}</span></label>{% endfor %}</div></div>
+    <div class="full picker" data-picker data-kind="area" data-name="areas">
+      <label class="check"><input type="checkbox" name="all_areas" value="1" data-picker-all {% if open_areas %}checked{% endif %}>All areas</label>
+      <div class="picker-body" {% if open_areas %}hidden{% endif %}>
+        <input type="search" class="picker-q" placeholder="Type an area / location to add it…" autocomplete="off" data-enter-skip aria-label="Search areas">
+        <ul class="picker-results" role="listbox" hidden></ul>
+        <div class="picker-chosen">{% for id, label in sel_areas %}<span class="chip"><input type="hidden" name="areas" value="{{ id }}">{{ label }} <button type="button" aria-label="Remove {{ label }}">×</button></span>{% endfor %}</div>
+      </div>
+    </div>
+    <div class="full">
+      <label class="check"><input type="checkbox" name="all_customer_types" value="1" id="all-ctypes" {% if open_types %}checked{% endif %}>All customer types</label>
+      <div class="checks" id="ctype-list" style="margin-top:6px" {% if open_types %}hidden{% endif %}>{% for t in ctypes %}<label class="check"><input type="checkbox" name="customer_types" value="{{ t.code }}" {% if t.code in sel_types %}checked{% endif %}>{{ t.name }}</label>{% endfor %}{% if not ctypes %}<span class="muted small">No customer types defined in Master Settings.</span>{% endif %}</div>
+    </div>
+    <div class="full picker" data-picker data-kind="customer" data-name="customers">
+      <label class="check"><input type="checkbox" name="all_customers" value="1" data-picker-all {% if open_customers %}checked{% endif %}>All customers</label>
+      <div class="picker-body" {% if open_customers %}hidden{% endif %}>
+        <input type="search" class="picker-q" placeholder="Type a customer name or code to add it…" autocomplete="off" data-enter-skip aria-label="Search customers">
+        <ul class="picker-results" role="listbox" hidden></ul>
+        <div class="picker-chosen">{% for id, label in sel_customers %}<span class="chip"><input type="hidden" name="customers" value="{{ id }}">{{ label }} <button type="button" aria-label="Remove {{ label }}">×</button></span>{% endfor %}</div>
+        <div class="field-hint">Customer types and customers together: a restricted customer type plus chosen customers shows both.</div>
+      </div>
+    </div>
   </div>
+
+  <details class="sect-det" {% if over %}open{% endif %}>
+    <summary><b>3 · Individual permission changes</b> <span class="muted small">exceptions to the role{% if over %} - {{ over|length }} set{% endif %}</span></summary>
+    <div class="table-wrap"><table class="data compact" id="perm-over">
+      <thead><tr><th>Permission</th><th>Role gives</th><th>For this person</th></tr></thead>
+      <tbody>
+      {% for g, plist in groups %}
+        <tr><td colspan="3" style="background:#f3f6fa"><b>{{ g }}</b></td></tr>
+        {% for p in plist %}
+        <tr><td>{{ perms[p] }} <span class="muted small mono">{{ p }}</span></td>
+          <td class="small" data-role-has="{{ p }}">—</td>
+          <td><select name="perm_{{ p }}" data-perm="{{ p }}" aria-label="{{ p }} for this person"><option value="">As role</option><option value="GRANT" {% if over.get(p) == 'GRANT' %}selected{% endif %}>Give</option><option value="DENY" {% if over.get(p) == 'DENY' %}selected{% endif %}>Take away</option></select></td></tr>
+        {% endfor %}
+      {% endfor %}
+      </tbody>
+    </table></div>
+    <div style="margin-top:8px"><label>Reason for the individual changes <span class="muted small">(written to the audit log)</span></label><input type="text" name="override_reason" id="override-reason" maxlength="300" placeholder="e.g. covers the Checker's leave in June"></div>
+  </details>
+
   <div class="form-actions"><button class="btn btn-primary" type="submit" data-key="F6">Save user</button><a class="btn" href="/admin/users" data-key="Esc">Back</a></div>
+  <script type="application/json" id="role-perms">{{ role_perms|tojson }}</script>
 </form>
-{% if u %}
 <div>
+  <div class="card stack" id="eff-card" aria-live="polite" style="position:sticky;top:8px">
+    <h3>Effective access <span class="muted small">(preview - nothing is saved yet)</span></h3>
+    <div id="eff-warn" class="field-hint" style="color:var(--err)"></div>
+    <div id="eff-changes" class="small"></div>
+    <div id="eff-menus" class="small"></div>
+  </div>
+{% if u %}
   <form method="post" action="/admin/users/{{ u.id }}/password" class="card stack">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
     <h3>Set new password</h3>
@@ -32,7 +86,8 @@
     <div class="field-hint">Signs the user out everywhere.</div>
   </form>
   <div class="card"><dl class="dl tight"><dt>Last login</dt><dd>{{ u.last_login_at|dt or '—' }}</dd><dt>Failed logins</dt><dd>{{ u.failed_logins }}</dd><dt>Locked until</dt><dd>{{ u.locked_until|dt or '—' }}</dd><dt>Created</dt><dd>{{ u.created_at|dt }}</dd></dl></div>
-</div>
 {% endif %}
 </div>
+</div>
 {% endblock %}
+{% block scripts %}<script src="/static/js/user_access.js?v={{ app_version }}"></script>{% endblock %}

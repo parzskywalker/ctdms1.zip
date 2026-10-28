@@ -2,20 +2,24 @@
 
 Seeded users: admin / management / accounts / cfa.raipur (Depot Manager, Guma) / operator.raipur / operator.bilaspur /
 checker / viewer. The rules under test:
-  * Master Settings (and administration, audit log, freight-rate master): Administrator only (fixed baseline).
-  * Final Reports / Management MIS (mis.view): Administrator, Accounts, Management only - pages, exports, print, APIs.
+  * Master Settings (and administration, audit log, freight-rate master): Administrator in the default roles.
+  * Final Reports / Management MIS (mis.view): Administrator, Accounts, Management in the default roles - pages,
+    exports, print, APIs. (v1.7: roles are templates the Administrator may edit - nothing is hard-locked; these tests
+    pin the DEFAULTS and that every screen follows the stored permissions. tests/test_v17_phase2.py covers editing.)
   * Using a master in a dropdown (master.use) is separate from managing it (master.view / master.edit).
   * Every list, search, API and export is limited to the user's own depots.
 """
 from __future__ import annotations
 
 import re
+import subprocess
+import sys
 
 import pytest
 from sqlalchemy import select, text
 
 from app.models import AuditLog, CFA, Role, User
-from app.security.permissions import DEFAULT_ROLES, FIXED_BASELINE
+from app.security.permissions import DEFAULT_ROLES
 from app.services.reports import REPORTS
 from tests.conftest import WebClient, _test_session
 from tests.helpers import make_invoice, roles_matrix
@@ -64,28 +68,30 @@ def make_user(username, role_code, cfa_codes=None, all_cfas=False):
     return WebClient(username, PW)
 
 
-# ------------------------------------------------------------------------------- the baseline itself
+# ------------------------------------------------------------------------------- the default roles
+MASTER_AND_ADMIN = {"master.view", "master.edit", "rate.view", "rate.create", "audit.view", "admin.users", "admin.roles",
+                    "admin.settings", "admin.integrations", "admin.backup"}
+
+
 @pytest.mark.parametrize("code", list(DEFAULT_ROLES))
-def test_fixed_baseline_per_role(code):
+def test_default_role_templates_per_role(code):
     role = Role(code=code, permissions=list(DEFAULT_ROLES[code]["permissions"]))
-    for perm, allowed in FIXED_BASELINE.items():
-        assert role.has(perm) == (code in allowed), (code, perm)
+    assert all(role.has(p) for p in MASTER_AND_ADMIN) == (code == "ADMIN")
+    if code != "ADMIN":
+        assert not any(role.has(p) for p in MASTER_AND_ADMIN), code
+    assert role.has("mis.view") == (code in MIS_ROLES)
     assert role.has("master.use")  # everybody can USE masters in dropdowns
 
 
-def test_stored_permission_list_cannot_widen_the_fixed_baseline():
-    # even a wildcard or an edited list cannot make another role an Administrator of Master Settings / MIS
-    for code in ("VIEWER", "DISPATCH_OPERATOR", "CFA_MANAGER", "CHECKER", "MADE_BY_MASTER"):
-        r = Role(code=code, permissions=["*"])
-        for perm in FIXED_BASELINE:
-            assert not r.has(perm) or code in FIXED_BASELINE[perm], (code, perm)
-        r = Role(code=code, permissions=list(FIXED_BASELINE))
-        assert not any(r.has(p) for p in FIXED_BASELINE if code not in FIXED_BASELINE[p])
-    assert Role(code="ACCOUNTS", permissions=["mis.view"]).has("mis.view")
-    assert not Role(code="ACCOUNTS", permissions=["*"]).has("master.view")
+def test_the_stored_permission_list_is_what_decides():
+    # v1.7: nothing is locked - a role holds exactly what is stored for it (a wildcard is everything)
+    assert Role(code="VIEWER", permissions=["*"]).has("mis.view") and Role(code="VIEWER", permissions=["*"]).has("admin.users")
+    assert Role(code="ACCOUNTS", permissions=["master.view"]).has("master.view")
+    assert not Role(code="ACCOUNTS", permissions=["mis.view"]).has("master.view")
+    assert not Role(code="X", permissions=[]).has("dashboard.view")
 
 
-def test_baseline_role_permissions_match_the_brief():
+def test_default_role_permissions_match_the_brief():
     d = {c: set(r["permissions"]) for c, r in DEFAULT_ROLES.items()}
     op, dm, ch, vw = d["DISPATCH_OPERATOR"], d["CFA_MANAGER"], d["CHECKER"], d["VIEWER"]
     for perms in (op, dm, ch, vw, d["MANAGEMENT"], d["ACCOUNTS"]):
@@ -579,20 +585,14 @@ def test_depot_switch_is_not_offered_where_it_makes_no_sense():
 
 
 # ------------------------------------------------------------------------------- permission management
-def test_roles_screen_locks_fixed_permissions_and_audits_changes(web, db):
+def test_roles_screen_edits_and_audits_changes(web, db):
     w = web("admin")
     rid = db.scalar(select(Role.id).where(Role.code == "VIEWER"))
     all_before = {r.code: sorted(r.permissions) for r in db.scalars(select(Role))}
     page = w.get("/admin/roles").text
-    assert "Fixed baseline" in page and "What each role sees in the menu" in page
-    assert f'name="p_{rid}_mis.view"' not in page and f'name="p_{rid}_master.view"' not in page
-    assert f'name="p_{rid}_invoice.view"' in page
-    # a forged form that tries to hand the Viewer Master Settings, user administration and the final reports
-    w.post("/admin/roles/save", data=roles_matrix(db, {f"p_{rid}_mis.view": "1", f"p_{rid}_master.view": "1",
-                                                       f"p_{rid}_admin.users": "1", f"p_{rid}_audit.view": "1"}))
-    db.expire_all()
-    assert {r.code: sorted(r.permissions) for r in db.scalars(select(Role))} == all_before  # nothing changed
-    assert db.scalar(select(AuditLog).where(AuditLog.action == "ROLE_PERMISSION_REFUSED", AuditLog.ref == "VIEWER"))
+    assert "What each role sees in the menu" in page and "Fixed baseline" not in page and "🔒" not in page
+    for p in ("mis.view", "master.view", "admin.users", "invoice.view"):  # nothing is locked: every box is there
+        assert f'name="p_{rid}_{p}"' in page
     # an ordinary change is saved and audited
     w.post("/admin/roles/save", data=roles_matrix(db, {f"p_{rid}_report.view": "1"}))
     db.expire_all()
@@ -603,15 +603,18 @@ def test_roles_screen_locks_fixed_permissions_and_audits_changes(web, db):
     assert {r.code: sorted(r.permissions) for r in db.scalars(select(Role))} == all_before
 
 
-def test_edited_database_permissions_do_not_open_master_settings_or_reports(web):
-    """Even if the stored permission list of a role is edited (database, old role), the baseline still decides."""
+def test_edited_database_permissions_take_effect_on_the_next_request(web):
+    """The stored permission list is the single truth: add report.view to the Viewer and the operational registers open,
+    but Master Settings, user administration and final reports stay closed because the role does not hold them."""
     s = _test_session()
     try:
+        import json
         old = s.scalar(select(Role.permissions).where(Role.code == "VIEWER"))
         s.execute(text("update roles set permissions = :p where code = 'VIEWER'"),
-                  {"p": '["*", "master.view", "master.edit", "mis.view", "admin.users", "audit.view", "report.view", "data.export"]'})
+                  {"p": json.dumps(sorted(set(old) | {"report.view", "data.export"}))})
         s.commit()
-        v = web("viewer")  # fresh sign-in: the role is read on every request
+        v = web("viewer")  # the role is read on every request
+        assert v.get("/reports/dispatch-register").status_code == 200
         for url in ("/masters/companies", "/admin/users", "/admin/roles", "/rates", "/reports/audit", "/mis",
                     "/reports/company-freight", "/reports/company-freight/export?fmt=csv"):
             assert v.get(url).status_code == 403, url
@@ -636,22 +639,27 @@ def test_users_cannot_elevate_themselves(web, db):
         assert client(role).post("/admin/users/save", data={"id": "1", "username": "x"}).status_code == 403
 
 
-def test_a_role_made_by_the_master_can_never_carry_fixed_permissions(web, db):
-    """A role made by the Master cannot carry admin.users / mis.view / master.* (fixed), so it can never reach user
-    management, Master Settings or the final reports - whatever the form says."""
+def test_a_new_role_gets_exactly_what_is_ticked_and_can_be_a_copy(web, db):
     w = web("admin")
     w.post("/admin/roles/save", data=roles_matrix(db, {"new_code": "HR_TEST", "new_name": "HR test", "new_desc": "x"}))
     rid = db.scalar(select(Role.id).where(Role.code == "HR_TEST"))
+    assert db.scalar(select(Role.permissions).where(Role.id == rid)) == []
     w.post("/admin/roles/save", data=roles_matrix(db, {f"p_{rid}_admin.users": "1", f"p_{rid}_mis.view": "1",
-                                                       f"p_{rid}_master.edit": "1", f"p_{rid}_invoice.view": "1"}))
+                                                       f"p_{rid}_invoice.view": "1"}))
     db.expire_all()
-    perms = db.scalar(select(Role.permissions).where(Role.code == "HR_TEST"))
-    assert perms == ["invoice.view"]
+    assert set(db.scalar(select(Role.permissions).where(Role.code == "HR_TEST"))) == {"admin.users", "mis.view", "invoice.view"}
     w.post("/admin/users/save", data={"username": "rbac.hr", "full_name": "HR", "role_id": str(rid), "password": PW,
                                       "is_active": "1", "all_companies": "1", "all_cfas": "1"})
     hr = WebClient("rbac.hr", PW)
-    for url in ("/admin/users", "/masters/companies", "/mis", "/reports/company-freight", "/admin/roles"):
+    assert hr.get("/admin/users").status_code == 200 and hr.get("/mis").status_code == 200  # what the role holds, no more
+    for url in ("/masters/companies", "/reports/audit", "/admin/roles"):
         assert hr.get(url).status_code == 403, url
+    # a copy starts with the permissions of the source role
+    viewer = db.scalar(select(Role).where(Role.code == "VIEWER"))
+    w.post("/admin/roles/save", data=roles_matrix(db, {"new_code": "VIEW_COPY", "new_name": "Viewer copy",
+                                                       "copy_from": str(viewer.id)}))
+    db.expire_all()
+    assert set(db.scalar(select(Role.permissions).where(Role.code == "VIEW_COPY"))) == set(viewer.permissions)
 
 
 # ------------------------------------------------------------------------------- upgrade of an existing installation
@@ -683,8 +691,15 @@ def test_upgrade_realigns_existing_roles_pauses_reports_and_keeps_everything_els
 
     from tests.test_v12_fixes import _count, _run_prepare
 
+    import os
+    from tests.test_v12_fixes import ROOT
+
     db_path = tmp_path / "ctdms.db"
     assert _run_prepare(db_path).returncode == 0
+    env = {**os.environ, "CTDMS_DATABASE_URL": f"sqlite:///{db_path}", "CTDMS_TEST_DATABASE_URL": ""}
+    down = subprocess.run([sys.executable, "-m", "alembic", "downgrade", "0008"], cwd=ROOT, env=env,
+                          capture_output=True, text=True, timeout=600)  # a real v1.6.0 structure (before 0009 / 0010)
+    assert down.returncode == 0, down.stdout + down.stderr
     con = sqlite3.connect(db_path)
     for code, perms in OLD_ROLES.items():
         con.execute("update roles set permissions = ? where code = ?", (json.dumps(perms), code))
@@ -708,7 +723,7 @@ def test_upgrade_realigns_existing_roles_pauses_reports_and_keeps_everything_els
     r = _run_prepare(db_path)
     assert r.returncode == 0, r.stdout + r.stderr
     con = sqlite3.connect(db_path)
-    assert con.execute("select version_num from alembic_version").fetchone()[0] == "0009"
+    assert con.execute("select version_num from alembic_version").fetchone()[0] >= "0010"  # 0009 and 0010 both ran
     perms = lambda code: set(json.loads(con.execute("select permissions from roles where code = ?", (code,)).fetchone()[0]))  # noqa: E731
     for code in OLD_ROLES:
         assert perms(code) == set(DEFAULT_ROLES[code]["permissions"]), code

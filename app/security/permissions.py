@@ -1,8 +1,10 @@
 """Permission catalogue and default role definitions (role-based access control).
 
-Roles are stored in the database and can be edited from Administration > Roles; DEFAULT_ROLES are the seeded
-baseline. FIXED_BASELINE permissions (Master Settings, administration, Final Reports / MIS) cannot be given to other
-roles at all - see Role.has().
+Roles are stored in the database and are edited by the Administrator under Administration > Roles; DEFAULT_ROLES are
+only the TEMPLATES a new installation starts from (and "Reset to template" returns to). Nothing here is locked: any
+permission can be given to any role, and individually to a user (user_permissions GRANT / DENY, see User.can()). The
+guard rails are elsewhere: only holders of admin.users / admin.roles change access, nobody changes their own access,
+at least one active user must always hold both (app.services.access), every change is audited.
 """
 from __future__ import annotations
 
@@ -10,7 +12,7 @@ PERMISSIONS: dict[str, str] = {
     # Dashboard / reports
     "dashboard.view": "Open the Dashboard (counts only; money figures need Final Reports / MIS)",
     "report.view": "Operational registers & control reports (dispatch, gatepass, delivery, exceptions)",
-    "mis.view": "Final Reports / Management MIS (freight, expense, variance, financial dashboard) - fixed baseline",
+    "mis.view": "Final Reports / Management MIS (freight, expense, variance, financial dashboard)",
     "data.export": "Export data (Excel / CSV / PDF)",
     # Invoices
     "invoice.view": "View invoice register",
@@ -30,25 +32,25 @@ PERMISSIONS: dict[str, str] = {
     "override.approve": "Approve / reject override requests",
     "override.direct": "Apply overrides directly (still audited)",
     # Freight rates
-    "rate.view": "View freight rate master - fixed baseline",
-    "rate.create": "Create / revise freight rates - fixed baseline",
+    "rate.view": "View freight rate master",
+    "rate.create": "Create / revise freight rates",
     "rate.approve": "Approve freight rate changes",
     # Masters
     "master.use": "Use master records in dropdowns and searches (read-only lookup, no Master Settings)",
-    "master.view": "Open Master Settings (view master data) - fixed baseline",
-    "master.edit": "Create / edit master data - fixed baseline",
+    "master.view": "Open Master Settings (view master data)",
+    "master.edit": "Create / edit master data",
     # Reconciliation
     "recon.view": "View transporter bills & reconciliation",
     "recon.edit": "Enter / import transporter bills",
     "recon.approve": "Approve transporter bills",
     "recon.pay": "Mark transporter bills paid",
     # Admin
-    "audit.view": "View audit log - fixed baseline",
-    "admin.users": "Manage users - fixed baseline",
-    "admin.roles": "Manage roles & permissions - fixed baseline",
-    "admin.settings": "Manage system settings - fixed baseline",
-    "admin.integrations": "Manage ERP integrations - fixed baseline",
-    "admin.backup": "Download full data export / backups - fixed baseline",
+    "audit.view": "View audit log",
+    "admin.users": "Manage users",
+    "admin.roles": "Manage roles & permissions",
+    "admin.settings": "Manage system settings",
+    "admin.integrations": "Manage ERP integrations",
+    "admin.backup": "Download full data export / backups",
 }
 
 PERMISSION_GROUPS: list[tuple[str, list[str]]] = [
@@ -65,39 +67,6 @@ PERMISSION_GROUPS: list[tuple[str, list[str]]] = [
 ]
 
 ALL = list(PERMISSIONS)
-
-ADMIN, MANAGEMENT, ACCOUNTS = "ADMIN", "MANAGEMENT", "ACCOUNTS"
-
-# Fixed baseline rules. A permission listed here only ever works for the roles named - whatever is stored in the
-# role's permission list (an edited database, an old role, a role made by the Master). The Roles screen shows them
-# locked and refuses to save them for other roles.
-#   Master Settings, freight-rate master, administration and the audit log: Administrator only.
-#   Final Reports / Management MIS: Administrator, Accounts and Management only.
-FIXED_BASELINE: dict[str, frozenset[str]] = {
-    "mis.view": frozenset({ADMIN, ACCOUNTS, MANAGEMENT}),
-    "master.view": frozenset({ADMIN}),
-    "master.edit": frozenset({ADMIN}),
-    "rate.view": frozenset({ADMIN}),
-    "rate.create": frozenset({ADMIN}),
-    "audit.view": frozenset({ADMIN}),
-    "admin.users": frozenset({ADMIN}),
-    "admin.roles": frozenset({ADMIN}),
-    "admin.settings": frozenset({ADMIN}),
-    "admin.integrations": frozenset({ADMIN}),
-    "admin.backup": frozenset({ADMIN}),
-}
-
-
-def baseline_allows(role_code: str | None, perm: str) -> bool:
-    """False when `perm` is a fixed-baseline permission this role may never hold."""
-    allowed = FIXED_BASELINE.get(perm)
-    return allowed is None or role_code in allowed
-
-
-def locked_for(role_code: str | None) -> set[str]:
-    """Permissions that cannot be granted to this role (shown locked on the Roles screen)."""
-    return {p for p in FIXED_BASELINE if not baseline_allows(role_code, p)}
-
 
 DEFAULT_ROLES: dict[str, dict] = {
     "ADMIN": {

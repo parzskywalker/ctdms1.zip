@@ -19,7 +19,7 @@ from app.models import (
 )
 from app.security.auth import csrf_token
 from app.services.exporters import display
-from app.services.scope import visible_cfas, visible_companies
+from app.services.scope import visible_cfas, visible_companies, visible_customers, visible_locations
 from app.services.utils import fmt_date, fmt_dt, fmt_int, fmt_money, fmt_time, fy_start, local_today
 
 TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
@@ -116,7 +116,7 @@ NAV = [
         ("Transporter Bills", "/recon", "recon.view", "scale"),
         ("Scan a Bill", "/recon/scan", "recon.edit", "scan"),
     ]),
-    # Master Settings: Administrator only (fixed baseline). Using a master in a dropdown needs no menu entry.
+    # Master Settings: Administrator only in the default roles (any role may be given it). Using a master in a dropdown needs no menu entry.
     ("Master Settings", [
         ("Initial Master Upload", "/masters/upload", "master.edit", "upload"),
         ("Companies", "/masters/companies", "master.view", "building"),
@@ -258,15 +258,16 @@ def filter_options(db: Session, user: User) -> dict:
     return {
         "companies": visible_companies(db, user, active_only=False),
         "cfas": visible_cfas(db, user, active_only=False),
-        "customers": list(db.scalars(select(Customer).order_by(Customer.name))),
-        "locations": list(db.scalars(select(Location).order_by(Location.name))),
+        "customers": visible_customers(db, user),   # only the customers / areas this user is assigned to
+        "locations": visible_locations(db, user),
         "transporters": list(db.scalars(select(Transporter).order_by(Transporter.name))),
         "erps": list(db.scalars(select(ERPSystem).order_by(ERPSystem.code))),
         "statuses": InvoiceStatus.ALL,
         # v1.6: depot cities (several depots may share one city) and customer types
         "cities": sorted({c.city for c in visible_cfas(db, user, active_only=False) if c.city}),
-        "ctypes": list(db.scalars(select(CustomerTypeMaster).order_by(CustomerTypeMaster.sort_order,
-                                                                      CustomerTypeMaster.name))),
+        "ctypes": [t for t in db.scalars(select(CustomerTypeMaster).order_by(CustomerTypeMaster.sort_order,
+                                                                             CustomerTypeMaster.name))
+                   if user.customer_type_codes is None or t.code in user.customer_type_codes],
     }
 
 

@@ -101,12 +101,37 @@ def guard(what: str) -> None:
 
 
 # ----------------------------------------------------------------------------- practice database sessions
+def sync_schema(eng) -> None:
+    """Bring a practice database made by an OLDER version up to the current structure before it is used: missing
+    tables are created and missing columns added (the structure only ever grows - migrations are additive). Without
+    this, a trainee who was mid-lesson at an upgrade would hit "no such column" on the first screen."""
+    from sqlalchemy import inspect
+    from sqlalchemy.schema import CreateColumn
+
+    import app.models  # noqa: F401 - every table registered
+    from app.db import Base
+    insp = inspect(eng)
+    had = set(insp.get_table_names())
+    Base.metadata.create_all(eng)
+    for t in Base.metadata.sorted_tables:
+        if t.name not in had:
+            continue
+        have = {c["name"] for c in insp.get_columns(t.name)}
+        for col in t.columns:
+            if col.name in have or col.primary_key:
+                continue
+            ddl = str(CreateColumn(col).compile(dialect=eng.dialect))
+            with eng.begin() as cx:
+                cx.exec_driver_sql(f"ALTER TABLE {t.name} ADD COLUMN {ddl}")
+
+
 def _factory(uid: int):
     with _lock:
         f = _factories.get(uid)
         if f is None:
             from app.db import _make_engine
             eng = _make_engine("sqlite:///" + db_path(uid).as_posix())
+            sync_schema(eng)
             f = (eng, sessionmaker(bind=eng, autoflush=False, expire_on_commit=False))
             _factories[uid] = f
         return f

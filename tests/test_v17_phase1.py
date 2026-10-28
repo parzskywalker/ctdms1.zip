@@ -9,6 +9,7 @@ from tests.conftest import WebClient
 
 # the helpers every invoice / slip / bill query goes through (see docs/ITERATION_v1.7_DESIGN.md, section 2)
 SCOPE_MARKERS = ("apply_invoice_scope", "apply_cfa_scope", "apply_strict_scope", "apply_scope_allow_null_cfa",
+                 "apply_slip_scope", "apply_bill_scope", "apply_notification_scope",  # added in Phase 2
                  "_grouped(", "_bill_base(", "_consignment_rows(")
 NOT_DATA_SCOPED = {"rpt_audit"}  # the audit log itself: Administrator only, not invoice data
 

@@ -27,7 +27,7 @@ from app.services import settings_service as cfg
 from app.services.errors import BusinessError
 from app.services.freight_engine import find_rate
 from app.services.invoice_service import apply_freight
-from app.services.scope import can_see
+from app.services.scope import can_see, can_see_area_customer
 from app.services.utils import (
     fiscal_year, local_today, money, next_sequence, norm_code, norm_vehicle, parse_date, parse_decimal, parse_int,
 )
@@ -623,6 +623,9 @@ def validate_row(db: Session, batch: ImportBatch, row: ImportRow, res: Resolver,
             errors.append(_err("MISSING_LOCATION", f"Customer {customer.code} has no delivery location", field="location"))
     if location and not location.is_active:
         errors.append(_err("INACTIVE", f"Location {location.name} is inactive", field="location"))
+    if user and location and not can_see_area_customer(user, location.id, customer):
+        errors.append(_err("SCOPE", f"You are not authorised to import for area {location.name}"
+                                    + (f" / customer {customer.code}" if customer else "")))
 
     invoice_no = str(val("invoice_no")).strip().upper() if val("invoice_no") is not None else None
     fy = fiscal_year(inv_date) if inv_date else None

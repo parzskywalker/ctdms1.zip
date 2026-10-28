@@ -160,11 +160,12 @@ Reprints need a reason and are marked "REPRINT #n (DUPLICATE)".
 
 ## Administrator
 
-* **Roles and access** (Administration › Roles): the permission matrix per role, what each role sees in the menu, and
-  every user with their role and depots. Master Settings, administration and the audit log are Administrator-only;
-  Final Reports / Management MIS are for Administrator, Accounts and Management only - these are a fixed baseline
-  (shown locked) and cannot be given to other roles. Every change to a role is audited. Nobody can change their own
-  role or depots.
+* **Roles and access** (Administration › Roles): the permission matrix per role - tick what a role may do, rename it,
+  copy it into a new role, or *Reset* a system role to the template it started from. Also shown: what each role sees
+  in the menu, and every user with their role and scope. Nothing is locked, so give Master Settings, final reports or
+  user administration only to people you trust. Every change is audited and applies on the user's next request. Nobody
+  can change their own role, permissions or scope, nobody can hand out more than they hold themselves, and at least one
+  active user must always be able to manage users and roles.
 * **Users** (Administration › Users › *New user*): username, name, role (Admin, Management, Accounts, Depot
   Manager, Dispatch Operator, Checker, Viewer), the companies / depots they may see, and a password you choose.
   Untick *Must change it at first login* to hand over a fixed password. *Set new password* on a user unlocks the

@@ -147,7 +147,8 @@ def _epoch(dt) -> float:
 def _load_user(db: Session, user_id: int) -> User | None:
     """Load the user with role and data-scope eagerly, so templates/handlers can use them even after the
     request's DB session is closed (e.g. while rendering an error page)."""
-    return db.get(User, user_id, options=[selectinload(User.companies), selectinload(User.cfas)])
+    return db.get(User, user_id, options=[selectinload(User.companies), selectinload(User.cfas),
+                                          selectinload(User.permission_overrides), selectinload(User.scope_rows)])
 
 
 def session_user(db: Session, token: str) -> tuple[User | None, UserSession | None]:

@@ -245,7 +245,7 @@ def plan_gatepass(db: Session, user: User | None, invs: list[Invoice], req: Gate
     for inv in invs:
         tag = f"Invoice {inv.invoice_no}"
         if user is not None and not can_see_invoice(user, inv):
-            problems.append(f"{tag}: not in your company / depot scope")
+            problems.append(f"{tag}: not in your company / depot / area / customer scope")
             continue
         if inv.status == S.CANCELLED:
             problems.append(f"{tag}: cancelled")

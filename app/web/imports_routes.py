@@ -25,7 +25,7 @@ SAMPLE_DIR = BASE_DIR / "sample_data"
 
 
 def _all_scope(user: User) -> bool:
-    return user.company_ids is None and user.cfa_ids is None
+    return user.company_ids is None and user.cfa_ids is None and user.scope_is_open
 
 
 def _batch_visible(user: User, b: ImportBatch) -> bool:

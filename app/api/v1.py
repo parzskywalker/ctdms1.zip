@@ -31,7 +31,7 @@ from app.services.freight_engine import calc_freight, find_rate
 from app.services.import_service import Resolver, ingest_records
 from app.services.pdf_service import dispatch_slips_pdf
 from app.services.reports import REPORTS, Filters, filtered_invoices
-from app.services.scope import can_see, can_see_invoice
+from app.services.scope import can_see, can_see_invoice, customer_visible
 
 router = APIRouter(prefix="/api/v1")
 
@@ -186,8 +186,12 @@ def token(body: TokenIn, db: Session = Depends(get_db)):
 @router.get("/me", tags=["auth"])
 def me(user: User = Depends(require())):
     return {"id": user.id, "username": user.username, "full_name": user.full_name, "role": user.role.code,
-            "permissions": user.role.permissions, "companies": None if user.all_companies else [c.code for c in user.companies],
-            "cfas": None if user.all_cfas else [c.code for c in user.cfas]}
+            "permissions": user.role.permissions, "effective_permissions": user.effective_permission_list(),
+            "companies": None if user.all_companies else [c.code for c in user.companies],
+            "cfas": None if user.all_cfas else [c.code for c in user.cfas],
+            "areas": None if user.area_ids is None else sorted(user.area_ids),
+            "customer_types": None if user.customer_type_codes is None else sorted(user.customer_type_codes),
+            "customers": None if user.customer_ids is None else sorted(user.customer_ids)}
 
 
 # ----------------------------------------------------------------------------- invoices
@@ -423,6 +427,9 @@ def masters(entity: str, db: Session = Depends(get_db), user: User = Depends(req
     for o in db.scalars(select(model).order_by(model.code)):
         if (model is Company and not can_see(user, o.id)) or (model is CFA and not can_see(user, None, o.id)):
             continue
+        if (model is Location and user.area_ids is not None and o.id not in user.area_ids) or (
+                model is Customer and not customer_visible(user, o.id, o.party_type)):
+            continue  # areas / customers outside this user's assignment are not even listed
         cols = [c.name for c in model.__table__.columns if c.name not in ("api_key_hash", "config")] if full \
             else LOOKUP_FIELDS[model]
         d = {c: getattr(o, c) for c in cols}

@@ -76,9 +76,13 @@ Every screen, export and API call is checked on the server; the menu only shows 
 | Use masters in dropdowns / searches | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
 
 *Using* a master (pick a transporter, customer, depot) and *managing* it are separate permissions; only the
-Administrator manages masters. Master Settings and Final Reports / MIS are a **fixed baseline**: Administration ›
-Roles shows them locked, and they cannot be given to any other role. Users only see the depots assigned to them; a user
-with several depots switches between them in the top bar (Alt+D, or F3 and type the depot name). The two-person approval rules apply to everyone,
+Administrator manages masters. The table above is what each role starts with: **roles are templates** - Administration ›
+Roles lets the Administrator tick any permission for any role, rename a role, copy one into a new role or reset a
+system role to its template (v1.7; nothing is hard-locked, every change is audited). One person can get an exception on
+their own screen (Administration › Users › *Individual permission changes*: give or take away a single permission, with
+a reason). Each user also has an **operational scope** - companies, depots, delivery areas, customer types and
+individual customers - and sees only those invoices, gatepasses, reports, exports and dropdown entries. A user with
+several depots switches between them in the top bar (Alt+D, or F3 and type the depot name). The two-person approval rules apply to everyone,
 including the Administrator.
 
 ---

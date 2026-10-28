@@ -9,7 +9,7 @@ from app.models import BillStatus, TransporterBill, User
 from app.security.auth import csrf_protect, current_user
 from app.services.dashboard import dashboard_data, ops_dashboard_data
 from app.services.reports import Filters
-from app.services.scope import apply_strict_scope
+from app.services.scope import apply_bill_scope
 from app.web.templating import filter_options, home_for, redirect, render
 
 router = APIRouter(dependencies=[Depends(csrf_protect)], include_in_schema=False)
@@ -19,7 +19,7 @@ def _bill_strip(db: Session, user: User) -> dict | None:
     """Accounts: where the transporter bills stand (counts only; amounts are in the bills and the final reports)."""
     if not user.can("recon.view"):
         return None
-    rows = db.execute(apply_strict_scope(select(TransporterBill.status, func.count()), user, TransporterBill)
+    rows = db.execute(apply_bill_scope(select(TransporterBill.status, func.count()), user, TransporterBill)
                       .group_by(TransporterBill.status)).all()
     by = {st: int(n) for st, n in rows}
     return {"to_approve": by.get(BillStatus.MATCHED, 0) + by.get(BillStatus.VARIANCE, 0),

@@ -11,7 +11,7 @@ from app.models import CFA, Company, Customer, DispatchSlip, Invoice, InvoiceSta
 from app.services.reports import (
     AGG_DERIVED, Filters, _agg_columns, _apply_filters, _finish_agg, _ratio, month_expr,
 )
-from app.services.scope import apply_cfa_scope, apply_invoice_scope
+from app.services.scope import apply_invoice_scope, apply_slip_scope
 from app.services.utils import local_today, money
 
 S = InvoiceStatus
@@ -111,7 +111,7 @@ def ops_dashboard_data(db: Session, user: User) -> dict:
                                     Invoice.dispatch_slip_id.isnot(None))),
     }
     k["at_gate"] = int(db.scalar(select(func.count()).select_from(
-        apply_cfa_scope(select(DispatchSlip.id), user, DispatchSlip.cfa_id).where(
+        apply_slip_scope(select(DispatchSlip.id), user).where(
             DispatchSlip.is_void.is_(False), DispatchSlip.gate_out_at.is_(None)).subquery())) or 0)
 
     # per depot (the depots this user may see): the daily picture, counts only

@@ -1,54 +1,65 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="page-head"><div><h1>Roles &amp; permissions</h1><div class="sub">Role-based access control. Administrator always has full access. <b>Fixed baseline</b> (🔒): Master Settings, administration and the audit log are Administrator-only; Final Reports / MIS are for Administrator, Accounts and Management only - they cannot be given to other roles.</div></div></div>
+<div class="page-head"><div><h1>Roles &amp; permissions</h1><div class="sub">Roles are <b>templates</b>: tick what each role may do, rename a role, copy one into a new role. Nothing is locked - any permission can go to any role, and to one person only on their <a href="/admin/users">user screen</a>. Administrator keeps full access (use a person's individual DENY to narrow one Administrator). Every change is audited and applies on the user's next request.</div></div></div>
 <form method="post" action="/admin/roles/save">
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
   <div class="card flush"><div class="table-wrap"><table class="data compact perm-table">
-    <thead><tr><th>Permission</th>{% for r in roles %}<th title="{{ r.description or '' }}">{{ r.name }}</th>{% endfor %}</tr></thead>
+    <thead><tr><th>Permission</th>{% for r in roles %}<th title="{{ r.description or '' }}"><input type="text" name="name_{{ r.id }}" value="{{ r.name }}" maxlength="80" style="width:118px;text-align:center;font-weight:650" aria-label="Name of role {{ r.code }}"></th>{% endfor %}</tr></thead>
     <tbody>
     {% for g, plist in groups %}
       <tr><td colspan="{{ roles|length + 1 }}" style="background:#f3f6fa"><b>{{ g }}</b></td></tr>
       {% for p in plist %}
-      <tr><td>{% if p in fixed %}🔒 {% endif %}{{ perms[p] }} <span class="muted small mono">{{ p }}</span></td>
+      <tr><td>{{ perms[p] }} <span class="muted small mono">{{ p }}</span></td>
         {% for r in roles %}<td>
           {%- if '*' in (r.permissions or []) -%}✔
-          {%- elif p in fixed -%}{% if p in locked[r.id] %}<span class="muted" title="Fixed baseline: not available to this role">—</span>{% else %}<span title="Fixed baseline">{{ '✔' if p in (r.permissions or []) else '—' }}</span>{% endif %}
           {%- else -%}<input type="checkbox" name="p_{{ r.id }}_{{ p }}" value="1" {% if p in (r.permissions or []) %}checked{% endif %} aria-label="{{ r.name }} {{ p }}">
           {%- endif -%}</td>{% endfor %}</tr>
       {% endfor %}
     {% endfor %}
+    <tr><td><b>Template</b> <span class="muted small">where this role started from</span></td>
+      {% for r in roles %}{% set tpl = templates.get(r.code) %}<td class="small">
+        {%- if '*' in (r.permissions or []) -%}<span class="muted">full access</span>
+        {%- elif tpl -%}
+          {%- if (tpl.permissions|sort) == ((r.permissions or [])|sort) -%}<span class="badge b-ACTIVE">as template</span>
+          {%- else -%}<span class="badge b-PENDING">edited</span><br><button class="btn btn-sm" type="submit" formaction="/admin/roles/{{ r.id }}/reset" data-confirm="Put {{ r.name }} back to its template permissions? Unsaved ticks on this page are dropped.">Reset</button>{%- endif -%}
+        {%- else -%}<span class="muted">custom role</span>{%- endif -%}</td>{% endfor %}</tr>
     </tbody>
   </table></div>
   <div class="sticky-bar">
     <button class="btn btn-primary" type="submit" data-key="F6">Save permissions</button>
-    <span class="muted small">New role:</span><input type="text" name="new_code" placeholder="CODE" style="width:130px"><input type="text" name="new_name" placeholder="Name" style="width:170px"><input type="text" name="new_desc" placeholder="Description" style="width:220px">
+    <span class="muted small">New role:</span><input type="text" name="new_code" placeholder="CODE" style="width:120px"><input type="text" name="new_name" placeholder="Name" style="width:160px"><input type="text" name="new_desc" placeholder="Description" style="width:200px">
+    <select name="copy_from" aria-label="Start from"><option value="">Start empty</option>{% for r in roles %}<option value="{{ r.id }}">Copy of {{ r.name }}</option>{% endfor %}</select>
   </div></div>
 </form>
 
 <div class="card flush">
   <div class="card-head"><h2>What each role sees in the menu</h2><span class="muted small">Worked out from the permissions above with the real menu rules.</span></div>
   <div class="table-wrap"><table class="data compact">
-    <thead><tr><th>Role</th><th>Menu groups</th><th>Master Settings</th><th>Final Reports / MIS</th><th>Data scope</th></tr></thead>
+    <thead><tr><th>Role</th><th>Menu groups</th><th>Master Settings</th><th>Final Reports / MIS</th><th>Users</th></tr></thead>
     <tbody>
     {% for r in roles %}{% set m = menus[r.id] %}
       <tr><td><b>{{ r.name }}</b></td>
         <td class="wrap small">{% for g, items in m %}<b>{{ g }}</b> ({{ items|length }}){% if not loop.last %} · {% endif %}{% endfor %}</td>
         <td>{{ 'Yes' if r.has('master.view') else 'No' }}</td><td>{{ 'Yes' if r.has('mis.view') else 'No' }}</td>
-        <td class="small">{{ 'Assigned per user' if r.code not in ('ADMIN',) else 'All' }}</td></tr>
+        <td class="num">{{ people|selectattr('role_id', 'equalto', r.id)|list|length }}</td></tr>
     {% endfor %}
     </tbody>
   </table></div>
 </div>
 
 <div class="card flush">
-  <div class="card-head"><h2>Users, roles and depots</h2><a class="small" href="/admin/users">Manage users</a></div>
+  <div class="card-head"><h2>Users, roles and scope</h2><a class="small" href="/admin/users">Manage users</a></div>
   <div class="table-wrap"><table class="data compact">
-    <thead><tr><th>User</th><th>Role</th><th>Companies</th><th>Depots</th><th>Status</th></tr></thead>
+    <thead><tr><th>User</th><th>Role</th><th>Individual changes</th><th>Companies</th><th>Depots</th><th>Areas</th><th>Customer types</th><th>Customers</th><th>Status</th></tr></thead>
     <tbody>
     {% for u in people %}
       <tr><td><a href="/admin/users/{{ u.id }}">{{ u.username }}</a> <span class="muted small">{{ u.full_name }}</span></td><td>{{ u.role.name }}</td>
+        <td class="small">{{ u.permission_overrides|length or '—' }}</td>
         <td class="small">{{ 'All' if u.all_companies else (u.companies|map(attribute='code')|join(', ') or 'none') }}</td>
         <td class="small">{{ 'All' if u.all_cfas else (u.cfas|map(attribute='code')|join(', ') or 'none') }}</td>
+        <td class="small">{{ 'All' if u.all_areas else (u.area_ids|length ~ ' selected') }}</td>
+        <td class="small">{{ 'All' if u.all_customer_types else (u.customer_type_codes|join(', ') or 'none') }}</td>
+        <td class="small">{{ 'All' if u.all_customers else (u.customer_ids|length ~ ' selected') }}</td>
         <td>{{ 'Active' if u.is_active else 'Inactive' }}</td></tr>
     {% endfor %}
     </tbody>

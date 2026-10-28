@@ -34,7 +34,7 @@ Consequence for Phase 2: adding area / customer-type / customer scope means exte
 
 * Remove `FIXED_BASELINE` / `baseline_allows` (my v1.6.1 hard lock); `DEFAULT_ROLES` stay as editable templates. Migration `0009` already stripped wide permissions, so nothing re-opens automatically.
 * `user_permissions(user_id, permission, effect GRANT|DENY, reason, granted_by, granted_at)`; effective = role ∪ GRANT − DENY (DENY wins). `User.can()` reads an effective set computed once per request. Training practice users receive the **effective** set.
-* `user_scope(user_id, dimension AREA|CUSTOMER_TYPE|CUSTOMER, ref_id)` + `users.all_areas / all_customer_types / all_customers` (default true) + `users.responsibility`. AND across dimensions, OR within one.
+* `user_scope(user_id, dimension AREA|CUSTOMER_TYPE|CUSTOMER, ref_id | ref_code)` (customer types are stored by their code in `ref_code`, areas and customers by id in `ref_id`) + `users.all_areas / all_customer_types / all_customers` (default true) + `users.responsibility`. AND across dimensions, OR within one.
 * **Last-Administrator guard by effective permissions**: at least one active user must hold effective `admin.users` and `admin.roles`; checked on role save, user save, override save, deactivation.
 * New permissions: `case.print`, `case.reprint`, `gate.scan`, `gate.exception`, `dispatch.group_cross_company`, `transporter.override_eligibility`, `pawati.generate/print/cancel/receive`, `lr_book.manage`.
 

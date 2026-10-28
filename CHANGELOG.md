@@ -1,5 +1,37 @@
 # Changelog
 
+## v1.7 (in progress) — Phase 2: configurable permissions and operational scope per employee
+
+Migration 0010 (applied automatically, additive): `user_permissions`, `user_scope`, and on users `all_areas`,
+`all_customer_types`, `all_customers` (all default "All", so nobody sees less after the upgrade) and `responsibility`.
+
+- **Roles are editable templates - nothing is hard-locked any more.** The v1.6.1 fixed baseline is removed: the
+  Administrator can tick any permission for any role, rename a role, copy a role into a new one, or reset a system role
+  to its template (audited: ROLE_RENAMED / ROLE_PERMISSIONS_CHANGED / ROLE_CREATED / ROLE_RESET). Defaults are unchanged.
+- **Individual exceptions per user**: *Give* or *Take away* one permission for one person on top of their role (a
+  reason is required, DENY wins). The user screen shows a live **Effective access** preview (permissions, menu, what
+  the exception changes) before anything is saved.
+- **Operational scope per employee**: companies, depots, **delivery areas** (Location master), **customer types** and
+  **customers** - AND between kinds, OR inside a kind; types and customers together show both. Enforced in every list,
+  search, register, report, export, dashboard, API call, dropdown and import: `app/services/scope.py` is the single
+  place (a test fails if any report skips it). A gatepass is visible only if **all** its invoices are in scope (rule B6);
+  transporter bills (which span many customers) are hidden from area / customer-restricted users; customer alerts follow
+  the gatepass. Importing an invoice outside your area or customers is refused.
+- **Guard rails instead of locks**: only holders of Manage users / Manage roles change access; nobody changes their own
+  role, permissions, scope or status; nobody gives (or edits someone holding) more than they hold themselves, or a wider
+  company / depot / area / customer scope than their own; at least one active user must always hold both Manage users and
+  Manage roles (checked by effective permissions, not by role name); changing a role or deactivating signs the user out.
+- **User screen**: identity and role, scope pickers (type to search areas / customers, ↑↓ Enter, × to remove - fast
+  typing never picks a stale entry), customer-type list, individual permissions that follow the role, F6 to save.
+- **Upgrade safety found by the tests**: a Guided Training practice copy made by an older version is now brought up to
+  date (missing tables / columns added, rows kept) before it is used; users load their exceptions and scope with them,
+  so error pages and Training Mode work for any user.
+- Tests: `tests/test_v17_phase2.py` (30 checks: effective permissions, scope matrix by page / search / register / export /
+  API / dropdown / forged post, gatepass rule, bills, import, guard rails, last-administrator, audit, role edit / reset /
+  copy, migration 0010 up and down, practice-copy upgrade), the v1.6.1 "fixed baseline" tests rewritten for editable
+  roles, browser test `tests/e2e_access.py` (27 checks). All browser suites pass: sidebar 19/19, role-based 257/257,
+  training 19/19.
+
 ## v1.7 (in progress) — Phase 1: sidebar position, scope audit, design checkpoint
 
 - **Sidebar keeps its scroll position.** Cause: every screen is a new page load and the scrollable sidebar restarted at

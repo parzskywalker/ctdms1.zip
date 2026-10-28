@@ -1,6 +1,8 @@
 """All ORM models. Importing this package registers every table on Base.metadata."""
 from app.models.base import TimestampMixin, utcnow  # noqa: F401
-from app.models.security import Role, User, UserSession, user_cfas, user_companies  # noqa: F401
+from app.models.security import (  # noqa: F401
+    Role, User, UserPermission, UserScope, UserSession, user_cfas, user_companies,
+)
 from app.models.masters import (  # noqa: F401
     CFA, ChargeBasis, Company, Customer, CustomerType, CustomerTypeMaster, ERPCodeMapping, ERPFieldMapping, ERPSystem,
     InvoiceMarking, LocalAutoRate, Location, OutsideAuto, PaymentMode, Transporter, company_cfas, customer_cfas,
