@@ -28,6 +28,26 @@
 </div>
 {% endif %}
 
+{% if can('dispatch.operate') and inv.status in InvoiceStatus.PRE_SLIP and (inv.exception_code in ['AREA_AMBIGUOUS', 'AREA_MISMATCH'] or dlocs|length > 1) %}
+<form method="post" action="/invoices/{{ inv.id }}/area" class="card" style="margin-bottom:14px">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <div class="row" style="align-items:end;gap:10px;flex-wrap:wrap">
+    <div><label>Delivery location of this invoice</label>
+      <select name="delivery_id" aria-label="Delivery location">
+        <option value="">{{ 'Choose…' if inv.exception_code in ['AREA_AMBIGUOUS', 'AREA_MISMATCH'] else 'Keep ' ~ inv.location.name }}</option>
+        {% for d in dlocs %}<option value="{{ d.id }}" {% if d.id == inv.customer_location_id %}selected{% endif %}>{{ d.name }}{% if d.is_default %} (default){% endif %}</option>{% endfor %}
+      </select></div>
+    {% if area_choices %}
+    <div><label>…or confirm another area</label>
+      <select name="location_id" aria-label="Other area"><option value="">—</option>{% for l in area_choices %}<option value="{{ l.id }}" {% if l.id == inv.location_id %}selected{% endif %}>{{ l.name }}</option>{% endfor %}</select></div>
+    <div><label>Reason</label><input type="text" name="reason" placeholder="why this area" maxlength="200"></div>
+    {% endif %}
+    <button class="btn btn-primary" type="submit">Set delivery location</button>
+  </div>
+  <div class="field-hint">Recorded on the invoice and in the audit log. The goods are priced and labelled for this area.</div>
+</form>
+{% endif %}
+
 <div class="grid g-side">
   <div>
     <div class="grid g2">
@@ -41,7 +61,7 @@
           <dt>Captured by</dt><dd>{{ {'QR_SCAN': 'E-invoice QR scan', 'IMPORT': 'ERP export import', 'API': 'ERP API / adapter', 'MANUAL': 'Manual'}.get(inv.capture_mode, inv.capture_mode) }}{% if inv.irn %}<br><span class="muted small mono" title="E-invoice IRN">IRN {{ inv.irn[:16] }}…</span>{% endif %}{% if inv.qr_signature %} <span class="tag" title="Signature of the GST portal on the QR">QR {{ {'VERIFIED': 'signature verified', 'INVALID': 'signature INVALID', 'UNVERIFIED': 'signature not checked'}[inv.qr_signature] }}</span>{% endif %}</dd>
           {% if inv.eway_bill_no %}<dt>E-way bill</dt><dd class="mono">{{ inv.eway_bill_no }}{% if inv.eway_valid_until %} <span class="muted small">valid to {{ inv.eway_valid_until|date }}</span>{% endif %}</dd>{% endif %}
           {% if inv.delivery_status %}<dt>Delivery</dt><dd>{{ inv.delivery_label }} · {{ inv.delivered_on|date }} <a class="small" href="/track/{{ inv.id }}">tracking</a></dd>{% elif inv.dispatch_slip_id %}<dt>Tracking</dt><dd><a href="/track/{{ inv.id }}">Shipment progress</a></dd>{% endif %}
-          <dt>Delivery location</dt><dd>{{ inv.location.name }}{% if inv.location.route %} <span class="muted">· route {{ inv.location.route }}</span>{% endif %}</dd>
+          <dt>Delivery location</dt><dd>{{ inv.location.name }}{% if inv.customer_location_id and inv.customer_location %} <span class="muted">· {{ inv.customer_location.label or 'listed location' }}</span>{% endif %}{% if inv.location.route %} <span class="muted">· route {{ inv.location.route }}</span>{% endif %}</dd>
           <dt>Invoice amount</dt><dd>{{ inv.sales_value|money }}</dd>
           {% if inv.taxable_value is not none %}<dt>Taxable amount</dt><dd>{{ inv.taxable_value|money }}</dd>{% endif %}
           {% if inv.dispatch_mode and inv.status in InvoiceStatus.PRE_SLIP %}<dt>Planned dispatch</dt><dd>{{ {"TRANSPORTER": "Transporter", "DIRECT": "Transporter - direct pickup", "OUTSIDE_AUTO": "Local auto", "SELF": "Self pickup"}.get(inv.dispatch_mode, inv.dispatch_mode) }}{% if inv.transporter %} · {{ inv.transporter.name }}{% endif %}</dd>{% endif %}

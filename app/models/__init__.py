@@ -5,8 +5,8 @@ from app.models.security import (  # noqa: F401
 )
 from app.models.masters import (  # noqa: F401
     CFA, ChargeBasis, Company, Customer, CustomerType, CustomerTypeMaster, ERPCodeMapping, ERPFieldMapping, ERPSystem,
-    InvoiceMarking, LocalAutoRate, Location, OutsideAuto, PaymentMode, Transporter, company_cfas, customer_cfas,
-    customer_companies,
+    CustomerDeliveryLocation, InvoiceMarking, LocalAutoRate, Location, OutsideAuto, PaymentMode, Transporter,
+    company_cfas, customer_cfas, customer_companies, transporter_depots,
 )
 from app.models.freight import FreightRate, RateLevel, RateStatus, TransporterRate  # noqa: F401
 from app.models.imports import BatchStatus, ImportBatch, ImportRow, ImportTemplate, RowStatus  # noqa: F401

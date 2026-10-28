@@ -49,11 +49,15 @@ class ExceptionCode:
     RATE_CONFLICT = "RATE_CONFLICT"
     BOXES_MISSING = "BOXES_MISSING"
     OVERRIDE_PENDING = "OVERRIDE_PENDING"
+    AREA_MISMATCH = "AREA_MISMATCH"      # v1.7: the file's area is not one of the customer's delivery locations
+    AREA_AMBIGUOUS = "AREA_AMBIGUOUS"    # v1.7: the customer has several delivery locations - the operator picks
     LABELS = {
         RATE_MISSING: "No valid freight rate",
         RATE_CONFLICT: "More than one rate matches - fix rate master",
         BOXES_MISSING: "Number of boxes not received",
         OVERRIDE_PENDING: "Manual override awaiting approval",
+        AREA_MISMATCH: "Delivery area differs from the customer's locations",
+        AREA_AMBIGUOUS: "Customer has several delivery locations - choose one",
     }
 
 
@@ -76,6 +80,8 @@ class Invoice(Base, TimestampMixin):
     customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"), index=True)
     customer_code: Mapped[str | None] = mapped_column(String(60))  # code as received from the ERP
     location_id: Mapped[int] = mapped_column(ForeignKey("locations.id"), index=True)
+    # v1.7: which of the customer's delivery locations this invoice goes to (NULL = the customer's single / default one)
+    customer_location_id: Mapped[int | None] = mapped_column(ForeignKey("customer_delivery_locations.id"))
     invoice_no: Mapped[str] = mapped_column(String(50), index=True)
     invoice_date: Mapped[date] = mapped_column(Date)
     fiscal_year: Mapped[str] = mapped_column(String(7))
@@ -168,6 +174,7 @@ class Invoice(Base, TimestampMixin):
     cfa = relationship("CFA")
     customer = relationship("Customer")
     location = relationship("Location")
+    customer_location = relationship("CustomerDeliveryLocation")
     transporter = relationship("Transporter")
     freight_rate = relationship("FreightRate")
     verified_by = relationship("User", foreign_keys=[verified_by_id])
@@ -334,6 +341,10 @@ class DispatchSlip(Base):
     voided_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     voided_at: Mapped[datetime | None] = mapped_column(DateTime)
     void_reason: Mapped[str | None] = mapped_column(Text)
+    # v1.7: invoices of different companies grouped on purpose (explicit choice, audited), and a transporter chosen
+    # although it does not serve this depot (permission + reason, audited)
+    cross_company: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    eligibility_override_reason: Mapped[str | None] = mapped_column(Text)
 
     invoice = relationship("Invoice", foreign_keys=[invoice_id])
     cfa = relationship("CFA")
@@ -381,6 +392,10 @@ class DispatchSlipLine(Base):
     rate_per_case: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     freight: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
     extra_charge: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    # v1.7: how the freight was found (rate row, rule, quantity, amount) and the consignment (customer + area) number
+    rate_id: Mapped[int | None] = mapped_column(ForeignKey("transporter_rates.id"))
+    calc_note: Mapped[dict | None] = mapped_column(JSON)
+    consignment_no: Mapped[int | None] = mapped_column(Integer)
 
     slip: Mapped[DispatchSlip] = relationship(back_populates="lines")
     invoice = relationship("Invoice")

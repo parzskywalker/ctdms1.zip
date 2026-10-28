@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Location, RateStatus, Transporter, TransporterRate, User
+from app.models import CFA, Company, Location, RateStatus, Transporter, TransporterRate, User
 from app.security.auth import csrf_protect, require, require_any
 from app.services import transporter_rate_service as trs
 from app.services.errors import BusinessError
@@ -40,40 +40,54 @@ def card(tid: int, request: Request, db: Session = Depends(get_db),
     if not t:
         raise HTTPException(404)
     areas = trs.current_and_pending(db, tid)
-    have = {a["location"].id for a in areas}
+    have = {a["location"].id for a in areas if not a["rank"]}  # areas that already have a general rate
     others = [lo for lo in db.scalars(select(Location).where(Location.is_active.is_(True)).order_by(Location.name))
               if lo.id not in have]
-    return render(request, "rate_cards/card.html", {"title": f"Rate card · {t.name}", "t": t, "areas": areas,
-                                                     "others": others, "today": local_today()})
+    from app.services import eligibility_service as es
+    served = es.depot_ids(db, tid)
+    return render(request, "rate_cards/card.html", {
+        "title": f"Rate card · {t.name}", "t": t, "areas": areas, "others": others, "today": local_today(),
+        "all_areas": list(db.scalars(select(Location).where(Location.is_active.is_(True)).order_by(Location.name))),
+        "cfas": list(db.scalars(select(CFA).where(CFA.is_active.is_(True)).order_by(CFA.code))),
+        "companies": list(db.scalars(select(Company).where(Company.is_active.is_(True)).order_by(Company.code))),
+        "served": sorted(c.code for c in db.scalars(select(CFA).where(CFA.id.in_(served)))) if served else []})
 
 
 @router.post("/rate-cards/{tid:int}/propose")
 def propose(tid: int, request: Request, form=Depends(get_form), db: Session = Depends(get_db),
             user: User = Depends(require("rate.create"))):
-    """Rows: rate_<location_id>, from_<location_id>; plus new_location / new_rate / new_from for a new area."""
+    """Rows: rate_<key>, from_<key> where key = <location_id>[_<depot_id>_<company_id>] (0 = all); plus
+    new_location / new_rate / new_from for a new area, and exc_* (area, depot, company, rate, from) for an exception."""
     t = db.get(Transporter, tid)
     if not t:
         raise HTTPException(404)
     reason = (form.get("reason") or "").strip()
     if len(reason) < 3:
         raise BusinessError("Give a reason for the rate change (e.g. transporter's letter of 1 Oct)")
-    changes = []
+    changes = []  # (location, depot, company, raw rate, effective from)
     for key in form.keys():
         if key.startswith("rate_") and (form.get(key) or "").strip():
-            changes.append((safe_int(key[5:]), form.get(key), form.get(f"from_{key[5:]}")))
+            parts = (key[5:].split("_") + ["0", "0"])[:3]
+            changes.append((safe_int(parts[0]), safe_int(parts[1]) or None, safe_int(parts[2]) or None, form.get(key),
+                            form.get(f"from_{key[5:]}")))
     if form.get("new_location") and (form.get("new_rate") or "").strip():
-        changes.append((safe_int(form.get("new_location")), form.get("new_rate"), form.get("new_from")))
+        changes.append((safe_int(form.get("new_location")), None, None, form.get("new_rate"), form.get("new_from")))
+    if form.get("exc_location") and (form.get("exc_rate") or "").strip():
+        cfa_id, co_id = safe_int(form.get("exc_cfa")) or None, safe_int(form.get("exc_company")) or None
+        if not cfa_id and not co_id:
+            raise BusinessError("An exception needs a depot and / or a company - otherwise it is the general rate")
+        changes.append((safe_int(form.get("exc_location")), cfa_id, co_id, form.get("exc_rate"), form.get("exc_from")))
     if not changes:
         raise BusinessError("Enter at least one new rate")
     n = 0
-    for loc_id, raw, eff in changes:
+    for loc_id, cfa_id, co_id, raw, eff in changes:
         try:
             rate = parse_decimal(raw)
             d = parse_date(eff) if eff else local_today()
         except ValueError as e:
             raise BusinessError(str(e)) from e
         trs.propose(db, user, transporter_id=t.id, location_id=loc_id, rate_per_case=rate, effective_from=d,
-                    reason=reason)
+                    reason=reason, cfa_id=cfa_id, company_id=co_id)
         n += 1
     db.commit()
     flash(request, f"{n} rate change(s) for {t.name} sent for approval.", "success")

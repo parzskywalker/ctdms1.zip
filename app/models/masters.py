@@ -4,7 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
-    JSON, Boolean, Column, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Table, Text,
+    JSON, Boolean, Column, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Table, Text, UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -23,6 +23,14 @@ customer_companies = Table(
     Base.metadata,
     Column("customer_id", ForeignKey("customers.id", ondelete="CASCADE"), primary_key=True),
     Column("company_id", ForeignKey("companies.id", ondelete="CASCADE"), primary_key=True),
+)
+
+# v1.7: the depots a transporter serves. NO rows = serves every depot (so a v1.6.1 installation behaves as before).
+transporter_depots = Table(
+    "transporter_depots",
+    Base.metadata,
+    Column("transporter_id", ForeignKey("transporters.id", ondelete="CASCADE"), primary_key=True),
+    Column("cfa_id", ForeignKey("cfas.id", ondelete="CASCADE"), primary_key=True),
 )
 
 customer_cfas = Table(
@@ -189,6 +197,31 @@ class Customer(Base, TimestampMixin):
         return CustomerType.LABELS.get(self.party_type, (self.party_type or "").replace("_", " ").title())
 
 
+class CustomerDeliveryLocation(Base, TimestampMixin):
+    """One place a customer receives goods (v1.7). `Customer.location_id` stays the DEFAULT area; a customer with
+    several delivery locations lists them here (area = Location master, plus an optional label / address and the ERP's
+    ship-to code when the file carries one). The invoice keeps the resolved area in `Invoice.location_id`."""
+
+    __tablename__ = "customer_delivery_locations"
+    __table_args__ = (UniqueConstraint("customer_id", "location_id", "label", name="uq_customer_delivery_location"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id", ondelete="CASCADE"), index=True)
+    location_id: Mapped[int] = mapped_column(ForeignKey("locations.id"), index=True)
+    label: Mapped[str] = mapped_column(String(80), default="")  # e.g. "Godown", "Branch 2"
+    address: Mapped[str | None] = mapped_column(Text)
+    ship_to_code: Mapped[str | None] = mapped_column(String(60), index=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    customer: Mapped[Customer] = relationship()
+    location: Mapped[Location] = relationship()
+
+    @property
+    def name(self) -> str:
+        return f"{self.location.name}" + (f" - {self.label}" if self.label else "")
+
+
 class PaymentMode:
     CASH = "CASH"   # paid at dispatch, no bill expected
     TBB = "TBB"     # "to be billed": the transporter sends a periodic bill
@@ -227,7 +260,11 @@ class Transporter(Base, TimestampMixin):
     credit_days: Mapped[int | None] = mapped_column(Integer)
     bank_details: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
+    # v1.7: this transporter gives us its own LR (builty) book; its LR numbers are imported per book (Phase 6)
+    uses_lr_book: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # v1.7: the depots this transporter serves (none ticked = every depot); eligibility_service reads the same table
+    served_depots: Mapped[list["CFA"]] = relationship(secondary=transporter_depots)
 
     @property
     def payment_label(self) -> str:

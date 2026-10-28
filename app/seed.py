@@ -693,6 +693,7 @@ def make_gatepass(c: Ctx, invs: list[Invoice], carrier: str, d: date, stage: str
         if carrier in ("ORL", "PGC", "BJR", "CGR") and RND.random() < 0.35:
             req.pickup_mode = PickupMode.OUTSIDE_AUTO
             req.outside_auto_id = autos["AUTO-SONU"].id
+    req.group_cross_company = True  # demonstration data: the grouping is by customer / area, whatever the company
     try:
         slip = ds.create_gatepass(db, op, invs, req)
     except ds.BusinessError:
@@ -1018,7 +1019,7 @@ def _overrides_and_cancellations(c: Ctx, invs: list[Invoice], today: date) -> No
         clock(today, 13, 20)
         ds.create_gatepass(db, _operator(c, group[0]), group, ds.GatepassRequest(
             mode=slip.dispatch_mode, transporter_id=slip.transporter_id, dispatch_date=today,
-            cases={i.id: i.boxes for i in group}, remarks="Re-made after correction"))
+            cases={i.id: i.boxes for i in group}, remarks="Re-made after correction", group_cross_company=True))
     hist_dispatched = [i for i in invs if i.status == InvoiceStatus.DISPATCHED]
     if hist_dispatched:
         inv = hist_dispatched[len(hist_dispatched) // 3]

@@ -41,6 +41,16 @@
       <div class="empty" id="gp-empty">Scan or add invoices to start.</div>
     </div>
 
+    <div class="card" id="gp-cons" hidden>
+      <div class="card-head" style="padding:0 0 6px"><h3 style="margin:0">Consignments <span class="muted small">one customer + delivery area; every invoice keeps its own number, company and cases</span></h3></div>
+      <ul class="small" id="gp-cons-list" style="margin:0;padding-left:18px"></ul>
+      <div id="gp-cross-box" hidden style="margin-top:8px">
+        <label class="check"><input type="checkbox" name="group_cross_company" value="1" id="gp-cross" {% if form.get('group_cross_company') == '1' %}checked{% endif %} {% if not can_group_cross %}disabled{% endif %}>
+          <b>Group across companies</b> <span class="muted">(<span id="gp-cross-cos"></span>) - these invoices belong to different companies; tick to put them on one gatepass on purpose. It is recorded and audited.</span></label>
+        {% if not can_group_cross %}<div class="field-hint pos">You are not authorised to group invoices of different companies - make one gatepass per company.</div>{% endif %}
+      </div>
+    </div>
+
     <div class="card flush">
       <div class="card-head"><h3>Waiting to be dispatched ({{ open_invs|length }})</h3>
         <input type="search" id="gp-filter" data-grid="#gp-open" placeholder="Filter by invoice, customer, area…  (↓ into the list)" style="max-width:280px"></div>
@@ -72,8 +82,15 @@
       <div id="gp-tr-box">
         <label for="gp-tr">Transporter</label>
         <select name="transporter_id" id="gp-tr"><option value="">— select —</option>
-          {% for t in transporters %}<option value="{{ t.id }}" data-code="{{ t.code }}" {% if form.get('transporter_id')|string == t.id|string %}selected{% endif %}>{{ t.name }}</option>{% endfor %}</select>
+          {% for t in transporters %}<option value="{{ t.id }}" data-code="{{ t.code }}" data-name="{{ t.name }}" {% if form.get('transporter_id')|string == t.id|string %}selected{% endif %}>{{ t.name }}</option>{% endfor %}</select>
         <div class="field-hint" id="gp-tr-hint"></div>
+        <div class="field-hint" id="gp-elig-msg" role="status"></div>
+        {% if can_override_elig %}
+        <div id="gp-elig-box" hidden style="margin-top:6px">
+          <label class="check"><input type="checkbox" id="gp-override" {% if form.get('eligibility_override_reason') %}checked{% endif %}> Choose a transporter that does not serve this depot</label>
+          <input type="text" name="eligibility_override_reason" id="gp-override-reason" maxlength="200" placeholder="Reason (recorded and audited)" value="{{ form.get('eligibility_override_reason') or '' }}" hidden>
+        </div>
+        {% endif %}
         <label style="margin-top:8px">Goods reach the transporter by</label>
         <div class="checks">
           <label class="check"><input type="radio" name="pickup_mode" value="REGULAR" {% if form.get('pickup_mode') != 'OUTSIDE_AUTO' %}checked{% endif %}> Regular</label>
@@ -147,6 +164,8 @@
   const AUTO_RATES = {{ auto_rates|jsdata|safe }};
   const TRS = {{ tr_info|jsdata|safe }};
   const SOURCE = {{ freight_source|jsdata|safe }};
+  const CAN_OVERRIDE = {{ can_override_elig|jsdata|safe }};
+  const CAN_GROUP = {{ can_group_cross|jsdata|safe }};
   const CASH_DEFAULT = {{ cash_default|jsdata|safe }};
   const csrf = document.querySelector('input[name=csrf_token]').value;
   const $ = (s, el = document) => el.querySelector(s);
@@ -197,6 +216,75 @@
   }
   function flashRow(id) { const r = lines.get(id); if (r) { r.tr.classList.remove('flash'); void r.tr.offsetWidth; r.tr.classList.add('flash'); } }
 
+  function cardRate(tid, inv) {  // same rule as the server: the most specific effective row for the invoice's depot and company
+    const c = CARDS[tid]; if (!c) return null;
+    let best = null, rank = -1;
+    c.rows.forEach(([loc, cfa, co, rate]) => {
+      if (loc !== inv.location_id || (cfa && cfa !== inv.cfa_id) || (co && co !== inv.company_id)) return;
+      const k = cfa && co ? 3 : cfa ? 2 : co ? 1 : 0;
+      if (k > rank) { best = rate; rank = k; }
+    });
+    return best;
+  }
+  // Who may carry these invoices: serves the depot and has a rate for every area (override: a depot restriction only)
+  function eligibility(rows) {
+    const out = {}, cfa = rows.length ? rows[0].inv.cfa_id : null;
+    Object.keys(CARDS).forEach((tid) => {
+      const c = CARDS[tid];
+      const depotOk = !c.serves || cfa == null || c.serves.includes(cfa);
+      const miss = SOURCE === 'TRANSPORTER' ? [...new Set(rows.filter(({inv}) => cardRate(tid, inv) == null).map(({inv}) => inv.location))] : [];
+      out[tid] = {depotOk, miss};
+    });
+    return out;
+  }
+  function syncTransporters(rows, m) {
+    const sel = $('#gp-tr'), msgEl = $('#gp-elig-msg'), box = $('#gp-elig-box');
+    const ov = !!($('#gp-override') && $('#gp-override').checked);
+    const live = rows.length > 0 && (m === 'TRANSPORTER' || m === 'DIRECT');
+    const el = live ? eligibility(rows) : null;
+    let shown = 0, hiddenDepot = 0, hiddenRate = 0;
+    $$('option', sel).forEach((o) => {
+      if (!o.value) return;
+      if (!el) { o.hidden = false; o.disabled = false; return; }
+      const e = el[o.value];
+      const ok = e && !e.miss.length && (e.depotOk || ov);
+      o.hidden = !ok; o.disabled = !ok;
+      if (ok) { shown++; o.textContent = o.dataset.name + (!e.depotOk ? ' (does not serve this depot - override)' : ''); }
+      else if (e && !e.depotOk && !e.miss.length) hiddenDepot++;
+      else hiddenRate++;
+    });
+    if (el && sel.value && sel.selectedOptions[0] && sel.selectedOptions[0].disabled) sel.value = '';
+    if (box) {
+      const canOv = el && Object.values(el).some((e) => !e.depotOk && !e.miss.length);
+      box.hidden = !canOv;
+      const rs = $('#gp-override-reason'); if (rs) { rs.hidden = !ov; rs.required = ov && canOv; }
+    }
+    if (!el) { msgEl.textContent = ''; return {none: false, shown: 0}; }
+    const areas = [...new Set(rows.map((r) => r.inv.location))].join(', ');
+    let t = `${shown} transporter${shown === 1 ? '' : 's'} can carry ${areas}`;
+    if (hiddenDepot || hiddenRate) t += ` · hidden: ${hiddenRate} without a rate for ${areas}` + (hiddenDepot ? `, ${hiddenDepot} not serving this depot` : '');
+    if (!shown) t = `No transporter is eligible for ${areas} from this depot` + (new Set(rows.map((r) => r.inv.location_id)).size > 1 ? ' - no single transporter serves all these areas: split into separate gatepasses' : '') + '. Ask for a Master update (rate card / depots served)' + (hiddenDepot && CAN_OVERRIDE ? ', or tick the override below.' : '.');
+    msgEl.textContent = t; msgEl.className = 'field-hint' + (shown ? '' : ' pos');
+    return {none: !shown, shown};
+  }
+  function syncConsignments(rows) {
+    const list = $('#gp-cons-list'), box = $('#gp-cons');
+    box.hidden = rows.length === 0;
+    const groups = new Map();
+    rows.forEach(({inv, tr}) => {
+      const k = inv.customer_id + ':' + inv.location_id;
+      const g = groups.get(k) || {inv, n: 0, cases: 0, nos: [], cos: new Set()};
+      g.n++; g.cases += parseInt(tr.querySelector('input[type=number]').value, 10) || 0; g.nos.push(inv.invoice_no); g.cos.add(inv.company);
+      groups.set(k, g);
+    });
+    list.innerHTML = [...groups.values()].map((g, i) => `<li><b>${i + 1}.</b> ${esc(g.inv.customer)} · ${esc(g.inv.location)} - ${g.n} invoice${g.n > 1 ? 's' : ''} (${g.nos.map(esc).join(', ')}), <b>${g.cases}</b> cases${g.cos.size > 1 ? ' · companies ' + [...g.cos].map(esc).join(', ') : ''}</li>`).join('');
+    const cos = [...new Set(rows.map((r) => r.inv.company))];
+    const cb = $('#gp-cross-box');
+    cb.hidden = cos.length < 2;
+    $('#gp-cross-cos').textContent = cos.join(', ');
+    return cos.length > 1;
+  }
+
   function recalc() {
     const m = mode(), tid = $('#gp-tr').value, aid = $('#gp-auto').value, pk = pickup();
     $('#gp-tr-box').hidden = !(m === 'TRANSPORTER' || m === 'DIRECT');
@@ -238,7 +326,7 @@
       if (m === 'SELF') rate = 0;
       else if (m === 'OUTSIDE_AUTO') { rate = meth === 'PER_CASE' ? boxRate(inv) : null; if (meth === 'PER_CASE' && rate == null) noBox.push(inv); }
       else if (SOURCE === 'COMPANY') rate = inv.company_rate;
-      else if (tid) rate = (CARDS[tid] || {})[inv.location_id];
+      else if (tid) rate = cardRate(tid, inv);
       tr._rate = rate; tr._cases = c;
       const needsCard = (m === 'TRANSPORTER' || m === 'DIRECT') && tid;
       if (rate == null && needsCard) missing.push(inv);
@@ -268,8 +356,13 @@
     }
     const bal = total - (parseFloat(paid.value) || 0);
     $('#s-balance').textContent = total ? (bal > 0.005 ? `${fmt(bal)} to be billed by the transporter (TBB)` : 'Fully paid at dispatch') : '';
+    const elig = syncTransporters(rows, m);
+    const crossNeeded = syncConsignments(rows);
     const why = [];
     if (!rows.length) why.push('add at least one invoice');
+    if (crossNeeded && !($('#gp-cross') && $('#gp-cross').checked)) why.push(CAN_GROUP ? 'tick "Group across companies" or remove the invoices of the other company' : 'these invoices are of different companies - you cannot group them');
+    if (elig.none && (m === 'TRANSPORTER' || m === 'DIRECT')) why.push('no eligible transporter for these areas');
+    if ($('#gp-override') && $('#gp-override').checked && tid && !($('#gp-override-reason').value || '').trim()) why.push('give a reason for the override');
     if ((m === 'TRANSPORTER' || m === 'DIRECT') && !tid) why.push('choose the transporter');
     if ((m === 'OUTSIDE_AUTO' || ((m === 'TRANSPORTER' || m === 'DIRECT') && pk === 'OUTSIDE_AUTO')) && !aid) why.push('choose the local auto');
     if (meth === 'PER_TRIP' && !(trip > 0)) why.push('enter the trip charge');
@@ -283,6 +376,10 @@
   async function scan() {
     const input = $('#gp-scan'), code = input.value.trim();
     if (!code) {  // Enter on the empty box: invoices are done, move on to who carries the goods
+      const cross = $('#gp-cross');
+      if (lines.size && cross && !$('#gp-cross-box').hidden && !cross.checked && !cross.disabled) {  // different companies: ask first
+        cross.focus(); say('Different companies on this gatepass: press Space to tick "Group across companies", then Enter.', 'info'); return;
+      }
       if (lines.size && window.CTDMSKeys) window.CTDMSKeys.jump('#gp-who');
       else if (!lines.size) say('Type or scan an invoice number first (or press ↓ to pick from the waiting list).', 'info');
       return;
@@ -317,6 +414,11 @@
   $('#gp-veh').addEventListener('input', () => { vehTouched = true; });
   ['#gp-tr', '#gp-auto'].forEach((s) => $(s).addEventListener('change', () => { $('#gp-paid-edited').value = '0'; if (s === '#gp-auto') { tripTouched = false; vehTouched = false; $('#gp-trip').value = ''; $('#gp-veh').value = ''; $$('input[name=auto_method]').forEach((r) => { r.checked = false; }); } recalc(); }));
   $('#gp-paid').addEventListener('input', () => { $('#gp-paid-edited').value = '1'; recalc(); });
+  if ($('#gp-override')) { $('#gp-override').addEventListener('change', recalc); $('#gp-override-reason').addEventListener('input', recalc); }
+  if ($('#gp-cross')) {
+    $('#gp-cross').addEventListener('change', recalc);
+    $('#gp-cross').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); if (window.CTDMSKeys) window.CTDMSKeys.jump('#gp-who'); } });  // ticked: on to who carries the goods
+  }
   $('#gp-form').addEventListener('submit', (e) => {
     if ($('#gp-submit').disabled) { e.preventDefault(); return; }
     $('#gp-submit').disabled = true; $('#gp-submit').textContent = 'Generating…';

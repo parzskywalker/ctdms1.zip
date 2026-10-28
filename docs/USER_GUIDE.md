@@ -81,6 +81,20 @@ Delete, void, cancel and reject always ask first with **No** pre-selected.
 4. The right-hand panel shows freight, extras, **total charged** and **amount paid now** (cash for autos and CASH
    transporters; TBB transporters bill later). Invoices whose area has no rate on that transporter's card are
    flagged — add the rate under *Transporter Rate Cards* (a second person approves it).
+   **v1.7 – who is offered.** Only transporters that can carry these goods are listed: they serve the depot (Master
+   Settings › Transporters › *Depots served*; nothing ticked = every depot) and have an approved rate for **every area**
+   on the gatepass. With invoices for several areas, only a transporter that has all of them appears; if there is none
+   the screen names the areas and says to split the gatepass or ask for a Master update. A manager who holds the
+   permission can tick *Choose a transporter that does not serve this depot* and type a reason - it is audited and shown
+   on the gatepass. A rate exception (see *Transporter Rate Cards*) for this depot / company is used automatically, and
+   the gatepass keeps a note of *how the freight was calculated*.
+   **Companies.** Invoices of different companies go on one gatepass only if you tick *Group across companies* (Enter
+   on the empty scan box takes you to the tick box, Space ticks it). It is recorded; every invoice keeps its own company,
+   number and cases. The *Consignments* panel shows one line per customer and delivery area.
+   **Delivery area.** A customer with several delivery locations (Master Settings › Customers › *Delivery locations*)
+   has the invoice held as *choose the delivery location* until you pick one on the invoice screen (recorded). If an
+   import file names an area that is not one of the customer's, System Settings › `area.mismatch_action` decides:
+   ACCEPT (use the file's area, as before) or EXCEPTION (hold the invoice until the area is confirmed).
 5. **Generate gatepass** → one number for the whole pickup. **Print** it (A5/A4/PDF): it carries a barcode, every
    customer with its invoices, cases and charge, the transporter's name/contact/GST/payment mode — no vehicle number.
 6. **Gate check**: the guard scans the gatepass barcode, counts the cases and presses **Confirm gate-out**. All its
@@ -167,9 +181,16 @@ Reprints need a reason and are marked "REPRINT #n (DUPLICATE)".
   can change their own role, permissions or scope, nobody can hand out more than they hold themselves, and at least one
   active user must always be able to manage users and roles.
 * **Users** (Administration › Users › *New user*): username, name, role (Admin, Management, Accounts, Depot
-  Manager, Dispatch Operator, Checker, Viewer), the companies / depots they may see, and a password you choose.
+  Manager, Dispatch Operator, Checker, Viewer), the **scope** (companies, depots, delivery areas, customer types and
+  individual customers - the person sees only those invoices, gatepasses, reports, exports and dropdown entries), optional
+  **individual permission changes** (give or take away one permission, with a reason, on top of the role - the
+  *Effective access* panel previews the result), and a password you choose.
   Untick *Must change it at first login* to hand over a fixed password. *Set new password* on a user unlocks the
   account and signs them out everywhere. Every change is in the audit log.
+* **Freight and masters (v1.7)**: *Transporter Rate Cards* take an optional **exception** for one depot and / or one
+  company (the most specific rate wins: depot + company, then depot, then company, then the general rate; a second
+  person approves it like any rate). *Transporters* list the depots they serve and whether they give their own LR book.
+  *Customers* list their delivery locations (area, label, ship-to code, a default).
 * **Locked (paid) features**: automatic bill reading (AI) and WhatsApp / SMS alerts cost money and are locked while
   `CTDMS_PAID_SERVICES=false` (the default). Bills are typed next to the photo; alerts can be tried with
   `notify.provider = LOG`. Nothing else depends on them.

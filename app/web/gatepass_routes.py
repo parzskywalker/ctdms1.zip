@@ -19,6 +19,7 @@ from app.security.auth import csrf_protect, require
 from app.services import dispatch_service as ds
 from app.services import local_auto_service as las
 from app.services import einvoice_service as einv
+from app.services import eligibility_service as es
 from app.services import settings_service as cfg
 from app.services import transporter_rate_service as trs
 from app.services.errors import BusinessError
@@ -79,8 +80,14 @@ def _inv_json(db: Session, inv: Invoice) -> dict:
 
 
 def _cards(db: Session, on) -> dict:
-    return {str(t.id): {str(k): float(v) for k, v in trs.card(db, t.id, on).items()}
-            for t in db.scalars(select(Transporter).where(Transporter.is_active.is_(True)))}
+    """Per active transporter: every effective rate as [area, depot or 0, company or 0, rate] (the screen prices a line
+    with the most specific row, like the server) and the depots it serves (None = all)."""
+    out = {}
+    for t in db.scalars(select(Transporter).where(Transporter.is_active.is_(True))):
+        served = es.depot_ids(db, t.id)
+        out[str(t.id)] = {"rows": [[lo, cf, co, float(rt)] for lo, cf, co, rt in trs.card_rows(db, t.id, on)],
+                          "serves": sorted(served) if served else None}
+    return out
 
 
 def _builder(request: Request, db: Session, user: User, *, ids: list[int] | None = None, form=None,
@@ -116,7 +123,9 @@ def _builder(request: Request, db: Session, user: User, *, ids: list[int] | None
         "auto_rates": las.rates_for_screen(db, autos, today),
         "tr_info": {str(t.id): {"pay": t.payment_mode, "pickup": float(t.direct_pickup_charge or 0),
                                 "pickup_basis": t.direct_pickup_basis} for t in transporters},
-        "cash_default": cfg.get(db, "gatepass.cash_paid_default")}, status_code=status_code)
+        "cash_default": cfg.get(db, "gatepass.cash_paid_default"),
+        "can_override_elig": user.can("transporter.override_eligibility"),
+        "can_group_cross": user.can("dispatch.group_cross_company")}, status_code=status_code)
 
 
 @router.api_route("/gatepass/new", methods=["GET"])
@@ -170,7 +179,9 @@ def _request_from(form) -> ds.GatepassRequest:
         pickup_mode=PickupMode.OUTSIDE_AUTO if form.get("pickup_mode") == PickupMode.OUTSIDE_AUTO else PickupMode.REGULAR,
         dispatch_date=d, dispatch_time=t, cases={}, remarks=form.get("remarks"),
         amount_paid=ds.parse_money(paid_raw) if paid_raw and form.get("paid_edited") == "1" else None,
-        auto_method=(form.get("auto_method") or None), vehicle_no=(form.get("vehicle_no") or "").strip() or None)
+        auto_method=(form.get("auto_method") or None), vehicle_no=(form.get("vehicle_no") or "").strip() or None,
+        group_cross_company=form.get("group_cross_company") == "1",
+        eligibility_override_reason=(form.get("eligibility_override_reason") or "").strip() or None)
     trip_raw = (form.get("trip_charge") or "").strip()
     if trip_raw:
         req.trip_charge = ds.parse_money(trip_raw)

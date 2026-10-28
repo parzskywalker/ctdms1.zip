@@ -81,3 +81,11 @@ Conventions: no historical row rewritten; new columns nullable or defaulted so 1
 ## 7. Migration, rollback, release safety
 
 Backup first (`python -m app.cli backup`); each migration additive; downgrade drops new empty tables/columns only — otherwise **restore the backup**. v1.6.1 data after upgrade: every gatepass `LEGACY` (count-and-confirm), every rate prices as before, every user keeps all areas/customers. One depot at a time (`cfas.case_control_enabled`), Guma first. Release gates: SQLite **and** PostgreSQL migration run, rehearsal on a copy of live data, first printer/scanner trial at Guma.
+
+## 8. Phase 3 — as built (differences from the design above)
+
+* Migrations **0011** (areas, depots served, LR-book flag) and **0012** (rate exceptions, line breakdown, grouping flags, role grants). `transporter_rates.charge_basis` and the slab table were **not** added (slabs deferred by the owner, B4/B5); the freight stays one rate per case per transporter / area.
+* `customers.location_id` stays the default area; `customer_delivery_locations` lists the others. `area.mismatch_action` (ACCEPT default = v1.6.1 behaviour | EXCEPTION) controls what a file area outside the customer's locations does; `AREA_AMBIGUOUS` always holds the invoice until chosen.
+* Eligibility = serves the depot (`transporter_depots`, no rows = all) AND (transporter-rate mode) an approved rate for every (area, depot, company) on the gatepass; override only for the depot rule. Enforced in `plan_gatepass`, offered in both gatepass screens.
+* `dispatch.group_cross_company` and `transporter.override_eligibility` granted by migration 0012 to the roles that could already do the work. The seed data and the Guided Training scenario group across companies on purpose (they set the flag).
+* A practice (Training) database made by an older version is upgraded in place before use (`app.training.runtime.sync_schema`): every new column must therefore be nullable or have a server default.

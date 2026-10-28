@@ -226,7 +226,7 @@ def _gatepass(db: Session, numbers: list[str], remarks: str, *, transporter=None
     from app.services import dispatch_service as ds
     master = _user(db, "demo.master")
     invs = invoices_by_no(db, numbers)
-    req = ds.GatepassRequest(cases={i.id: str(i.boxes) for i in invs}, remarks=remarks)
+    req = ds.GatepassRequest(cases={i.id: str(i.boxes) for i in invs}, remarks=remarks, group_cross_company=True)
     if transporter:
         req.mode = DispatchMode.TRANSPORTER
         req.transporter_id = db.scalar(select(Transporter.id).where(Transporter.code == transporter))

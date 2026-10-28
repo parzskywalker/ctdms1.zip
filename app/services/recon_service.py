@@ -531,7 +531,8 @@ def rematch(db: Session, bill: TransporterBill) -> None:
                 issues.append(_issue("CASES_LESS", f"Billed {ln.billed_boxes} cases, gatepass shows "
                                                    f"{ln.system_cases}", "info"))
         on = ln.lr_date or first.dispatch_date or bill.bill_date
-        lk = trs.find(db, bill.transporter_id, first.location_id, on) if first.location_id else None
+        lk = trs.find(db, bill.transporter_id, first.location_id, on, cfa_id=first.cfa_id, company_id=first.company_id) \
+            if first.location_id else None
         ln.card_rate = lk.rate_per_case if lk and lk.found else None
         rate_billed = ln.billed_rate
         if rate_billed is None and ln.billed_amount is not None and ln.billed_boxes:

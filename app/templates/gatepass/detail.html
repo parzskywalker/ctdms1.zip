@@ -23,6 +23,8 @@
 
 {% if slip.is_void %}<div class="alert alert-error">VOID — {{ slip.void_reason }} ({{ slip.voided_by.full_name if slip.voided_by else '' }}, {{ slip.voided_at|dt }}). The goods must not leave on this gatepass.</div>{% endif %}
 
+{% if slip.cross_company %}<div class="alert alert-info">Invoices of <b>different companies</b> are grouped on this gatepass on purpose ({{ invs|map(attribute='company')|map(attribute='code')|unique|join(', ') }}). Each invoice keeps its own company, number and cases.</div>{% endif %}
+{% if slip.eligibility_override_reason %}<div class="alert alert-warn">Transporter chosen although it does not serve this depot - reason: <b>{{ slip.eligibility_override_reason }}</b></div>{% endif %}
 <div class="kpis" style="grid-template-columns:repeat(6,minmax(0,1fr))">
   <div class="kpi"><div class="lbl">Invoices</div><div class="val">{{ slip.invoice_count }}</div><div class="hint">{{ groups|length }} customer(s)</div></div>
   <div class="kpi"><div class="lbl">Cases</div><div class="val">{{ slip.total_cases }}</div></div>
@@ -43,11 +45,11 @@
       {% for g in groups %}
         {% set locked = g.locked %}
         <tr>
-          <td><b>{{ g.customer.name }}</b> <span class="small muted">{{ g.customer.type_label }}</span><div class="small muted">{{ g.location.name }}{% if g.customer.contact_phone %} · {{ g.customer.contact_phone }}{% endif %}</div>
+          <td>{% if g.invs[0][1] and g.invs[0][1].consignment_no %}<span class="tag" title="Consignment number on this gatepass">C{{ g.invs[0][1].consignment_no }}</span> {% endif %}<b>{{ g.customer.name }}</b> <span class="small muted">{{ g.customer.type_label }}</span><div class="small muted">{{ g.location.name }}{% if g.customer.contact_phone %} · {{ g.customer.contact_phone }}{% endif %}</div>
             <div class="small"><a href="/track/{{ g.invs[0][0].id }}">Track · delivery · e-way bill</a>{% if g.invs[0][0].delivery_status %} <span class="tag">{{ g.invs[0][0].delivery_label }}</span>{% endif %}</div></td>
           <td class="small">{% for inv, ln in g.invs %}<div><a href="/invoices/{{ inv.id }}">{{ inv.invoice_no }}</a> <span class="muted">{{ inv.company.code }} · {{ inv.sales_value|money }}</span> {% if inv.status in ('CANCELLED','DISPATCHED') %}{{ badge(inv.status) }}{% endif %}</div>{% endfor %}</td>
           <td class="num">{% for inv, ln in g.invs %}<div>{{ ln.cases if ln else inv.boxes }}</div>{% endfor %}</td>
-          <td class="num">{% for inv, ln in g.invs %}<div>{{ (ln.rate_per_case if ln else inv.rate_per_box)|rate }}</div>{% endfor %}</td>
+          <td class="num">{% for inv, ln in g.invs %}<div>{{ (ln.rate_per_case if ln else inv.rate_per_box)|rate }}{% if ln and ln.calc_note and ln.calc_note.get('rule') and ln.calc_note.get('rule') != 'General rate' %} <span class="tag" title="{{ ln.calc_note.rule }}: {{ ln.calc_note.scope }}">exception</span>{% endif %}</div>{% endfor %}</td>
           <td class="num">{% for inv, ln in g.invs %}<div>{{ ((ln.freight + ln.extra_charge) if ln else inv.freight_amount)|money }}</div>{% endfor %}</td>
           <td>{% set first = g.invs[0][0] %}
             {% if slip.transporter_id and not slip.is_void and can('dispatch.operate') and not locked %}
@@ -84,6 +86,22 @@
         {% if slip.remarks %}<dt>Remarks</dt><dd>{{ slip.remarks }}</dd>{% endif %}
       </dl>
     </div>
+    {% set noted = slip.lines|selectattr('calc_note')|list %}
+    {% if noted %}
+    <div class="card">
+      <h3 style="margin-top:0">How freight was calculated</h3>
+      <ul class="timeline small">{% for ln in noted %}{% set n = ln.calc_note %}
+        <li><b>{{ ln.invoice.invoice_no }}</b> ·
+          {% if n.get('source') == 'TRANSPORTER_CARD' %}{{ n.cases }} cases × ₹{{ n.rate }} = ₹{{ n.amount }} <span class="muted">· {{ n.get('area') }} · {{ n.get('rule') }}{% if n.get('scope') and n.get('rule') != 'General rate' %} ({{ n.scope }}){% endif %} · rate card from {{ n.get('effective_from') }}</span>
+          {% elif n.get('source') == 'SELF' %}self pickup - no freight
+          {% elif n.get('source') == 'AUTO_PER_CASE' %}{{ n.cases }} cases × ₹{{ n.rate }} = ₹{{ n.amount }} <span class="muted">· local auto, per box</span>
+          {% elif n.get('source') == 'AUTO_PER_TRIP' %}{% if n.get('share') %}₹{{ n.share }} = {{ n.cases }} of {{ n.trip_cases }} cases of the one trip charge ₹{{ n.trip_charge }}{% else %}local auto, per trip{% endif %} <span class="muted">· the auto is paid once</span>
+          {% else %}{{ n.cases }} cases{% if n.get('rate') %} × ₹{{ n.rate }}{% endif %} = ₹{{ n.get('amount') }} <span class="muted">· {{ (n.get('source') or '')|replace('_', ' ')|lower }}</span>{% endif %}
+          {% if n.get('extra') %}<span class="muted"> + ₹{{ n.extra }} share of pickup / local auto</span>{% endif %}</li>
+      {% endfor %}</ul>
+      <div class="field-hint">Frozen when the gatepass was made - a later rate change never alters it.</div>
+    </div>
+    {% endif %}
     {% if alerts %}
     <div class="card">
       <h3 style="margin-top:0">Customer alerts</h3>

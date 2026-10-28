@@ -159,8 +159,10 @@ with sync_playwright() as p:
     wait_step("invoices")
     for no in ("001248", "001249", "PQR/B/0313"):
         K.type(no); K.press("Enter"); pg.wait_for_timeout(500)
+    wait_step("cross")          # two companies: Enter on the empty scan box goes to the tick box, Space ticks it
+    K.press("Enter"); K.press("Space"); pg.wait_for_timeout(400)
     wait_step("transporter")
-    K.press("Enter")            # empty scan box -> mode
+    K.press("Enter")            # tick box -> mode
     K.press("Enter")            # mode stays Transporter -> transporter box
     K.type("SRL"); K.press("Enter")
     wait_step("rates")
@@ -207,6 +209,8 @@ with sync_playwright() as p:
     wait_step("invoices")
     for no in ("001245", "001246", "001247", "XY/G/2601"):
         K.type(no); K.press("Enter"); pg.wait_for_timeout(450)
+    wait_step("cross")
+    K.press("Enter"); K.press("Space"); pg.wait_for_timeout(400)
     wait_step("mode")
     K.press("Enter"); K.press("ArrowRight"); K.press("ArrowRight")
     wait_step("auto")
@@ -240,6 +244,8 @@ with sync_playwright() as p:
     wait_step("invoices")
     for no in ("XY/K/2603", "PQR/K/0311", "XY/K/2604"):
         K.type(no); K.press("Enter"); pg.wait_for_timeout(450)
+    wait_step("cross")
+    K.press("Enter"); K.press("Space"); pg.wait_for_timeout(400)
     wait_step("auto")
     K.press("Enter"); K.press("ArrowRight"); K.press("ArrowRight"); K.press("Enter"); K.type("LA2"); K.press("Enter")
     wait_step("no-rate")

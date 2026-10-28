@@ -37,6 +37,8 @@ def refresh_status(db: Session, inv: Invoice) -> str:
     code = reason = None
     if inv.id and _pending_override(db, inv):
         code = ExceptionCode.OVERRIDE_PENDING
+    elif inv.exception_code in (ExceptionCode.AREA_AMBIGUOUS, ExceptionCode.AREA_MISMATCH):
+        code = inv.exception_code  # stays until the operator chooses the delivery location (customer_area_service)
     elif inv.boxes is None or inv.boxes <= 0:
         code = ExceptionCode.BOXES_MISSING
     elif inv.freight_amount is None and company_rates(db):

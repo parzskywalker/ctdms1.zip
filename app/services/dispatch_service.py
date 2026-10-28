@@ -25,7 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import (
-    DispatchMode, DispatchSlip, DispatchSlipLine, ExceptionCode, Invoice, InvoiceStatus, OutsideAuto, PaymentMode,
+    CFA, DispatchMode, DispatchSlip, DispatchSlipLine, ExceptionCode, Invoice, InvoiceStatus, OutsideAuto, PaymentMode,
     PickupMode, RateLevel, SlipPrintLog, Transporter, TransporterBill, User, utcnow,
 )
 from app.models.masters import ChargeBasis
@@ -33,6 +33,7 @@ from app.models.recon import BillStatus
 from app.services import audit, notify_service
 from app.services import local_auto_service as las
 from app.services import settings_service as cfg
+from app.services import eligibility_service as es
 from app.services import transporter_rate_service as trs
 from app.services.errors import BusinessError
 from app.services.invoice_service import refresh_status
@@ -162,6 +163,8 @@ class GatepassRequest:
     auto_method: str | None = None       # v1.6 local auto: PER_TRIP / PER_CASE (None = the auto's default)
     trip_charge: Decimal | None = None   # v1.6 per-trip amount for this trip (None = the auto's suggestion)
     vehicle_no: str | None = None
+    group_cross_company: bool = False    # v1.7: invoices of different companies on one gatepass, on purpose
+    eligibility_override_reason: str | None = None  # v1.7: transporter that does not serve this depot (permission + reason)
 
 
 @dataclass
@@ -172,6 +175,8 @@ class PlannedLine:
     freight: Decimal
     level: str
     extra: Decimal = ZERO
+    rate_id: int | None = None   # v1.7: the transporter-rate row that priced the line
+    note: dict | None = None     # v1.7: how the freight was found (stored on the gatepass line)
 
 
 def _alloc(total: Decimal, weights: list[int]) -> list[Decimal]:
@@ -240,6 +245,31 @@ def plan_gatepass(db: Session, user: User | None, invs: list[Invoice], req: Gate
     if len({i.id for i in invs}) != len(invs):
         problems.append("The same invoice is listed twice")
     company_mode = freight_source(db) == "COMPANY"
+    # v1.7 grouping rule: different companies only by an explicit, permitted choice (the companies stay on every line)
+    company_codes = sorted({i.company.code for i in invs})
+    cross_company = len(company_codes) > 1
+    if cross_company and not req.group_cross_company:
+        problems.append(f"These invoices belong to different companies ({', '.join(company_codes)}). Tick \"Group across "
+                        "companies\" to put them on one gatepass on purpose, or make one gatepass per company")
+    elif cross_company and user is not None and not user.can("dispatch.group_cross_company"):
+        problems.append("You are not authorised to put invoices of different companies on one gatepass")
+    # v1.7 eligibility: the transporter must serve this depot (no depot list = serves every depot)
+    override_used = False
+    if mode in (DispatchMode.TRANSPORTER, DispatchMode.DIRECT) and tr and tr.is_active and len(cfa_ids) == 1:
+        cfa0 = next(iter(cfa_ids))
+        if not es.serves_depot(db, tr.id, cfa0):
+            depot = db.get(CFA, cfa0)
+            reason = (req.eligibility_override_reason or "").strip()
+            if reason and (user is None or user.can("transporter.override_eligibility")):
+                if len(reason) < 5:
+                    problems.append("Give a reason (at least 5 characters) for choosing a transporter that does not "
+                                    "serve this depot")
+                override_used = True
+            elif reason:
+                problems.append("You are not authorised to choose a transporter that does not serve this depot")
+            else:
+                problems.append(f"{tr.name} does not serve {depot.name if depot else 'this depot'}. Choose a transporter "
+                                "that does, or ask a Manager to override it (a reason is recorded)")
 
     planned: list[PlannedLine] = []
     for inv in invs:
@@ -257,6 +287,9 @@ def plan_gatepass(db: Session, user: User | None, invs: list[Invoice], req: Gate
             problems.append(f"{tag}: a box / freight change is awaiting approval")
         if inv.exception_code == ExceptionCode.RATE_CONFLICT:
             problems.append(f"{tag}: {inv.exception_reason or 'rate conflict'}")
+        if inv.exception_code in (ExceptionCode.AREA_AMBIGUOUS, ExceptionCode.AREA_MISMATCH):
+            problems.append(f"{tag}: {inv.exception_reason or ExceptionCode.LABELS[inv.exception_code]} "
+                            "- choose the delivery location on the invoice first")
         raw = (req.cases or {}).get(inv.id)
         try:
             cases = parse_int(raw) if raw not in (None, "") else inv.boxes
@@ -275,8 +308,10 @@ def plan_gatepass(db: Session, user: User | None, invs: list[Invoice], req: Gate
         if d < inv.invoice_date:
             problems.append(f"{tag}: dispatch date is before the invoice date")
         rate: Decimal | None
+        rate_id, note = None, None
         if mode == DispatchMode.SELF:
             rate, freight, level = ZERO, ZERO, RateLevel.SELF
+            note = {"source": "SELF", "cases": cases}
         elif mode == DispatchMode.OUTSIDE_AUTO:
             rate, freight, level = None, ZERO, RateLevel.AUTO  # per trip: the trip amount is shared out below
             if auto and auto_method == ChargeBasis.PER_CASE:
@@ -288,6 +323,9 @@ def plan_gatepass(db: Session, user: User | None, invs: list[Invoice], req: Gate
                     continue
                 rate = br.rate
                 freight = money(Decimal(cases) * rate)
+                note = {"source": "AUTO_PER_CASE", "cases": cases, "rate": str(rate), "amount": str(freight)}
+            else:
+                note = {"source": "AUTO_PER_TRIP", "cases": cases}
         elif company_mode or inv.freight_basis in ("MANUAL_RATE", "MANUAL_AMOUNT"):
             if inv.freight_amount is None:
                 problems.append(f"{tag}: {inv.exception_reason or 'freight not calculated'}")
@@ -296,17 +334,23 @@ def plan_gatepass(db: Session, user: User | None, invs: list[Invoice], req: Gate
             freight = inv.freight_amount if cases == inv.boxes else \
                 money(Decimal(cases) * (inv.rate_per_box or ZERO))
             level = inv.rate_level or RateLevel.MANUAL
+            note = {"source": "COMPANY_CARD" if inv.freight_basis not in ("MANUAL_RATE", "MANUAL_AMOUNT") else inv.freight_basis,
+                    "cases": cases, "rate": str(rate) if rate is not None else None, "amount": str(freight)}
         else:
             if not tr:
                 continue
-            lk = trs.find(db, tr.id, inv.location_id, d)
+            lk = trs.find(db, tr.id, inv.location_id, d, cfa_id=inv.cfa_id, company_id=inv.company_id)
             if not lk.found:
                 problems.append(f"{tag}: {lk.message} - add it to the rate card")
                 continue
             rate = lk.rate_per_case
             freight = money(Decimal(cases) * rate)
             level = RateLevel.TRANSPORTER
-        planned.append(PlannedLine(inv, cases, rate, freight, level))
+            rate_id = lk.rate.id
+            note = {"source": "TRANSPORTER_CARD", "rule": lk.rule, "scope": lk.rate.scope_label, "rate_id": lk.rate.id,
+                    "area": inv.location.name, "cases": cases, "rate": str(rate), "amount": str(freight),
+                    "effective_from": lk.rate.effective_from.isoformat()}
+        planned.append(PlannedLine(inv, cases, rate, freight, level, rate_id=rate_id, note=note))
 
     total_cases = sum(p.cases for p in planned)
     weights = [p.cases for p in planned]
@@ -316,6 +360,8 @@ def plan_gatepass(db: Session, user: User | None, invs: list[Invoice], req: Gate
         for p, share in zip(planned, _alloc(trip, weights)):
             p.freight = share
             p.rate = (share / p.cases).quantize(Decimal("0.01")) if p.cases else None
+            p.note = {"source": "AUTO_PER_TRIP", "cases": p.cases, "trip_charge": str(trip), "share": str(share),
+                      "trip_cases": total_cases}
     if mode == DispatchMode.DIRECT:
         pickup = _pickup_charge(tr, total_cases)
     if mode in (DispatchMode.TRANSPORTER, DispatchMode.DIRECT) and req.pickup_mode == PickupMode.OUTSIDE_AUTO and auto:
@@ -351,7 +397,8 @@ def plan_gatepass(db: Session, user: User | None, invs: list[Invoice], req: Gate
     totals = {"invoices": len(planned), "cases": total_cases, "freight": freight_total, "pickup": pickup,
               "auto": auto_ch, "total": total, "paid": paid, "balance": total - paid, "payment_status": status,
               "mode": mode, "transporter": tr, "auto_obj": auto, "date": d,
-              "auto_method": auto_method, "trip_charge": trip}
+              "auto_method": auto_method, "trip_charge": trip, "cross_company": cross_company,
+              "eligibility_override": override_used}
     return planned, totals, problems
 
 
@@ -455,9 +502,13 @@ def create_gatepass(db: Session, user: User, invs: list[Invoice], req: GatepassR
         totals["auto_method"] = totals["trip_charge"] = None
     if slip.transporter_id is None:
         totals["transporter"] = None
+    slip.cross_company = bool(totals.get("cross_company"))
+    if totals.get("eligibility_override"):
+        slip.eligibility_override_reason = (req.eligibility_override_reason or "").strip()
     db.add(slip)
     db.flush()
     t = req.dispatch_time or local_now().time().replace(second=0, microsecond=0)
+    consignments: dict[tuple, int] = {}  # v1.7: one consignment = one customer + delivery location on this gatepass
     for p in planned:
         inv = p.inv
         old_status = inv.status
@@ -492,9 +543,13 @@ def create_gatepass(db: Session, user: User, invs: list[Invoice], req: GatepassR
         inv.slip_generated_by_id = user.id
         inv.print_count = 0
         inv.status = S.SLIP_GENERATED
+        cno = consignments.setdefault((inv.customer_id, inv.location_id), len(consignments) + 1)
+        if p.note is not None and p.extra:
+            p.note = {**p.note, "extra": str(p.extra)}
         slip.lines.append(DispatchSlipLine(invoice_id=inv.id, customer_id=inv.customer_id, location_id=inv.location_id,
                                            cases=p.cases, rate_per_case=p.rate, freight=p.freight,
-                                           extra_charge=p.extra))
+                                           extra_charge=p.extra, rate_id=p.rate_id, calc_note=p.note,
+                                           consignment_no=cno))
         audit.log(db, user, "SLIP_GENERATED", MODULE, record_type="Invoice", record_id=inv.id, ref=inv.invoice_no,
                   field="status", old=old_status, new=S.SLIP_GENERATED,
                   details={"dispatch_no": dispatch_no, "cases": p.cases, "rate": audit._s(p.rate),
@@ -512,7 +567,17 @@ def create_gatepass(db: Session, user: User, invs: list[Invoice], req: GatepassR
                        "transporter": tr.code if slip.transporter_id else None,
                        "auto": auto.code if slip.outside_auto_id else None, "total": str(totals["total"]),
                        "auto_method": slip.auto_method, "trip_charge": audit._s(slip.trip_charge),
-                       "paid": str(totals["paid"])})
+                       "paid": str(totals["paid"]), "consignments": len(consignments),
+                       "cross_company": slip.cross_company})
+    if slip.cross_company:
+        audit.log(db, user, "GATEPASS_CROSS_COMPANY", MODULE, record_type="DispatchSlip", record_id=slip.id,
+                  ref=dispatch_no, reason="Invoices of different companies grouped on purpose",
+                  details={"companies": sorted({p.inv.company.code for p in planned})})
+    if slip.eligibility_override_reason:
+        audit.log(db, user, "ELIGIBILITY_OVERRIDE", MODULE, record_type="DispatchSlip", record_id=slip.id,
+                  ref=dispatch_no, reason=slip.eligibility_override_reason,
+                  details={"transporter": tr.code if tr else None, "depot": cfa.code,
+                           "why": "Transporter does not serve this depot"})
     return slip
 
 
@@ -537,7 +602,7 @@ def slip_blockers(db: Session, inv: Invoice) -> list[str]:
         problems.append("Transporter not selected")
     elif not company and inv.freight_basis not in ("MANUAL_RATE", "MANUAL_AMOUNT"):
         d = inv.dispatch_date or local_today()
-        lk = trs.find(db, inv.transporter_id, inv.location_id, d)
+        lk = trs.find(db, inv.transporter_id, inv.location_id, d, cfa_id=inv.cfa_id, company_id=inv.company_id)
         if not lk.found:
             problems.append(lk.message)
     if cfg.get(db, "dispatch.vehicle_mandatory") and not inv.vehicle_no:

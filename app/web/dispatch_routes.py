@@ -12,6 +12,7 @@ from app.db import get_db
 from app.models import Customer, Invoice, InvoiceStatus, OverrideField, User
 from app.security.auth import csrf_protect, require
 from app.services import dispatch_service as ds
+from app.services import eligibility_service as es
 from app.services import settings_service as cfg
 from app.services.errors import BusinessError
 from app.services.pdf_service import dispatch_slips_pdf
@@ -99,7 +100,7 @@ def entry(invoice_id: int, request: Request, db: Session = Depends(get_db),
         "data_warnings": ds.data_warnings(db, inv) if acts.can_edit else [],
         "default_date": d, "default_time": t, "pending_ov": pending_ov, "prints": prints,
         "slip_size": cfg.get(db, "dispatch.default_slip_size"), "rule": cfg.get(db, "dispatch.complete_requires"),
-        "fields": OverrideField.LABELS, **active_lists(db)})
+        "fields": OverrideField.LABELS, **(_eligible_lists(db, [inv]) if acts.can_edit else active_lists(db))})
 
 
 def _warn(request: Request, db, inv) -> None:
@@ -232,6 +233,18 @@ def reinstate(invoice_id: int, request: Request, reason: str = Form(""), db: Ses
 
 
 # ----------------------------------------------------------------------------- bulk
+def _eligible_lists(db: Session, invs: list[Invoice]) -> dict:
+    """The transporter drop-down of the quick dispatch screens: only transporters that can carry these invoices (the
+    one already chosen stays, so a saved choice never silently disappears). The server re-checks on generation."""
+    lists = active_lists(db)
+    if invs and len({i.cfa_id for i in invs}) == 1:
+        d = (invs[0].dispatch_date or local_now().date())
+        ok = {t.id for t in es.eligible(db, invs, d, require_rate=ds.freight_source(db) != "COMPANY")}
+        keep = {i.transporter_id for i in invs if i.transporter_id}
+        lists["transporters"] = [t for t in lists["transporters"] if t.id in ok or t.id in keep]
+    return lists
+
+
 def _selected(db, user, ids) -> list[Invoice]:
     out = []
     for i in ids:
@@ -252,7 +265,7 @@ def bulk_prepare(request: Request, form=Depends(get_form), db: Session = Depends
         return redirect("/dispatch/pending")
     d, t = ds.default_dispatch_datetime()
     return render(request, "dispatch/bulk.html", {"title": "Bulk dispatch", "invs": invs, "default_date": d,
-                                                  "default_time": t, **active_lists(db)})
+                                                  "default_time": t, **_eligible_lists(db, invs)})
 
 
 @router.post("/dispatch/bulk/apply")

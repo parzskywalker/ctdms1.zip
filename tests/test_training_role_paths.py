@@ -81,7 +81,8 @@ def _run_path(web, uid, username, path, actions):
 
 def _gatepass(w, one, today, numbers, **fields):
     ids = [one("select id from invoices where invoice_no=?", n) for n in numbers]
-    data = {"ids": [str(i) for i in ids], "dispatch_date": today, "pickup_mode": "REGULAR", **fields}
+    data = {"ids": [str(i) for i in ids], "dispatch_date": today, "pickup_mode": "REGULAR",
+            "group_cross_company": "1", **fields}  # the lessons' trips mix two companies: the operator ticks the box
     for n, i in zip(numbers, ids):
         data[f"cases_{i}"] = str(one("select boxes from invoices where id=?", i))
     r = w.post("/gatepass/new", data=data)

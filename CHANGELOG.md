@@ -1,5 +1,39 @@
 # Changelog
 
+## v1.7 (in progress) — Phase 3: freight by area, customer delivery areas, eligible transporters, grouping rules
+
+Migrations 0011 and 0012 (applied automatically, additive): `customer_delivery_locations`, `transporter_depots`,
+`transporters.uses_lr_book`, `invoices.customer_location_id`, `transporter_rates.cfa_id / company_id`,
+`dispatch_slip_lines.rate_id / calc_note / consignment_no`, `dispatch_slips.cross_company /
+eligibility_override_reason`. Roles that can dispatch keep what they could do: they receive `dispatch.group_cross_company`,
+roles that approve overrides receive `transporter.override_eligibility` (each written to the audit log).
+
+- **Customer delivery areas.** A customer may list several delivery locations (area = the Location master, label,
+  ship-to code, default). Resolution is the same for file import, API, e-invoice QR and manual entry: ship-to code ->
+  the file's area if it is one of the customer's -> the single / default location -> otherwise the invoice is held as
+  *AREA_AMBIGUOUS* until the operator chooses (recorded on the invoice, audited). A file area that is not one of the
+  customer's was silently used before; `area.mismatch_action` (default ACCEPT = unchanged) can hold such invoices.
+- **Only eligible transporters are offered** - on the new gatepass screen and on the quick dispatch screens: the
+  transporter serves the depot (Transporters › *Depots served*; none ticked = every depot, so nothing changes by
+  default) and has an approved rate for every area (intersection for mixed areas, with a plain explanation when nobody
+  qualifies). The server re-checks every gatepass, so a forged request is refused. Choosing a transporter that does not
+  serve the depot needs `transporter.override_eligibility` and a reason; it is audited and shown on the gatepass.
+- **Rate exceptions.** A transporter rate may be an explicit exception for one depot and / or company; the most specific
+  wins (depot + company > depot > company > general), versions are kept per scope and never end each other. Every existing
+  rate is general, so every existing price is identical (a test prices them all before / after).
+- **Freight breakdown.** Each gatepass line freezes how its freight was found (rate row, rule, area, cases x rate,
+  or the share of a per-trip charge) and its consignment number; the gatepass shows *How freight was calculated*. A
+  per-trip auto is still paid once. Slabs are not part of this version (kept for a later update, as agreed).
+- **Grouping.** Invoices of different companies go on one gatepass only by an explicit tick (*Group across companies*,
+  permission `dispatch.group_cross_company`), recorded on the gatepass and audited; every invoice keeps its own company,
+  number and cases. The screen shows one consignment per customer + area. The Guided Training lessons whose demonstration
+  trips mix two companies have the new step.
+- Tests: `tests/test_v17_phase3.py` (20 checks: area resolution, import / mismatch setting, ambiguous area flow, customer
+  screen, merge, depots served, eligibility and intersection, forged transporter, audited override, exception ranking and
+  scope-wise versions, all existing rates price identically, frozen breakdown, rate-card screen, cross-company rules and
+  permission, consignments, builder controls, quick screen, migrations 0011 / 0012 with role grants); browser test
+  `tests/e2e_gatepass.py` (20 checks).
+
 ## v1.7 (in progress) — Phase 2: configurable permissions and operational scope per employee
 
 Migration 0010 (applied automatically, additive): `user_permissions`, `user_scope`, and on users `all_areas`,

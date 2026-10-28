@@ -298,6 +298,13 @@ L06 = Lesson("m06-imports", "Invoice import and recognition",
          keys="F3 erp mappings Enter", page="/masters/erp-mappings", ui={"path": r"^/masters/erp-mappings"}),
 ], source="v1.6 guide video")
 
+CROSS = Step("cross", "Two companies on one gatepass",
+             what="These invoices come from two companies. CTDMS asks before it puts different companies on one "
+                  "gatepass; your choice is recorded on the gatepass, and every invoice keeps its own company, "
+                  "number and cases.",
+             do="Tick Group across companies, then Next.", keys="Tab to the tick box · Space",
+             ui={"checked": "#gp-cross"}, hl="#gp-cross-box")
+
 GP_OPEN = Step("open", "Scan & Gatepass", what="One gatepass per pickup: transporter trip or local-auto trip.",
                do="Open Scan & Gatepass.", keys="F2 on the Dashboard, or F3 scan Enter", page="/gatepass/new",
                ui={"path": r"^/gatepass/new"})
@@ -316,8 +323,10 @@ L07 = Lesson("m07-long", "Regular long-distance dispatch",
          do="Add 001248, 001249 and PQR/B/0313: type each number + Enter, or ↓ into the waiting list and Enter.",
          keys="type 001248 Enter · ↓ (into the list) · Enter on a row adds it",
          ui={"text": ["#gp-lines tbody", "001248", "001249", "PQR/B/0313"]}, hl="#gp-scan"),
+    CROSS,
     Step("transporter", "Select the transporter",
-         what="Transporter boxes are searchable by code or name.",
+         what="Transporter boxes are searchable by code or name. Only transporters that serve this depot and have a "
+              "rate for the area are offered.",
          do="Move on to Who carries the goods and choose Shree Roadlines.",
          keys="Enter on the empty scan box · Enter (mode stays Transporter) · type SRL · ↓↑ · Enter",
          ui={"value": ["#gp-tr", "Shree"]}, hl="#gp-tr-q"),
@@ -348,6 +357,7 @@ L08 = Lesson("m08-trip", "Local auto - per trip",
     Step("invoices", "Four invoices", do="Add 001245, 001246, 001247 and XY/G/2601.",
          keys="type the number + Enter, or ↓ Enter in the waiting list",
          ui={"text": ["#gp-lines tbody", "001245", "001246", "001247", "XY/G/2601"]}),
+    CROSS,
     Step("mode", "Mode: Local auto", do="Move to Mode of dispatch and choose Local auto.",
          keys="Enter on the empty scan box · → → until Local auto", ui={"checked": "input[name=mode][value=OUTSIDE_AUTO]"},
          hl=".gp-modes"),
@@ -379,6 +389,7 @@ L09 = Lesson("m09-box", "Local auto - per box",
     Step("depot", "Kamal Vihar depot", do="Depot: KVR, Enter.", ui={"value": ["#gp-cfa", "KVR|Kamal"]}),
     Step("invoices", "Three invoices", do="Add XY/K/2603, PQR/K/0311 and XY/K/2604 (Durg).",
          ui={"text": ["#gp-lines tbody", "XY/K/2603", "PQR/K/0311", "XY/K/2604"]}),
+    CROSS,
     Step("auto", "Ravi Tempo", do="Mode Local auto, then Ravi Tempo.", keys="Enter · → → · Enter · type LA2 · Enter",
          ui={"value": ["#gp-auto", "Ravi"]}),
     Step("no-rate", "The missing-rate warning",

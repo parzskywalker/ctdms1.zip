@@ -25,6 +25,10 @@ DEFAULTS: dict[str, tuple[str, str, str, str, str | None]] = {
                        "Where the freight per case comes from: TRANSPORTER = transporter rate card (per area, applied on the "
                        "gatepass) / COMPANY = principal rate card (company + depot + location, applied at import)",
                        "TRANSPORTER,COMPANY"),
+    "area.mismatch_action": ("ACCEPT", "choice", "Delivery areas",
+                             "An invoice whose delivery location is not one of the customer's locations: ACCEPT = use "
+                             "the file's location and only warn (as before) / EXCEPTION = hold the invoice until the "
+                             "area is confirmed on its screen", "ACCEPT,EXCEPTION"),
     "gatepass.cash_paid_default": ("true", "bool", "Dispatch controls",
                                    "Local autos and CASH transporters are marked paid in full when the gatepass is made", None),
     "inbox.enabled": ("true", "bool", "Import",

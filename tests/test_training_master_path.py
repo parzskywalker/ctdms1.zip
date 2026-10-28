@@ -53,7 +53,8 @@ def test_master_path_completes_with_real_actions_and_leaves_live_data_alone(web,
         return one("select id from invoices where invoice_no=?", no)
 
     def gatepass(numbers, **fields):
-        data = {"ids": [str(inv_id(n)) for n in numbers], "dispatch_date": today, "pickup_mode": "REGULAR", **fields}
+        data = {"ids": [str(inv_id(n)) for n in numbers], "dispatch_date": today, "pickup_mode": "REGULAR",
+                "group_cross_company": "1", **fields}  # the lessons' trips mix two companies: the operator ticks the box
         for n in numbers:
             data[f"cases_{inv_id(n)}"] = str(one("select boxes from invoices where invoice_no=?", n))
         r = w.post("/gatepass/new", data=data)
