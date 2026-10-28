@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.7 (in progress) — Phase 5: the guard scans every case before gate-out
+
+Migration 0014 (applied automatically): roles that could void a gatepass receive `gate.exception` (audited). No table changes.
+
+- **Gate check scan loop** (Dispatch desk › Gate Check): for a gatepass with case control, the guard scans each case label; the
+  cursor stays in the scan box, every scan answers at once - green tick + short beep, or a red STOP with the reason (not a
+  CTDMS code / misread, training label, unknown, void label, belongs to another gatepass, same case twice, gatepass void or
+  already gone out). A running "scanned / total", scanned count per invoice and the list of cases still missing are shown.
+  Scanning a case in the top box opens its gatepass and counts that scan.
+- **Gate-out is blocked until every case is scanned** - in the service, so all four ways of completing a dispatch are covered:
+  the gatepass screen, the one-invoice screen, bulk complete and the API. Gate-out marks the cases DISPATCHED.
+- **Exception**: a person holding `gate.exception` can let a gatepass leave with unscanned cases - a reason is required, the
+  cases are marked MISSING, and it is written to the audit log and shown on the screen.
+- **Every scan is recorded** (`case_scans`: code, result, who, when, station), including misreads and rejected scans.
+  Practice labels are refused on the live gate. Gatepasses without case control are untouched.
+- Tests: `tests/test_v17_phase5.py` (6 checks: every scan rule and the scan log, all four completion paths blocked and then
+  allowed, exception permission / reason / audit, gate screen, old gatepasses unaffected, migration grants).
+
 ## v1.7 (in progress) — Phase 4: one barcode per case, case labels
 
 Migration 0013 (applied automatically, additive): `dispatch_cases`, `case_scans`, `label_print_log`,

@@ -211,7 +211,7 @@ def test_migration_0013_upgrade_keeps_every_gatepass_legacy(tmp_path):
     r = _run_prepare(p)
     assert r.returncode == 0, r.stdout + r.stderr
     con = sqlite3.connect(p)
-    assert con.execute("select version_num from alembic_version").fetchone()[0] == "0013"
+    assert con.execute("select version_num from alembic_version").fetchone()[0] >= "0013"
     assert con.execute("select count(*) from dispatch_slips where case_control = 'LEGACY'").fetchone()[0] == slips
     assert con.execute("select count(*) from dispatch_cases").fetchone()[0] == 0
     assert con.execute("select count(*) from cfas where case_control_enabled = 1").fetchone()[0] == 0

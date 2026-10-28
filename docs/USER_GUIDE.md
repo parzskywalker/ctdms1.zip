@@ -99,6 +99,10 @@ Delete, void, cancel and reject always ask first with **No** pre-selected.
    customer with its invoices, cases and charge, the transporter's name/contact/GST/payment mode — no vehicle number.
 6. **Gate check**: the guard scans the gatepass barcode, counts the cases and presses **Confirm gate-out**. All its
    invoices become DISPATCHED. A void, unprinted or already-used gatepass shows a red STOP.
+   **v1.7 – case control.** For a depot with case control the guard scans every case label on *Gate check* (the cursor
+   stays in the scan box). A green tick means counted; a red STOP says why (wrong gatepass, void label, same case twice,
+   training label...). *Confirm gate-out* appears only when every case is scanned. If cartons are genuinely missing, a manager
+   records an *exception* with a reason; the cases are marked missing and it is audited.
 7. **LR numbers** come later from the transporter: type them on the gatepass page (one per customer) or on
    **LR Pending** in bulk. They can be corrected (with a reason) until the transporter's bill is approved.
 

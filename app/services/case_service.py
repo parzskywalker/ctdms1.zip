@@ -15,7 +15,7 @@ from __future__ import annotations
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import CaseStatus, DispatchCase, DispatchSlip, Invoice, LabelPrintLog, User, utcnow
+from app.models import CaseScan, CaseStatus, DispatchCase, DispatchSlip, Invoice, LabelPrintLog, User, utcnow
 from app.services import audit
 from app.services.errors import BusinessError
 from app.services.utils import next_sequence_block
@@ -182,3 +182,119 @@ def label_rows(db: Session, slip: DispatchSlip, cases: list[DispatchCase]) -> li
         rows.append({"case": c, "invoice": inv, "customer": inv.customer, "location": inv.location,
                      "company": inv.company})
     return rows
+
+
+# ----------------------------------------------------------------------------- gate verification (Phase 5)
+SCAN_OK, SCAN_DUP = "OK", "DUPLICATE"
+SCAN_MESSAGES = {
+    "INVALID": "Not a CTDMS case code (misread? scan again)",
+    "TRAINING": "TRAINING label - not valid for real goods",
+    "UNKNOWN": "Unknown case code - do not load",
+    "VOID": "VOID label - this case was cancelled",
+    "WRONG_GATEPASS": "Belongs to another gatepass",
+    "GATE_CLOSED": "Gatepass is void - the goods must not leave",
+    "ALREADY_OUT": "This gatepass has already gone out",
+    "NO_CASES": "This gatepass has no case labels (count it by hand)",
+}
+
+
+def progress(db: Session, slip: DispatchSlip) -> dict:
+    """Scanned / total for the gatepass and per invoice, and the cases still missing."""
+    cases = cases_of(db, slip)
+    done = (CaseStatus.SCANNED, CaseStatus.DISPATCHED)
+    per: dict[int, dict] = {}
+    for c in cases:
+        row = per.setdefault(c.invoice_id, {"invoice": c.invoice, "total": 0, "scanned": 0})
+        row["total"] += 1
+        row["scanned"] += c.status in done
+    scanned = sum(r["scanned"] for r in per.values())
+    missing = [c for c in cases if c.status not in done]
+    return {"total": len(cases), "scanned": scanned, "per_invoice": list(per.values()), "missing": missing,
+            "complete": bool(cases) and not missing, "exception": bool(slip.gate_exception_reason)}
+
+
+def gate_clear(db: Session, slip: DispatchSlip) -> list[str]:
+    """What still stops a REQUIRED gatepass from leaving (empty = cleared, or not a case-control gatepass)."""
+    if slip.case_control != "REQUIRED":
+        return []
+    p = progress(db, slip)
+    if p["complete"] or slip.gate_exception_reason:
+        return []
+    return [f"Gatepass {slip.dispatch_no}: {len(p['missing'])} of {p['total']} cases not scanned at the gate - scan "
+            "them, or have an authorised person record an exception"]
+
+
+def scan(db: Session, user: User, code: str, slip: DispatchSlip | None = None, *, station: str | None = None) -> dict:
+    """One scan at the gate. Always recorded (case_scans); returns {result, ok, message, slip_id, case}."""
+    raw = (code or "").strip()
+    case = None
+    result = None
+    if not is_valid(raw):
+        result = "INVALID"
+    elif is_training(raw) and not _training():
+        result = "TRAINING"
+    else:
+        case = find_case(db, raw)
+        if case is None:
+            result = "UNKNOWN"
+    target = slip
+    if result is None:
+        if case.status == CaseStatus.VOID:
+            result = "VOID"
+        elif target is not None and case.slip_id != target.id:
+            result = "WRONG_GATEPASS"
+        else:
+            target = target or db.get(DispatchSlip, case.slip_id)
+            if target.is_void:
+                result = "GATE_CLOSED"
+            elif target.gate_out_at:
+                result = "ALREADY_OUT"
+            elif case.status in (CaseStatus.SCANNED, CaseStatus.DISPATCHED):
+                result = SCAN_DUP
+            else:
+                case.status = CaseStatus.SCANNED
+                target.verified_cases = (target.verified_cases or 0) + 1
+                result = SCAN_OK
+    db.add(CaseScan(slip_id=(target.id if target else (case.slip_id if case else None)), case_id=case.id if case else None,
+                    scanned_code=raw[:60], result=result, scanned_by_id=user.id, station=station))
+    db.flush()
+    msg = SCAN_MESSAGES.get(result, "")
+    if result == "WRONG_GATEPASS":
+        other = db.get(DispatchSlip, case.slip_id)
+        msg = f"Belongs to gatepass {other.dispatch_no} - not this one"
+    elif result == SCAN_DUP:
+        msg = "Already scanned - same case twice"
+    elif result == SCAN_OK:
+        msg = f"Case {case.seq_in_consignment}/{case.consignment_total} of invoice {case.invoice.invoice_no}"
+    return {"result": result, "ok": result == SCAN_OK, "message": msg, "case": case,
+            "slip_id": target.id if target else (case.slip_id if case else None)}
+
+
+def record_exception(db: Session, user: User, slip: DispatchSlip, reason: str) -> int:
+    """An authorised person lets the gatepass go with cases not scanned: reason mandatory, the cases are marked MISSING."""
+    if not user.can("gate.exception"):
+        raise BusinessError("You are not authorised to record a gate exception")
+    if slip.is_void or slip.gate_out_at:
+        raise BusinessError("This gatepass is closed")
+    if len((reason or "").strip()) < 5:
+        raise BusinessError("Give the reason (at least 5 characters) - it is written to the audit log")
+    p = progress(db, slip)
+    if not p["missing"]:
+        raise BusinessError("Every case is scanned - no exception needed")
+    for c in p["missing"]:
+        c.status = CaseStatus.MISSING
+    slip.gate_exception_reason = reason.strip()
+    slip.gate_exception_by_id = user.id
+    slip.gate_exception_at = utcnow()
+    audit.log(db, user, "GATE_EXCEPTION", MODULE, record_type="DispatchSlip", record_id=slip.id, ref=slip.dispatch_no,
+              reason=reason, details={"missing": [c.case_code for c in p["missing"]], "scanned": p["scanned"],
+                                      "total": p["total"]})
+    return len(p["missing"])
+
+
+def mark_dispatched(db: Session, slip_id: int, invoice_id: int | None = None) -> None:
+    stmt = select(DispatchCase).where(DispatchCase.slip_id == slip_id, DispatchCase.status == CaseStatus.SCANNED)
+    if invoice_id:
+        stmt = stmt.where(DispatchCase.invoice_id == invoice_id)
+    for c in db.scalars(stmt):
+        c.status = CaseStatus.DISPATCHED

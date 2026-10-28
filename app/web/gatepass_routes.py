@@ -463,9 +463,55 @@ def gate(request: Request, db: Session = Depends(get_db), user: User = Depends(r
         if slip and not slip.gate_out_at and not slip.is_void else []
     waiting = list(db.scalars(apply_slip_scope(select(DispatchSlip), user).where(
         DispatchSlip.is_void.is_(False), DispatchSlip.gate_out_at.is_(None)).order_by(DispatchSlip.id.desc()).limit(30)))
+    prog = cs.progress(db, slip) if slip and slip.case_control == "REQUIRED" else None
     return render(request, "gatepass/gate.html", {"title": "Gate check", "code": code, "slip": slip, "invs": invs,
-                                                  "blockers": blockers, "waiting": waiting,
+                                                  "blockers": blockers, "waiting": waiting, "prog": prog,
+                                                  "autoscan": code if cs.is_valid(code) and slip else "",
+                                                  "can_exception": user.can("gate.exception"),
                                                   "not_found": bool(code and not slip)})
+
+
+def _scan_json(db: Session, slip: DispatchSlip, res: dict | None) -> dict:
+    p = cs.progress(db, slip)
+    blockers = sorted({b for i in ds.slip_invoices(db, slip) if i.status != S.CANCELLED
+                       for b in ds.completion_blockers(db, i) if b != "Already dispatched"}) \
+        if not slip.gate_out_at and not slip.is_void else []
+    out = {"scanned": p["scanned"], "total": p["total"], "complete": p["complete"], "exception": p["exception"],
+           "cleared": not blockers and not slip.is_void and not slip.gate_out_at, "blockers": blockers,
+           "per_invoice": [{"invoice": r["invoice"].invoice_no, "scanned": r["scanned"], "total": r["total"]}
+                           for r in p["per_invoice"]],
+           "missing": [{"code": c.case_code, "invoice": c.invoice.invoice_no, "k": c.seq_in_consignment,
+                        "n": c.consignment_total} for c in p["missing"]][:200]}
+    if res is not None:
+        out.update(result=res["result"], ok=res["ok"], message=res["message"])
+    return out
+
+
+@router.post("/gatepass/scan-case")
+def scan_case(request: Request, form=Depends(get_form), db: Session = Depends(get_db),
+              user: User = Depends(require("dispatch.complete"))):
+    """The guard's scanner: one case code (optionally inside a gatepass the screen has open). Always recorded."""
+    slip = _slip(db, user, safe_int(form.get("slip_id"))) if form.get("slip_id") else None
+    code = (form.get("code") or "").strip()
+    res = cs.scan(db, user, code, slip, station=(form.get("station") or None))
+    db.commit()
+    target = slip or (_slip(db, user, res["slip_id"]) if res["slip_id"] else None)
+    if target is None:
+        return JSONResponse({"result": res["result"], "ok": False, "message": res["message"]})
+    payload = _scan_json(db, target, res)
+    payload["slip_id"] = target.id
+    payload["dispatch_no"] = target.dispatch_no
+    return JSONResponse(payload)
+
+
+@router.post("/gatepass/{slip_id:int}/gate-exception")
+def gate_exception(slip_id: int, request: Request, form=Depends(get_form), db: Session = Depends(get_db),
+                   user: User = Depends(require("dispatch.complete"))):
+    slip = _slip(db, user, slip_id)
+    n = cs.record_exception(db, user, slip, form.get("reason") or "")
+    db.commit()
+    flash(request, f"Exception recorded: {n} case(s) marked missing. The gatepass can now leave.", "warn")
+    return redirect(f"/gatepass/gate?code={slip.dispatch_no}")
 
 
 @router.get("/gatepass/lr-pending")

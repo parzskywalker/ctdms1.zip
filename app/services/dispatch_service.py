@@ -730,6 +730,9 @@ def completion_blockers(db: Session, inv: Invoice) -> list[str]:
         return ["Dispatch Slip must be generated before completing dispatch (control: GENERATED)"]
     if rule == "NONE" and inv.status not in (S.VERIFIED, S.SLIP_GENERATED, S.SLIP_PRINTED):
         return ["Invoice must at least be verified"]
+    slip = active_slip(db, inv)
+    if slip is not None and slip.case_control == "REQUIRED":  # v1.7: every case scanned at the gate (or an exception)
+        return cs.gate_clear(db, slip) or eway_blockers(db, inv)
     return eway_blockers(db, inv)
 
 
@@ -751,6 +754,8 @@ def _complete(db: Session, user: User, inv: Invoice) -> None:
     inv.completed_at = utcnow()
     inv.completed_by_id = user.id
     inv.erp_sync_status = "PENDING"
+    if inv.dispatch_slip_id:
+        cs.mark_dispatched(db, inv.dispatch_slip_id, inv.id)
     audit.log(db, user, "DISPATCH_COMPLETED", MODULE, record_type="Invoice", record_id=inv.id, ref=inv.invoice_no,
               field="status", old=old, new=S.DISPATCHED, details={"dispatch_no": inv.dispatch_no})
 
