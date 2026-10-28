@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.7 (in progress) — Phase 1: sidebar position, scope audit, design checkpoint
+
+- **Sidebar keeps its scroll position.** Cause: every screen is a new page load and the scrollable sidebar restarted at
+  the top. Now restored before first paint from the tab's session storage, saved on scroll / page hide, and the
+  selected entry is revealed only if hidden. Covers click, keyboard, F3, redirecting form posts, Back / Forward, reload.
+  Browser test `tests/e2e_sidebar.py`: 5 of 18 checks passed before the fix, 19 of 19 after.
+- **Scope audit**: every report goes through one of seven scope helpers (tripwire test `tests/test_v17_phase1.py`);
+  the helpers are the extension point for area / customer scope in Phase 2.
+- **Design checkpoint** `docs/ITERATION_v1.7_DESIGN.md`: terms, schema for migrations 0010-0014 (slabs deferred),
+  state machines, services, rollback. No data or behaviour changed apart from the sidebar.
+
 ## v1.6.1 — Role-based access: every role sees only its own work (21 Oct 2026)
 
 Migration 0009 (applied automatically): re-aligns the stored roles to the new baseline (every changed role is written

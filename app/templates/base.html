@@ -29,6 +29,28 @@
       </div>
     {% endfor %}
   </aside>
+  <script>
+  /* Sidebar scroll position. Every screen is a new page load and .side is its own scroll container, so without this
+     it would restart at the top on each click. Restored here, before the first paint, from this tab's session
+     storage; saved on every scroll (covers clicks, F3, form posts, Back / Forward, reload). Then the selected
+     entry is brought into view only if it is hidden. */
+  (function () {
+    var s = document.querySelector('.side');
+    if (!s) return;
+    var K = 'ctdms.sideTop';
+    try { var v = sessionStorage.getItem(K); if (v !== null && v !== '') s.scrollTop = parseInt(v, 10) || 0; } catch (e) {}
+    var a = s.querySelector('a.active');
+    if (a) {
+      var r = a.getBoundingClientRect(), b = s.getBoundingClientRect(), pad = 6;
+      if (r.top < b.top + pad) s.scrollTop += r.top - b.top - pad;
+      else if (r.bottom > b.bottom - pad) s.scrollTop += r.bottom - b.bottom + pad;
+    }
+    var save = function () { try { sessionStorage.setItem(K, String(Math.round(s.scrollTop))); } catch (e) {} };
+    s.addEventListener('scroll', save, {passive: true});
+    window.addEventListener('pagehide', save);
+    save();
+  })();
+  </script>
   <div class="main">
     <header class="topbar">
       <button class="menu-btn" type="button" aria-label="Menu">☰</button>
@@ -66,6 +88,7 @@
   </div>
 </div>
 {% else %}
+  <script>try { sessionStorage.removeItem('ctdms.sideTop'); } catch (e) {}</script>
   {% block public %}{% endblock %}
 {% endif %}
 <script src="/static/js/app.js?v={{ app_version }}"></script>
