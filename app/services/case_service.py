@@ -78,13 +78,18 @@ def generate(db: Session, user: User, slip: DispatchSlip) -> int:
     for ln in lines:
         cons_total[ln.consignment_no or 0] = cons_total.get(ln.consignment_no or 0, 0) + ln.cases
     n = first
+    from app.models import DispatchAllocation
+    allocs: dict[int, list[int]] = {}  # line id -> one allocation id per case (receivers get their cases in order)
+    for a in db.scalars(select(DispatchAllocation).where(DispatchAllocation.slip_id == slip.id).order_by(DispatchAllocation.id)):
+        allocs.setdefault(a.line_id, []).extend([a.id] * a.cases)
     for ln in lines:
         key = ln.consignment_no or 0
         for k in range(1, ln.cases + 1):
             per_cons[key] = per_cons.get(key, 0) + 1
+            owners = allocs.get(ln.id) or []
             db.add(DispatchCase(case_code=make_code(n, training=training), invoice_id=ln.invoice_id, slip_id=slip.id,
                                 line_id=ln.id, seq_in_invoice=k, seq_in_consignment=per_cons[key],
-                                consignment_total=cons_total[key]))
+                                consignment_total=cons_total[key], allocation_id=owners[k - 1] if k <= len(owners) else None))
             n += 1
     slip.case_control = "REQUIRED"
     db.flush()

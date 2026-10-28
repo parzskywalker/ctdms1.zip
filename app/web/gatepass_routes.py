@@ -17,6 +17,7 @@ from app.models import (
 )
 from app.security.auth import csrf_protect, require
 from app.services import case_service as cs
+from app.services import pawati_service as pws
 from app.services import dispatch_service as ds
 from app.services import local_auto_service as las
 from app.services import einvoice_service as einv
@@ -214,11 +215,21 @@ def create(request: Request, form=Depends(get_form), db: Session = Depends(get_d
                 raise BusinessError("An invoice on the list is not available any more - reload")
             invs.append(inv)
             req.cases[inv.id] = form.get(f"cases_{inv.id}")
+        recv = {}
+        for inv in invs:  # v1.7 local-auto path: recv_<invoice> = "12" (one receiver) or "12:3,14:2" (split)
+            raw = (form.get(f"recv_{inv.id}") or "").strip()
+            if raw:
+                n_all = safe_int(form.get(f"cases_{inv.id}")) or inv.boxes or 0
+                parts = [x.split(":") for x in raw.split(",") if x.strip()]
+                recv[inv.id] = [(safe_int(p[0]), safe_int(p[1]) if len(p) > 1 else n_all) for p in parts]
+        req.receivers = recv or None
         slip = ds.create_gatepass(db, user, invs, req)
     except BusinessError as e:
         db.rollback()
         problems = [p.strip() for p in e.message.replace("Cannot generate gatepass: ", "").split(";") if p.strip()]
         return _builder(request, db, user, ids=ids, form=form, problems=problems, status_code=200)
+    for w in getattr(slip, "lr_warnings", []) or []:
+        flash(request, w, "warn")
     db.commit()
     flash(request, f"Gatepass {slip.dispatch_no} generated: {slip.invoice_count} invoice(s), {slip.total_cases} cases, "
                    f"₹{slip.total_charge:,.2f}. Print it - the goods may leave only with the printed gatepass.",
@@ -285,7 +296,9 @@ def detail(slip_id: int, request: Request, db: Session = Depends(get_db), user: 
     groups: OrderedDict = OrderedDict()
     line_by_inv = {ln.invoice_id: ln for ln in slip.lines}
     for inv in invs:
-        groups.setdefault(inv.customer_id, {"customer": inv.customer, "location": inv.location, "invs": []})["invs"] \
+        key = inv.customer_id if slip.transporter_id or not slip.dispatch_mode == "TRANSPORTER" else f"{inv.customer_id}_{inv.transporter_id}"
+        groups.setdefault(key, {"customer": inv.customer, "location": inv.location, "invs": [], "key": key,
+                                "receiver": inv.transporter if not slip.transporter_id else None})["invs"] \
             .append((inv, line_by_inv.get(inv.id)))
     prints = list(db.scalars(select(SlipPrintLog).where(SlipPrintLog.slip_id == slip.id)
                              .order_by(SlipPrintLog.id)))
@@ -302,6 +315,7 @@ def detail(slip_id: int, request: Request, db: Session = Depends(get_db), user: 
     alerts = list(db.scalars(select(Notification).where(Notification.slip_id == slip.id).order_by(Notification.id)))
     cases = cs.cases_of(db, slip, include_void=True) if slip.case_control == "REQUIRED" else []
     return render(request, "gatepass/detail.html", {
+        "pawatis": pws.active(db, slip) if pws.applies(slip) else [],
         "cases": cases, "case_counts": cs.counts(db, slip) if cases else {},
         "label_log": list({lg.batch_no: lg for lg in db.scalars(select(LabelPrintLog).where(
             LabelPrintLog.slip_id == slip.id).order_by(LabelPrintLog.id.desc()))}.values()) if cases else [],
@@ -434,10 +448,11 @@ def save_lr(slip_id: int, request: Request, form=Depends(get_form), db: Session 
     """LR per consignment (customer) on this gatepass: fields lr_<customer_id>, lrdate_<customer_id>."""
     slip = _slip(db, user, slip_id)
     invs = ds.slip_invoices(db, slip)
-    by_cust: dict[int, list[Invoice]] = {}
+    by_cust: dict = {}
     for inv in invs:
-        if inv.status != S.CANCELLED:
-            by_cust.setdefault(inv.customer_id, []).append(inv)
+        if inv.status != S.CANCELLED:  # several receiving transporters: one LR per customer AND transporter
+            k = inv.customer_id if slip.transporter_id or slip.dispatch_mode != "TRANSPORTER" else f"{inv.customer_id}_{inv.transporter_id}"
+            by_cust.setdefault(k, []).append(inv)
     n = 0
     for cid, group in by_cust.items():
         key = f"lr_{cid}"

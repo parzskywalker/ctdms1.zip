@@ -1,5 +1,26 @@
 # Changelog
 
+## v1.7 (in progress) — Phase 6: receiving transporters, Garage Pawati, LR books
+
+Migration 0015 (applied automatically, additive): `dispatch_allocations`, `garage_pawatis` (+ lines, print log), `lr_books`,
+`lr_numbers`. Roles that could operate dispatch get `pawati.print`, `pawati.receive`, `lr_book.manage`; roles that could void a
+slip get `pawati.cancel` (audited). A depot's training/practice database is upgraded in place.
+
+- **Local-auto trip with several receiving transporters** (builder: Transporter + *Local auto*): each invoice names its receiving
+  transporter, and an invoice may be **split** (some cases to a second transporter). Freight is priced per receiver from its
+  rate card; the allocation (invoice line x receiver) is the unit of freight, LR and Pawati. One gatepass = one local-auto trip;
+  *Direct pickup* + local auto is refused. Regular transporter gatepasses are unchanged.
+- **Garage Pawati** (Dispatch desk): one yellow slip per receiving transporter x customer x company (No., Date, Garage, To,
+  Cartons, Bill No., Amount, Freight, signatures), 4 per A4. Numbered per depot; the Administrator sets the starting number
+  (Administration > Pawati Numbering). **The auto cannot go out until every Pawati is printed.** Reprint = reason + permission.
+  Receipt is recorded by hand or automatically when the LR is entered after gate-out; the Pawati stays with the transporter.
+  Voiding the gatepass cancels its Pawatis; a cancelled Pawati is re-issued under a new number.
+- **LR books** (Dispatch desk > LR Books): import a range for a transporter flagged "uses builty book"; CTDMS gives the next LR to
+  each consignment at gatepass creation, staff can change it (logged), an empty book warns and is audited, a void gatepass
+  releases the numbers.
+- Fixed in the builder: the split box shadowed the Cases box when a split was open.
+- Tests: `tests/test_v17_phase6.py` (9) and `tests/e2e_pawati.py` (browser); the full suite passes (383).
+
 ## v1.7 (in progress) — Phase 5: the guard scans every case before gate-out
 
 Migration 0014 (applied automatically): roles that could void a gatepass receive `gate.exception` (audited). No table changes.

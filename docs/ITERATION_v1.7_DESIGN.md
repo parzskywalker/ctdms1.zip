@@ -89,3 +89,10 @@ Backup first (`python -m app.cli backup`); each migration additive; downgrade dr
 * Eligibility = serves the depot (`transporter_depots`, no rows = all) AND (transporter-rate mode) an approved rate for every (area, depot, company) on the gatepass; override only for the depot rule. Enforced in `plan_gatepass`, offered in both gatepass screens.
 * `dispatch.group_cross_company` and `transporter.override_eligibility` granted by migration 0012 to the roles that could already do the work. The seed data and the Guided Training scenario group across companies on purpose (they set the flag).
 * A practice (Training) database made by an older version is upgraded in place before use (`app.training.runtime.sync_schema`): every new column must therefore be nullable or have a server default.
+
+## 9. Phase 6 — as built (differences from the design above)
+
+* Migration numbers shifted: **0013** cases, **0014** gate exception, **0015** allocations / Pawati / LR books (the design's "0014 allocations" is 0015).
+* Local-auto path = mode TRANSPORTER + pickup OUTSIDE_AUTO; the receivers are chosen per invoice in the builder (`recv_<invoice>` = `tid` or `tid:n,tid:n`). `slip.transporter_id` is the single receiver, or empty when several; `invoice.transporter_id` is the receiver with most cases. Several receivers need transporter-rate freight. DIRECT + local auto is refused. Old Regular gatepasses stay readable.
+* Pawati are cancelled with the slip; cancel = re-issue under a new number (`supersedes_id`). Gate-out is blocked in `completion_blockers` until all are printed. A book-assigned LR at creation does not count as receipt; an LR typed after gate-out does.
+* Open for the owner: cross-company Pawati split (extra slips), meaning of Amount (invoice-value share) and Freight (allocation freight) on the first printed sample.

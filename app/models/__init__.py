@@ -19,3 +19,6 @@ from app.models.notify import Notification, NotifyEvent, NotifyStatus  # noqa: F
 from app.models.system import (  # noqa: F401
     AuditLog, IntegrationRun, MasterUpload, ReportSubscription, Sequence, Setting, TrainingProgress,
 )
+from app.models.pawati import (  # noqa: F401,E402
+    DispatchAllocation, GaragePawati, GaragePawatiLine, LRBook, LRNumber, PawatiPrintLog, PawatiStatus,
+)

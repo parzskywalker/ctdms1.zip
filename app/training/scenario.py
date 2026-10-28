@@ -239,6 +239,9 @@ def _gatepass(db: Session, numbers: list[str], remarks: str, *, transporter=None
     db.commit()
     ds.print_gatepass(db, master, slip, "PRINT_A5")
     if gate_out:
+        from app.services import pawati_service as pws
+        if pws.active(db, slip):
+            pws.print_sheet(db, master, pws.active(db, slip))
         ds.gate_out(db, master, slip)
     db.commit()
     return slip, invs

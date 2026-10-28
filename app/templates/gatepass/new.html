@@ -34,9 +34,9 @@
     <div class="card flush">
       <div class="card-head"><h3>On this gatepass <span class="muted small" id="gp-count"></span></h3><span class="small muted">Cases can be corrected per invoice; a different count than the ERP needs a checker.</span></div>
       <div class="table-wrap"><table class="data compact" id="gp-lines">
-        <thead><tr><th>Invoice</th><th>Customer</th><th>Area</th><th>Co.</th><th class="num">Value</th><th class="num" style="width:90px">Cases</th><th class="num">Rate/case</th><th class="num">Charge</th><th></th></tr></thead>
+        <thead><tr><th>Invoice</th><th>Customer</th><th>Area</th><th>Co.</th><th class="th-recv" hidden>Receiving transporter</th><th class="num">Value</th><th class="num" style="width:90px">Cases</th><th class="num">Rate/case</th><th class="num">Charge</th><th></th></tr></thead>
         <tbody></tbody>
-        <tfoot><tr><td colspan="5"><b>Total</b></td><td class="num"><b id="t-cases">0</b></td><td></td><td class="num"><b id="t-freight">₹0.00</b></td><td></td></tr></tfoot>
+        <tfoot><tr><td colspan="5" class="tf-span"><b>Total</b></td><td class="num"><b id="t-cases">0</b></td><td></td><td class="num"><b id="t-freight">₹0.00</b></td><td></td></tr></tfoot>
       </table></div>
       <div class="empty" id="gp-empty">Scan or add invoices to start.</div>
     </div>
@@ -201,21 +201,44 @@
     const c = cases || inv.cases || '';
     tr.innerHTML = `<td class="nowrap"><b>${esc(inv.invoice_no)}</b><input type="hidden" name="ids" value="${inv.id}"><div class="small muted">${esc(inv.date)}</div>${inv.rcode ? `<div class="small mono muted" title="Invoice Recognition Code">${esc(inv.rcode)}</div>` : ''}</td>
       <td>${esc(inv.customer)} <span class="small muted">${esc(inv.type)}</span></td><td>${esc(inv.location)}</td><td>${esc(inv.company)}</td>
+      <td class="recv-cell" hidden><select class="rv1" aria-label="Receiving transporter for ${esc(inv.invoice_no)}"></select>
+        <div class="rv2box" hidden style="margin-top:3px"><select class="rv2" aria-label="Second receiving transporter"></select> <input type="number" class="rvn" min="1" style="width:60px" placeholder="cases" aria-label="Cases for the second transporter"></div>
+        <a href="#" class="small rv-split">split</a><input type="hidden" name="recv_${inv.id}" class="rvval" disabled></td>
       <td class="num">${fmt(inv.amount)}</td>
-      <td class="num"><input type="number" min="1" step="1" name="cases_${inv.id}" value="${esc(c)}" aria-label="Cases for ${esc(inv.invoice_no)}" required></td>
+      <td class="num"><input type="number" class="cases-in" min="1" step="1" name="cases_${inv.id}" value="${esc(c)}" aria-label="Cases for ${esc(inv.invoice_no)}" required></td>
       <td class="num" data-rate></td><td class="num" data-charge></td>
       <td><button class="btn btn-sm btn-ghost" type="button" data-remove aria-label="Remove ${esc(inv.invoice_no)}">✕</button></td>`;
     tbody.appendChild(tr);
     lines.set(inv.id, {inv, tr});
     const openRow = $(`#gp-open tr[data-id="${inv.id}"]`);
     if (openRow) openRow.hidden = true;
-    tr.querySelector('input[type=number]').addEventListener('input', recalc);
+    tr.querySelector('.cases-in').addEventListener('input', recalc);
+    tr.querySelector('.rv-split').addEventListener('click', (e) => { e.preventDefault(); const b = tr.querySelector('.rv2box'); b.hidden = !b.hidden; recalc(); });
+    tr.querySelectorAll('.rv1, .rv2, .rvn').forEach((x) => x.addEventListener('change', recalc));
     tr.querySelector('[data-remove]').addEventListener('click', () => { tr.remove(); lines.delete(inv.id); if (openRow) openRow.hidden = false; recalc(); });
     flashRow(inv.id);
     recalc();
   }
   function flashRow(id) { const r = lines.get(id); if (r) { r.tr.classList.remove('flash'); void r.tr.offsetWidth; r.tr.classList.add('flash'); } }
 
+  // ---- local-auto path: each invoice names its receiving transporter(s); a split gives some cases to a second one
+  const TRN = {}; $$('#gp-tr option[value]').forEach((o) => { if (o.value) TRN[o.value] = o.dataset.name || o.textContent; });
+  function fillRecv(tr, inv) {
+    const el = eligibility([{inv, tr}]), fill = (sel, blank) => {
+      const keep = sel.value; sel.innerHTML = (blank ? '<option value="">same as above</option>' : '<option value="">- none -</option>') +
+        Object.keys(el).filter((t) => !el[t].miss.length && (el[t].depotOk || ($('#gp-override') && $('#gp-override').checked)))
+          .map((t) => `<option value="${t}">${esc(TRN[t] || t)}</option>`).join('');
+      if (keep) sel.value = keep;
+    };
+    fill(tr.querySelector('.rv1'), true); fill(tr.querySelector('.rv2'), false);
+  }
+  function receiversOf(tr, cases, dflt) {
+    const a = tr.querySelector('.rv1').value || dflt, split = !tr.querySelector('.rv2box').hidden;
+    const b = tr.querySelector('.rv2').value, nb = parseInt(tr.querySelector('.rvn').value, 10) || 0;
+    if (!a) return [];
+    if (split && b && b !== a && nb > 0 && nb < cases) return [{tid: a, n: cases - nb}, {tid: b, n: nb}];
+    return [{tid: a, n: cases}];
+  }
   function cardRate(tid, inv) {  // same rule as the server: the most specific effective row for the invoice's depot and company
     const c = CARDS[tid]; if (!c) return null;
     let best = null, rank = -1;
@@ -274,7 +297,7 @@
     rows.forEach(({inv, tr}) => {
       const k = inv.customer_id + ':' + inv.location_id;
       const g = groups.get(k) || {inv, n: 0, cases: 0, nos: [], cos: new Set()};
-      g.n++; g.cases += parseInt(tr.querySelector('input[type=number]').value, 10) || 0; g.nos.push(inv.invoice_no); g.cos.add(inv.company);
+      g.n++; g.cases += parseInt(tr.querySelector('.cases-in').value, 10) || 0; g.nos.push(inv.invoice_no); g.cos.add(inv.company);
       groups.set(k, g);
     });
     list.innerHTML = [...groups.values()].map((g, i) => `<li><b>${i + 1}.</b> ${esc(g.inv.customer)} · ${esc(g.inv.location)} - ${g.n} invoice${g.n > 1 ? 's' : ''} (${g.nos.map(esc).join(', ')}), <b>${g.cases}</b> cases${g.cos.size > 1 ? ' · companies ' + [...g.cos].map(esc).join(', ') : ''}</li>`).join('');
@@ -289,6 +312,10 @@
     const m = mode(), tid = $('#gp-tr').value, aid = $('#gp-auto').value, pk = pickup();
     $('#gp-tr-box').hidden = !(m === 'TRANSPORTER' || m === 'DIRECT');
     $('#gp-auto-box').hidden = !(m === 'OUTSIDE_AUTO' || ((m === 'TRANSPORTER' || m === 'DIRECT') && pk === 'OUTSIDE_AUTO'));
+    const perLine = m === 'TRANSPORTER' && pk === 'OUTSIDE_AUTO';
+    $$('.th-recv, .recv-cell').forEach((c) => { c.hidden = !perLine; });
+    $$('#gp-lines tfoot .tf-span').forEach((c) => { c.colSpan = perLine ? 6 : 5; });
+    if (perLine) [...lines.values()].forEach(({inv, tr}) => fillRecv(tr, inv));
     const tri = TRS[tid];
     $('#gp-tr-hint').textContent = tri ? (tri.pay === 'CASH' ? 'Paid in cash at dispatch' : 'TBB - billed later') + (tri.pickup ? ` · direct pickup ₹${tri.pickup} ${tri.pickup_basis === 'PER_CASE' ? 'per case' : 'per trip'}` : '') : '';
     const auto = AUTOS[aid];
@@ -320,15 +347,23 @@
     let cases = 0, freight = 0, missing = [], noBox = [];
     const rows = [...lines.values()];
     rows.forEach(({inv, tr}) => {
-      const c = parseInt(tr.querySelector('input[type=number]').value, 10) || 0;
+      const c = parseInt(tr.querySelector('.cases-in').value, 10) || 0;
       cases += c;
       let rate = null;
       if (m === 'SELF') rate = 0;
       else if (m === 'OUTSIDE_AUTO') { rate = meth === 'PER_CASE' ? boxRate(inv) : null; if (meth === 'PER_CASE' && rate == null) noBox.push(inv); }
       else if (SOURCE === 'COMPANY') rate = inv.company_rate;
+      else if (perLine) {  // each invoice priced with its own receiver(s)
+        const rs = receiversOf(tr, c, tid); let tot = 0, bad = !rs.length;
+        rs.forEach((x) => { const r = cardRate(x.tid, inv); if (r == null) bad = true; else tot += r * x.n; });
+        rate = bad || !c ? null : tot / c; tr._recv = rs;
+        const hv = tr.querySelector('.rvval'); hv.disabled = false;
+        hv.value = rs.length && (tr.querySelector('.rv1').value || rs.length > 1) ? rs.map((x) => x.tid + ':' + x.n).join(',') : '';
+        if (!hv.value) hv.disabled = true;
+      }
       else if (tid) rate = cardRate(tid, inv);
       tr._rate = rate; tr._cases = c;
-      const needsCard = (m === 'TRANSPORTER' || m === 'DIRECT') && tid;
+      const needsCard = (m === 'TRANSPORTER' || m === 'DIRECT') && (tid || perLine);
       if (rate == null && needsCard) missing.push(inv);
     });
     rows.forEach(({tr}) => {
@@ -356,14 +391,16 @@
     }
     const bal = total - (parseFloat(paid.value) || 0);
     $('#s-balance').textContent = total ? (bal > 0.005 ? `${fmt(bal)} to be billed by the transporter (TBB)` : 'Fully paid at dispatch') : '';
+    if (!perLine) $$('.rvval').forEach((h) => { h.disabled = true; });
     const elig = syncTransporters(rows, m);
     const crossNeeded = syncConsignments(rows);
     const why = [];
     if (!rows.length) why.push('add at least one invoice');
     if (crossNeeded && !($('#gp-cross') && $('#gp-cross').checked)) why.push(CAN_GROUP ? 'tick "Group across companies" or remove the invoices of the other company' : 'these invoices are of different companies - you cannot group them');
-    if (elig.none && (m === 'TRANSPORTER' || m === 'DIRECT')) why.push('no eligible transporter for these areas');
+    if (elig.none && !perLine && (m === 'TRANSPORTER' || m === 'DIRECT')) why.push('no eligible transporter for these areas');
     if ($('#gp-override') && $('#gp-override').checked && tid && !($('#gp-override-reason').value || '').trim()) why.push('give a reason for the override');
-    if ((m === 'TRANSPORTER' || m === 'DIRECT') && !tid) why.push('choose the transporter');
+    if (perLine) { if ([...lines.values()].some(({tr}) => !(tr._recv && tr._recv.length))) why.push('choose the receiving transporter of every invoice'); }
+    else if ((m === 'TRANSPORTER' || m === 'DIRECT') && !tid) why.push('choose the transporter');
     if ((m === 'OUTSIDE_AUTO' || ((m === 'TRANSPORTER' || m === 'DIRECT') && pk === 'OUTSIDE_AUTO')) && !aid) why.push('choose the local auto');
     if (meth === 'PER_TRIP' && !(trip > 0)) why.push('enter the trip charge');
     if (noBox.length) why.push(`no per-box rate for ${[...new Set(noBox.map((i) => i.location))].join(', ')} for this local auto`);

@@ -56,9 +56,13 @@ def _transporter(s, code, name) -> Transporter:
 
 
 def _rate(s, t, loc, amount, *, cfa=None, company=None, start=LONG_AGO) -> TransporterRate:
-    r = trs.propose(s, _admin(s), transporter_id=t.id, location_id=loc.id, rate_per_case=amount, effective_from=start,
-                    reason="phase 3 test", auto_approve=True, cfa_id=cfa.id if cfa else None,
-                    company_id=company.id if company else None)
+    try:
+        r = trs.propose(s, _admin(s), transporter_id=t.id, location_id=loc.id, rate_per_case=amount, effective_from=start,
+                        reason="phase 3 test", auto_approve=True, cfa_id=cfa.id if cfa else None,
+                        company_id=company.id if company else None)
+    except BusinessError:  # the module fixture runs once per importing test module; the database is shared
+        s.rollback()
+        return None
     s.commit()
     return r
 
