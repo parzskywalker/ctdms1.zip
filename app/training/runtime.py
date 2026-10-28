@@ -11,6 +11,7 @@ Mode can reach live business data, because the live database is simply never ope
 """
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import threading
@@ -121,8 +122,11 @@ def sync_schema(eng) -> None:
             if col.name in have or col.primary_key:
                 continue
             ddl = str(CreateColumn(col).compile(dialect=eng.dialect))
-            with eng.begin() as cx:
-                cx.exec_driver_sql(f"ALTER TABLE {t.name} ADD COLUMN {ddl}")
+            try:
+                with eng.begin() as cx:
+                    cx.exec_driver_sql(f"ALTER TABLE {t.name} ADD COLUMN {ddl}")
+            except Exception as exc:  # e.g. NOT NULL without a default: new columns must be nullable or have a default
+                logging.getLogger("ctdms").warning("practice database: could not add %s.%s (%s)", t.name, col.name, exc)
 
 
 def _factory(uid: int):

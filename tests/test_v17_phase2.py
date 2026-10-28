@@ -594,3 +594,24 @@ def test_a_practice_database_from_an_older_version_is_brought_up_to_date(tmp_pat
         assert tuple(row) == ("keep", 1, 1, 1)  # unrestricted, like before the upgrade
         assert c.exec_driver_sql("select count(*) from user_scope").scalar() == 0
     eng.dispose()
+
+
+def test_reset_to_template_cannot_hand_out_what_the_deputy_does_not_hold(admin, db):
+    """Self-elevation through a role: a deputy who manages roles but lacks a permission must not get it back by pressing
+    Reset on their own role."""
+    vid = _ids(db)["role"]["VIEWER"]
+    try:
+        admin.post("/admin/roles/save", data=roles_matrix(db, drop={f"p_{vid}_dispatch.view"}))  # the Viewer loses it
+        db.expire_all()
+        assert "dispatch.view" not in db.get(Role, vid).permissions
+        save_user(admin, db, "p2.deputy", "VIEWER", grant=["admin.roles", "admin.users"], reason="deputy",
+                  companies=None, cfas=None)
+        dep = WebClient("p2.deputy", PW)
+        r = dep.post(f"/admin/roles/{vid}/reset")
+        db.expire_all()
+        assert "dispatch.view" not in db.get(Role, vid).permissions and "do not hold yourself" in r.text
+        admin.post(f"/admin/roles/{vid}/reset")  # the Administrator holds everything: allowed
+        db.expire_all()
+        assert sorted(db.get(Role, vid).permissions) == sorted(DEFAULT_ROLES["VIEWER"]["permissions"])
+    finally:
+        admin.post(f"/admin/roles/{vid}/reset")

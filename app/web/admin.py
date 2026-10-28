@@ -360,8 +360,11 @@ def role_reset(rid: int, request: Request, db: Session = Depends(get_db), user: 
     tpl = DEFAULT_ROLES.get(role.code) if role else None
     if not role or not tpl:
         raise HTTPException(404)
-    if "*" in tpl["permissions"] and "*" not in (user.role.permissions or []):
-        raise BusinessError("Only a full-access Administrator can reset this role")
+    expand = lambda perms: set(PERMISSIONS) if "*" in perms else set(perms)  # noqa: E731
+    added = expand(tpl["permissions"]) - expand(role.permissions or [])
+    if not added <= user.effective_permissions():  # a reset must not hand out what the person doing it does not hold
+        raise BusinessError("You cannot give a role permissions you do not hold yourself: "
+                            + ", ".join(sorted(added - user.effective_permissions())))
     old = sorted(role.permissions or [])
     role.permissions = list(tpl["permissions"])
     audit.log(db, user, "ROLE_RESET", "ADMIN", record_type="Role", record_id=role.id, ref=role.code,

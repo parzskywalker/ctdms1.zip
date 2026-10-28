@@ -18,7 +18,7 @@ Migration 0010 (applied automatically, additive): `user_permissions`, `user_scop
   transporter bills (which span many customers) are hidden from area / customer-restricted users; customer alerts follow
   the gatepass. Importing an invoice outside your area or customers is refused.
 - **Guard rails instead of locks**: only holders of Manage users / Manage roles change access; nobody changes their own
-  role, permissions, scope or status; nobody gives (or edits someone holding) more than they hold themselves, or a wider
+  role, permissions, scope or status; nobody gives (or edits someone holding) more than they hold themselves - also through *Reset to template* -, or a wider
   company / depot / area / customer scope than their own; at least one active user must always hold both Manage users and
   Manage roles (checked by effective permissions, not by role name); changing a role or deactivating signs the user out.
 - **User screen**: identity and role, scope pickers (type to search areas / customers, ↑↓ Enter, × to remove - fast
