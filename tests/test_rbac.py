@@ -730,7 +730,9 @@ def test_upgrade_realigns_existing_roles_pauses_reports_and_keeps_everything_els
     assert perms("ADMIN") == {"*"}
     assert perms("OLD_CUSTOM") == {"dashboard.view", "report.view", "data.export", "invoice.view", "recon.view",
                                    "master.use"}
-    n = con.execute("select count(*) from audit_logs where action = 'ROLE_BASELINE_APPLIED'").fetchone()[0]
+    old_codes = tuple(OLD_ROLES) + ("OLD_CUSTOM",)   # (the v1.7.1 Gate Staff role did not exist in a v1.6 database)
+    n = con.execute("select count(*) from audit_logs where action = 'ROLE_BASELINE_APPLIED' and ref in (%s)"
+                    % ",".join("?" * len(old_codes)), old_codes).fetchone()[0]
     assert n == len(OLD_ROLES) + 1
     active = {name: a for name, a in con.execute("select name, is_active from report_subscriptions")}
     assert active == {"viewer:company-freight": 0, "cfa.raipur:dispatch-register": 1, "cfa.raipur:cfa-freight": 0,

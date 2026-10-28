@@ -47,7 +47,7 @@ def test_pawati_lesson_is_on_the_dispatch_and_depot_paths_and_passes_with_real_a
         srl = one("select id from transporters where code='DM-SRL'")
         vtc = one("select id from transporters where code='DM-VTC'")
         sid = lambda: one("select max(id) from dispatch_slips")  # noqa: E731
-        pids = lambda: [r for r in sqlite3.connect(path).execute("select id from garage_pawatis order by pawati_no")]  # noqa: E731
+        pids = lambda: [r for r in sqlite3.connect(path).execute("select id from garage_pawatis where print_count=0 order by pawati_no")]  # noqa: E731
         seen = {}
 
         def blocked():
@@ -64,7 +64,7 @@ def test_pawati_lesson_is_on_the_dispatch_and_depot_paths_and_passes_with_real_a
             "blocked": blocked,
             "pawati-print": lambda: w.post("/pawati/print", data={"ids": [str(i[0]) for i in pids()]}),
             "out": lambda: w.post(f"/gatepass/{sid()}/gate-out"),
-            "receive-hand": lambda: w.post(f"/pawati/{one('select id from garage_pawatis where receiving_transporter_id=?', srl)}/receive",
+            "receive-hand": lambda: w.post(f"/pawati/{one('select id from garage_pawatis where receiving_transporter_id=? order by id desc', srl)}/receive",
                                            data={"note": "garage clerk signed"}),
             "receive-lr": lambda: seen.update(lr=w.post(f"/gatepass/{sid()}/lr", data={
                 f"lr_{one('select customer_id from invoices where id=?', inv)}_{vtc}": "VTC-7001",

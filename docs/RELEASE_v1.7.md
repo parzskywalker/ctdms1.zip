@@ -1,5 +1,7 @@
 # CTDMS v1.7 — release guide
 
+> **v1.7.1** (this guide applies): (1) a Transporter trip goes by Local auto only and a Direct pickup is Regular only; (2) the case labels are printed before the gatepass; (3) a case-control gatepass is marked gone out only by the gate staff's scan of every case and then the gatepass - no button for anybody. Migration **0016** adds the role *Dispatch / Gate Staff* (permission `gate.scan`); nobody else is given it, so **create the gate staff users (or give `gate.scan` to the right people) before switching a depot's case control on**. The one-invoice "slip" screens and the API still create the old Regular single-transporter slip (kept for older data); use Scan & Gatepass for real dispatch.
+
 What is new, how to upgrade, how to go back, and how to switch it on depot by depot.
 
 ## 1. What changed (short)
@@ -18,7 +20,7 @@ What is new, how to upgrade, how to go back, and how to switch it on depot by de
 
 ## 2. Upgrade (do this in order)
 1. **Backup** — `python -m app.cli backup` (PostgreSQL: also `pg_dump -Fc`). Keep it until the first week is over.
-2. Stop the app, install the new version, start it. Migrations **0010 – 0015** run automatically and are additive.
+2. Stop the app, install the new version, start it. Migrations **0010 – 0016** run automatically and are additive.
 3. Check — `python -m app.cli check`, open `/health` (shows `1.7.0`), sign in, open Gatepass › New.
 4. Nothing changes for users until a depot is switched on (section 4). Every old gatepass stays readable; old gatepasses
    behave as before (`LEGACY`: count and confirm at the gate).
@@ -38,6 +40,7 @@ before the real upgrade (`createdb ctdms_copy; pg_restore …; CTDMS_DATABASE_UR
 ## 4. Switching on, one depot at a time (Guma first)
 1. Master Settings › Depots › Guma: tick **Case barcode label scanning**. (Other depots stay as they are.)
 2. Administration › Pawati Numbering: set the **starting number** (the first slip number for the depot) *before* the first trip.
+2b. Administration › Users: create the gate staff (role *Dispatch / Gate Staff*) for the depot - they are the only ones who can scan and mark trips gone out.
 3. Transporters that give their own builty book: tick "uses builty book", import the range (Dispatch desk › LR Books).
 4. Walk the gate staff through the Guided Training lessons "Gate check, LR pending and common errors" and "Local-auto trip to transporters: Garage Pawati".
 5. Hardware trial (section 5), then the first real day with a supervisor at the gate.

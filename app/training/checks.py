@@ -290,6 +290,17 @@ def long_gone(db, ctx):
 
 
 @check
+def long_pawati_printed(db, ctx):
+    slip = _slip_with(db, ctx, ["001248", "001249", "PQR/B/0313"])
+    if not slip:
+        return False, "No gatepass with 001248, 001249 and PQR/B/0313 has been generated in this lesson yet."
+    open_ = [str(p.pawati_no) for p in _pawatis(db, slip) if not p.print_count]
+    if open_ or not _pawatis(db, slip):
+        return False, "Not printed yet: Garage Pawati " + (", ".join(open_) or "(none made)") + ". On the gatepass, Garage Pawati panel › Print."
+    return True, "The Garage Pawati of this trip is printed - the auto may now leave."
+
+
+@check
 def long_lr(db, ctx):
     return _dispatch_check(db, ctx, ["001248", "001249", "PQR/B/0313"], transporter="DM-SRL", gone=True, lr=True)
 

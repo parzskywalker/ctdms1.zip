@@ -22,7 +22,7 @@ from app.services import recon_service as rs
 from app.services import transporter_rate_service as trs
 from app.services.errors import BusinessError
 from app.services.utils import local_today
-from tests.helpers import get_inv, make_invoice, new_invoice_no
+from tests.helpers import get_inv, make_invoice, new_invoice_no, local_auto, print_pawatis
 
 
 def _u(db, name) -> User:
@@ -90,7 +90,8 @@ def test_gatepass_many_invoices_priced_from_rate_card_print_then_gate_out(api, w
     osho = _tr(db, "OSHO")
     w = web("operator.raipur")
     r = w.post("/gatepass/new", {"ids": [str(a.id), str(b.id)], f"cases_{a.id}": "4", f"cases_{b.id}": "6",
-                                 "mode": "TRANSPORTER", "transporter_id": str(osho.id), "pickup_mode": "REGULAR",
+                                 "mode": "TRANSPORTER", "transporter_id": str(osho.id), "pickup_mode": "OUTSIDE_AUTO",
+                                 "outside_auto_id": str(local_auto(db)["outside_auto_id"]), "auto_method": "PER_TRIP", "trip_charge": "300",
                                  "dispatch_date": local_today().isoformat()})
     assert r.status_code == 200 and "Gatepass DS/RPR/" in r.text
     ia, ib = get_inv(a.id), get_inv(b.id)
@@ -98,8 +99,8 @@ def test_gatepass_many_invoices_priced_from_rate_card_print_then_gate_out(api, w
     assert ia.rate_per_box == Decimal("25.00") and ia.freight_amount == Decimal("100.00")
     assert ib.freight_amount == Decimal("150.00") and ia.rate_level == "TRANSPORTER"
     slip = db.get(DispatchSlip, ia.dispatch_slip_id)
-    assert slip.invoice_count == 2 and slip.total_cases == 10 and slip.total_charge == Decimal("250.00")
-    assert slip.payment_status == "TBB" and slip.amount_paid == 0
+    assert slip.invoice_count == 2 and slip.total_cases == 10 and slip.total_charge == Decimal("550.00")   # 250 freight + the auto's 300 trip
+    assert slip.payment_status == "PARTIAL" and slip.amount_paid == 300   # the auto is paid now, the freight is billed later (TBB)
     assert len(slip.snapshot["groups"]) == 2 and slip.snapshot["transporter"]["name"] == osho.name
     assert "vehicle_no" not in slip.snapshot   # vehicle number is not on the gatepass any more
     # gate-out refused before printing
@@ -110,6 +111,8 @@ def test_gatepass_many_invoices_priced_from_rate_card_print_then_gate_out(api, w
     r = w.post(f"/gatepass/{slip.id}/print", {"size": "A4", "mode": "pdf", "reason": "Second copy for driver"})
     assert r.content[:4] == b"%PDF"
     assert get_inv(a.id).status == "SLIP_PRINTED"
+    from app.services import pawati_service as pws
+    w.post("/pawati/print", {"ids": [str(p.id) for p in pws.active(db, db.get(DispatchSlip, slip.id))]})   # they travel with the auto
     page = w.get(f"/gatepass/gate?code={slip.dispatch_no}")
     assert "Cleared" in page.text
     w.post(f"/gatepass/{slip.id}/gate-out", {"back": "gate"})
@@ -123,7 +126,7 @@ def test_gatepass_blocked_without_rate_card_entry(api, db):
     inv = _fresh(api, "C-PQR01", boxes=5)   # Nagpur - Osho has no Nagpur rate
     op = _u(db, "operator.raipur")
     with pytest.raises(BusinessError, match="No approved rate.*Nagpur"):
-        ds.create_gatepass(db, op, [inv], ds.GatepassRequest(transporter_id=_tr(db, "OSHO").id,
+        ds.create_gatepass(db, op, [inv], ds.GatepassRequest(**local_auto(db), transporter_id=_tr(db, "OSHO").id,
                                                              cases={inv.id: 5}))
     db.rollback()
 
@@ -131,13 +134,13 @@ def test_gatepass_blocked_without_rate_card_entry(api, db):
 def test_gatepass_rules_cases_cfa_and_operator_box_change(api, db):
     op = _u(db, "operator.raipur")
     a = _fresh(api, "C-HRM01", boxes=4)
-    req = ds.GatepassRequest(transporter_id=_tr(db, "OSHO").id, cases={a.id: 9})
+    req = ds.GatepassRequest(**local_auto(db), transporter_id=_tr(db, "OSHO").id, cases={a.id: 9})
     with pytest.raises(BusinessError, match="invoice says 4"):   # operators cannot change an ERP box count here
         ds.create_gatepass(db, op, [a], req)
     db.rollback()
     adm = _u(db, "admin")                                       # holds override.direct: may correct the count
     slip = ds.create_gatepass(db, adm, [db.get(Invoice, a.id)],
-                              ds.GatepassRequest(transporter_id=_tr(db, "OSHO").id, cases={a.id: 5}))
+                              ds.GatepassRequest(**local_auto(db), transporter_id=_tr(db, "OSHO").id, cases={a.id: 5}))
     assert db.get(Invoice, a.id).boxes == 5 and slip.total_cases == 5
     db.flush()
     assert db.scalar(select(AuditLog).where(AuditLog.record_id == str(a.id), AuditLog.action == "OVERRIDE_APPLIED"))
@@ -146,7 +149,7 @@ def test_gatepass_rules_cases_cfa_and_operator_box_change(api, db):
     rgh = _fresh(api, "C-DHR01", boxes=3)
     rgh.cfa_id = db.scalar(select(CFA).where(CFA.code == "BSP")).id   # pretend: other warehouse
     _, _, problems = ds.plan_gatepass(db, adm, [db.get(Invoice, b.id), rgh],
-                                      ds.GatepassRequest(transporter_id=_tr(db, "OSHO").id))
+                                      ds.GatepassRequest(**local_auto(db), transporter_id=_tr(db, "OSHO").id))
     assert any("same depot" in p for p in problems)
     db.rollback()
 
@@ -183,10 +186,10 @@ def test_transporter_with_auto_pickup_and_self_pickup(api, db):
 def test_lr_entered_after_dispatch_conflicts_and_lock(api, web, db):
     a = _fresh(api, "C-HRM01", boxes=2)
     adm = _u(db, "admin")
-    slip = ds.create_gatepass(db, adm, [db.get(Invoice, a.id)], ds.GatepassRequest(
+    slip = ds.create_gatepass(db, adm, [db.get(Invoice, a.id)], ds.GatepassRequest(**local_auto(db), 
         transporter_id=_tr(db, "OSHO").id, cases={a.id: 2}))
     ds.print_gatepass(db, adm, slip, "PRINT_A5")
-    ds.gate_out(db, adm, slip)
+    (print_pawatis(db, adm, slip), ds.gate_out(db, adm, slip))[1]
     db.commit()
     w = web("operator.raipur")
     cid = get_inv(a.id).customer_id
@@ -208,7 +211,7 @@ def test_lr_entered_after_dispatch_conflicts_and_lock(api, web, db):
 def test_void_gatepass_and_cancel_rules(api, db):
     adm = _u(db, "admin")
     a, b = _fresh(api, "C-HRM01", boxes=2), _fresh(api, "C-ABC01", boxes=3)
-    slip = ds.create_gatepass(db, adm, [db.get(Invoice, a.id), db.get(Invoice, b.id)], ds.GatepassRequest(
+    slip = ds.create_gatepass(db, adm, [db.get(Invoice, a.id), db.get(Invoice, b.id)], ds.GatepassRequest(**local_auto(db), 
         transporter_id=_tr(db, "OSHO").id, cases={a.id: 2, b.id: 3}))
     with pytest.raises(BusinessError, match="Void the gatepass first"):
         ds.cancel(db, adm, db.get(Invoice, a.id), "Order cancelled by customer")

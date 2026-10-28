@@ -32,6 +32,7 @@ PERMISSIONS: dict[str, str] = {
     "pawati.receive": "Record that the receiving transporter received a Garage Pawati",
     "lr_book.manage": "Import LR (builty) books of transporters that give their own book",
     "gate.exception": "Let a gatepass leave with cases not scanned (reason required, audited)",
+    "gate.scan": "Gate / dispatch staff: scan the cases and then the gatepass - this is what marks a case-control gatepass gone out",
     "case.print": "Print case labels (one barcode per case)",
     "case.reprint": "Reprint case labels (same code, reason required)",
     "dispatch.group_cross_company": "Put invoices of different companies on one gatepass (explicit choice, audited)",
@@ -68,7 +69,7 @@ PERMISSION_GROUPS: list[tuple[str, list[str]]] = [
     ("Dispatch", ["dispatch.view", "dispatch.operate", "dispatch.verify", "dispatch.complete",
                   "dispatch.reprint", "dispatch.void_slip", "dispatch.cancel", "dispatch.cancel_dispatched",
                   "dispatch.group_cross_company", "transporter.override_eligibility", "case.print", "case.reprint",
-                  "gate.exception", "pawati.print", "pawati.cancel", "pawati.receive", "lr_book.manage"]),
+                  "gate.exception", "gate.scan", "pawati.print", "pawati.cancel", "pawati.receive", "lr_book.manage"]),
     ("Overrides", ["override.request", "override.approve", "override.direct"]),
     ("Freight Rates", ["rate.view", "rate.create", "rate.approve"]),
     ("Masters", ["master.use", "master.view", "master.edit"]),
@@ -122,6 +123,13 @@ DEFAULT_ROLES: dict[str, dict] = {
                         "dispatch.complete", "dispatch.reprint", "dispatch.group_cross_company", "case.print",
                         "case.reprint", "pawati.print", "pawati.receive", "lr_book.manage", "override.request",
                         "invoice.view", "master.use"],
+        "all_scope": False,
+    },
+    "GATE_STAFF": {
+        "name": "Dispatch / Gate Staff",
+        "description": "The people at the gate: scan every case label and then the gatepass, which marks the trip gone "
+                       "out. Nothing else - they do not make or print gatepasses.",
+        "permissions": ["dispatch.view", "gate.scan", "master.use"],
         "all_scope": False,
     },
     "CHECKER": {

@@ -228,6 +228,8 @@ USERS = [  # username, full name, role, cfas (None = all)
     ("operator.raipur", "Sunil Dewangan", "DISPATCH_OPERATOR", ["RPR"], "Demo@123"),
     ("operator.bilaspur", "Ajay Kaushik", "DISPATCH_OPERATOR", ["BSP"], "Demo@123"),
     ("operator.durg", "Tarun Sinha", "DISPATCH_OPERATOR", ["DRG"], "Demo@123"),
+    ("gate.raipur", "Mohan Sahu", "GATE_STAFF", ["RPR"], "Demo@123"),
+    ("gate.bilaspur", "Ravi Tandon", "GATE_STAFF", ["BSP"], "Demo@123"),
     ("checker", "Meena Gupta", "CHECKER", None, "Demo@123"),
     ("viewer", "Audit Viewer", "VIEWER", None, "Demo@123"),
 ]
@@ -690,7 +692,7 @@ def make_gatepass(c: Ctx, invs: list[Invoice], carrier: str, d: date, stage: str
     else:
         req.transporter_id = c.transporters[carrier].id
         req.mode = DispatchMode.DIRECT if carrier == "PRK" and RND.random() < 0.3 else DispatchMode.TRANSPORTER
-        if carrier in ("ORL", "PGC", "BJR", "CGR") and RND.random() < 0.35:
+        if req.mode == DispatchMode.TRANSPORTER:  # v1.7.1: a transporter trip always goes to the transporter by local auto
             req.pickup_mode = PickupMode.OUTSIDE_AUTO
             req.outside_auto_id = autos["AUTO-SONU"].id
     req.group_cross_company = True  # demonstration data: the grouping is by customer / area, whatever the company
@@ -1028,7 +1030,9 @@ def _overrides_and_cancellations(c: Ctx, invs: list[Invoice], today: date) -> No
         clock(today, 13, 20)
         ds.create_gatepass(db, _operator(c, group[0]), group, ds.GatepassRequest(
             mode=slip.dispatch_mode, transporter_id=slip.transporter_id, dispatch_date=today,
-            cases={i.id: i.boxes for i in group}, remarks="Re-made after correction", group_cross_company=True))
+            pickup_mode=slip.pickup_mode, outside_auto_id=slip.outside_auto_id, auto_method=slip.auto_method,
+            trip_charge=slip.trip_charge, cases={i.id: i.boxes for i in group}, remarks="Re-made after correction",
+            group_cross_company=True))
     hist_dispatched = [i for i in invs if i.status == InvoiceStatus.DISPATCHED]
     if hist_dispatched:
         inv = hist_dispatched[len(hist_dispatched) // 3]

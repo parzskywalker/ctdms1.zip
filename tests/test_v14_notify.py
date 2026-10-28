@@ -14,7 +14,7 @@ from app.models import (
 )
 from app.services import dispatch_service as ds
 from app.services import notify_service as ns
-from tests.helpers import get_inv, make_invoice
+from tests.helpers import get_inv, make_invoice, local_auto, print_pawatis
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -62,10 +62,10 @@ def _dispatch(api, db, customers=("C-HRM01", "C-ABC01"), boxes=(3, 5)):
     adm = _u(db, "admin")
     tr = db.scalar(select(Transporter).where(Transporter.code == "OSHO"))
     rows = [db.get(Invoice, i.id) for i in invs]
-    slip = ds.create_gatepass(db, adm, rows, ds.GatepassRequest(transporter_id=tr.id,
+    slip = ds.create_gatepass(db, adm, rows, ds.GatepassRequest(**local_auto(db), transporter_id=tr.id,
                                                                 cases={i.id: i.boxes for i in rows}))
     ds.print_gatepass(db, adm, slip, "PRINT_A5")
-    ds.gate_out(db, adm, slip)
+    (print_pawatis(db, adm, slip), ds.gate_out(db, adm, slip))[1]
     db.commit()
     return slip, rows
 

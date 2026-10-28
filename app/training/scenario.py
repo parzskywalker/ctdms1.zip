@@ -37,7 +37,7 @@ CBO_FILE = DEMO_FILES / "DEMO_v1.6_CBO_invoices_PQR.csv"
 FILES = {f.name: f for f in (WORKBOOK, SAP_FILE, MARG_FILE, CBO_FILE)}
 
 CHECKPOINTS = ["clean", "uploaded", "masters", "sap", "invoices", "dispatched", "billed"]
-SCENARIO_VERSION = "4"
+SCENARIO_VERSION = "5"
 DEMO_USERS = [("demo.master", "Demo Master (training)", "ADMIN"),
               ("demo.checker", "Demo Checker (training)", "CHECKER"),
               ("demo.accounts", "Demo Accounts (training)", "ACCOUNTS"),
@@ -222,14 +222,17 @@ def invoices_by_no(db: Session, numbers: list[str]):
 
 def _gatepass(db: Session, numbers: list[str], remarks: str, *, transporter=None, auto=None, method=None,
               trip=None, gate_out=True):
-    from app.models import DispatchMode, OutsideAuto, Transporter
+    from app.models import DispatchMode, OutsideAuto, PickupMode, Transporter
     from app.services import dispatch_service as ds
     master = _user(db, "demo.master")
     invs = invoices_by_no(db, numbers)
     req = ds.GatepassRequest(cases={i.id: str(i.boxes) for i in invs}, remarks=remarks, group_cross_company=True)
-    if transporter:
+    if transporter:  # v1.7.1: a transporter trip goes to the transporter by local auto (Sharma, the usual trip charge)
         req.mode = DispatchMode.TRANSPORTER
         req.transporter_id = db.scalar(select(Transporter.id).where(Transporter.code == transporter))
+        req.pickup_mode = PickupMode.OUTSIDE_AUTO
+        req.outside_auto_id = db.scalar(select(OutsideAuto.id).where(OutsideAuto.code == "DM-LA1"))
+        req.auto_method, req.trip_charge = "PER_TRIP", Decimal("500")
     else:
         req.mode = DispatchMode.OUTSIDE_AUTO
         req.outside_auto_id = db.scalar(select(OutsideAuto.id).where(OutsideAuto.code == auto))

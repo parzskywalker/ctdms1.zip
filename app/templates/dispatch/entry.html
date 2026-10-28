@@ -136,6 +136,8 @@
           <button class="btn {{ 'btn-ok btn-lg' if not acts.complete_blockers else '' }}" type="submit" style="width:100%" data-key="F9" data-confirm="Mark invoice {{ inv.invoice_no }} as DISPATCHED? This cannot be undone.">✔ Complete Dispatch</button>
         </form>
         {% if acts.complete_blockers %}<ul class="blockers">{% for b in acts.complete_blockers %}<li>{{ b }}</li>{% endfor %}</ul>{% endif %}
+      {% elif acts.gate_only %}
+        <p class="muted">This gatepass has case labels: it is marked gone out when the gate staff scan every case and then the gatepass - not from here.</p>
       {% else %}
         <p class="muted">You are not authorised to complete dispatches.</p>
       {% endif %}

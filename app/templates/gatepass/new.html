@@ -309,6 +309,14 @@
   }
 
   function recalc() {
+    {   // v1.7.1: a long-distance transporter trip goes by local auto only; a direct pickup is Regular only
+      const m0 = mode(), reg = $('input[name=pickup_mode][value=REGULAR]'), au = $('input[name=pickup_mode][value=OUTSIDE_AUTO]');
+      if (reg && au && (m0 === 'TRANSPORTER' || m0 === 'DIRECT')) {
+        const local = m0 === 'TRANSPORTER';
+        (local ? au : reg).checked = true;
+        au.closest('label').hidden = !local; reg.closest('label').hidden = local;
+      }
+    }
     const m = mode(), tid = $('#gp-tr').value, aid = $('#gp-auto').value, pk = pickup();
     $('#gp-tr-box').hidden = !(m === 'TRANSPORTER' || m === 'DIRECT');
     $('#gp-auto-box').hidden = !(m === 'OUTSIDE_AUTO' || ((m === 'TRANSPORTER' || m === 'DIRECT') && pk === 'OUTSIDE_AUTO'));

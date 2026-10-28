@@ -101,6 +101,14 @@ def db():
 
 def _gatepass(c: WebClient, invs, **fields):
     data = {"ids": [str(i["id"]) for i in invs], "dispatch_date": TODAY.isoformat(), "pickup_mode": "REGULAR", **fields}
+    if fields.get("mode") == "TRANSPORTER" and "pickup_mode" not in fields:   # v1.7.1: a transporter trip goes by local auto
+        s = _test_session()
+        try:
+            from tests.helpers import local_auto
+            la = local_auto(s)
+        finally:
+            s.close()
+        data.update(pickup_mode="OUTSIDE_AUTO", outside_auto_id=str(la["outside_auto_id"]), auto_method="PER_TRIP", trip_charge="300")
     for i in invs:
         data[f"cases_{i['id']}"] = str(i.get("boxes") or 4)
     return c.post("/gatepass/new", data=data)

@@ -239,6 +239,9 @@ def plan_gatepass(db: Session, user: User | None, invs: list[Invoice], req: Gate
     covered = bool(req.receivers) and all(i.id in req.receivers for i in invs)
     if req.receivers and not local_path:
         problems.append("Several receiving transporters are only possible when a local auto takes the goods to them")
+    if mode == DispatchMode.TRANSPORTER and not local_path and not legacy:
+        problems.append("A transporter trip goes to the transporter by a local auto: choose Local auto, the auto, and "
+                        "the receiving transporter(s)")
     if mode == DispatchMode.DIRECT and req.pickup_mode == PickupMode.OUTSIDE_AUTO:
         problems.append("Direct pickup: the transporter collects from our depot - no local auto on this gatepass")
     if req.receivers and freight_source(db) == "COMPANY":
@@ -752,6 +755,10 @@ def _print_slip(db: Session, user: User, slip: DispatchSlip, output: str, reason
         raise BusinessError("Unknown print format")
     if slip.is_void:
         raise BusinessError(f"Gatepass {slip.dispatch_no} is void")
+    left = cs.labels_pending(db, slip)
+    if left:  # v1.7.1: the case labels come first, then the gatepass
+        raise BusinessError(f"Print the case labels first ({left} of {slip.total_cases} not printed): gatepass screen > "
+                            "Print the labels - then print the gatepass")
     is_reprint = slip.print_count > 0
     if is_reprint:
         if not user.can("dispatch.reprint"):
@@ -850,6 +857,9 @@ def _close_slip_if_done(db: Session, user: User, slip: DispatchSlip | None) -> N
 
 def complete(db: Session, user: User, inv: Invoice) -> None:
     _perm(user, "dispatch.complete")
+    slip = active_slip(db, inv)
+    if slip is not None and slip.case_control == "REQUIRED":
+        raise BusinessError(cs.GATE_ONLY)
     problems = completion_blockers(db, inv)
     if problems:
         audit.log(db, user, "COMPLETE_BLOCKED", MODULE, record_type="Invoice", record_id=inv.id, ref=inv.invoice_no,
@@ -859,9 +869,15 @@ def complete(db: Session, user: User, inv: Invoice) -> None:
     _close_slip_if_done(db, user, active_slip(db, inv))
 
 
-def gate_out(db: Session, user: User, slip: DispatchSlip) -> int:
-    """Guard scans the gatepass at the gate: every invoice on it becomes DISPATCHED (completion rule applies)."""
-    _perm(user, "dispatch.complete")
+def gate_out(db: Session, user: User, slip: DispatchSlip, *, by_scan: bool = False) -> int:
+    """Gate-out: every invoice on the gatepass becomes DISPATCHED (completion rule applies). A case-control gatepass can
+    only be marked gone out by the gate staff's scan of the gatepass (gate_scan_out), never by a button."""
+    if by_scan:
+        _perm(user, "gate.scan")
+    else:
+        _perm(user, "dispatch.complete")
+        if slip.case_control == "REQUIRED":
+            raise BusinessError(cs.GATE_ONLY)
     if slip.is_void:
         raise BusinessError(f"Gatepass {slip.dispatch_no} is VOID - the goods must not leave on it")
     if slip.gate_out_at:
@@ -880,9 +896,19 @@ def gate_out(db: Session, user: User, slip: DispatchSlip) -> int:
     slip.gate_out_at = utcnow()
     slip.gate_out_by_id = user.id
     audit.log(db, user, "GATE_OUT", MODULE, record_type="DispatchSlip", record_id=slip.id, ref=slip.dispatch_no,
-              details={"invoices": n, "cases": slip.total_cases})
+              details={"invoices": n, "cases": slip.total_cases, "via": "gate scan" if by_scan else "button"})
     notify_service.on_gate_out(db, user, slip, invs)  # "your order is on the way" (when alerts are switched on)
     return n
+
+
+def gate_scan_out(db: Session, user: User, slip: DispatchSlip) -> int:
+    """The gate staff scan the gatepass after the last case label: a case-control gatepass is marked gone out - the only
+    way it can be. Everything that must be true before it leaves (every case scanned or an exception, printed, Pawatis
+    printed, e-way bill) is checked here."""
+    _perm(user, "gate.scan")
+    if slip.case_control != "REQUIRED":
+        raise BusinessError(f"Gatepass {slip.dispatch_no} has no case labels - it is confirmed on the Gate check screen")
+    return gate_out(db, user, slip, by_scan=True)
 
 
 # ----------------------------------------------------------------------------- LR (arrives after dispatch)
@@ -1139,6 +1165,7 @@ class Actions:
     can_override: bool
     slip_blockers: list[str]
     complete_blockers: list[str]
+    gate_only: bool = False   # case-control gatepass: gone out is recorded only by the gate staff's scan
 
 
 def actions_for(db: Session, user: User, inv: Invoice) -> Actions:
@@ -1146,13 +1173,15 @@ def actions_for(db: Session, user: User, inv: Invoice) -> Actions:
     slipped = inv.status in (S.SLIP_GENERATED, S.SLIP_PRINTED)
     sb = slip_blockers(db, inv) if pre else []
     cb = completion_blockers(db, inv) if inv.status not in (S.DISPATCHED, S.CANCELLED) else []
+    sl = active_slip(db, inv) if slipped else None
+    gate_only = sl is not None and sl.case_control == "REQUIRED"
     return Actions(
         can_edit=pre and user.can("dispatch.operate"),
         can_verify=inv.status == S.PENDING and user.can("dispatch.verify"),
         can_generate=pre and user.can("dispatch.operate"),
         can_print=(slipped or inv.status == S.DISPATCHED) and inv.print_count == 0 and user.can("dispatch.operate"),
         can_reprint=inv.print_count > 0 and inv.status != S.CANCELLED and user.can("dispatch.reprint"),
-        can_complete=inv.status not in (S.DISPATCHED, S.CANCELLED) and user.can("dispatch.complete"),
+        can_complete=inv.status not in (S.DISPATCHED, S.CANCELLED) and user.can("dispatch.complete") and not gate_only,
         can_void=slipped and user.can("dispatch.void_slip"),
         can_cancel=(inv.status != S.CANCELLED and user.can("dispatch.cancel")
                     and (inv.status != S.DISPATCHED or user.can("dispatch.cancel_dispatched"))),
@@ -1160,6 +1189,7 @@ def actions_for(db: Session, user: User, inv: Invoice) -> Actions:
         can_override=pre and (user.can("override.request") or user.can("override.direct")),
         slip_blockers=sb,
         complete_blockers=cb,
+        gate_only=gate_only,
     )
 
 
