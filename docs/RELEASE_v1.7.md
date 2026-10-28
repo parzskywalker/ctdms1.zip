@@ -39,7 +39,7 @@ before the real upgrade (`createdb ctdms_copy; pg_restore …; CTDMS_DATABASE_UR
 1. Master Settings › Depots › Guma: tick **Case barcode label scanning**. (Other depots stay as they are.)
 2. Administration › Pawati Numbering: set the **starting number** (the first slip number for the depot) *before* the first trip.
 3. Transporters that give their own builty book: tick "uses builty book", import the range (Dispatch desk › LR Books).
-4. Walk the gate staff through the Guided Training lesson "Gate check, LR pending and common errors".
+4. Walk the gate staff through the Guided Training lessons "Gate check, LR pending and common errors" and "Local-auto trip to transporters: Garage Pawati".
 5. Hardware trial (section 5), then the first real day with a supervisor at the gate.
 
 ## 5. Hardware trial at Guma (half a day, any printer / scanner)
@@ -72,4 +72,4 @@ or types in the wrong layout, set it to "Code 128, Enter suffix, no prefix".
 2. On the first printed slip: **Amount** = receiver's share of the invoice value, **Freight** = freight of that receiver's cases.
 3. Whether the ERP file will carry the ship-to code (would remove manual area choice).
 4. Printer and scanner models bought for the trial (section 5 results decide label stock and size).
-5. Guided-Training lesson for the Pawati flow — to be written after item 2 is settled, so staff are not taught a slip that changes.
+5. The Guided-Training lesson for the Pawati flow (Dispatch Operator path, `d03-pawati`) teaches the slip as it is now; if item 2 changes the slip's Amount / Freight wording, update the lesson text.

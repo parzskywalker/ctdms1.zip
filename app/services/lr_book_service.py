@@ -125,9 +125,14 @@ def release_for_slip(db: Session, slip: DispatchSlip) -> int:
 def on_lr_changed(db: Session, user: User, inv: Invoice, old: str | None, new: str | None, reason: str | None) -> None:
     """Staff typed a different LR than the book's: the book's number is VOID (it was not used), a book number typed by
     hand is taken. Both logged."""
-    if not inv.transporter_id:
+    on_lr_changed_t(db, user, inv.transporter_id, old, new, reason)
+
+
+def on_lr_changed_t(db: Session, user: User, transporter_id: int | None, old: str | None, new: str | None,
+                    reason: str | None) -> None:
+    if not transporter_id:
         return
-    t = db.get(Transporter, inv.transporter_id)
+    t = db.get(Transporter, transporter_id)
     if not t or not t.uses_lr_book:
         return
     if old and old != new:

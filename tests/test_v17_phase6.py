@@ -252,3 +252,30 @@ def test_migration_0015_grants_and_tables(db):
     perms = {r.code: set(r.permissions) for r in db.scalars(select(Role))}
     assert {"pawati.print", "pawati.receive", "lr_book.manage"} <= perms["DISPATCH_OPERATOR"] and "pawati.cancel" in perms["CFA_MANAGER"]
     assert "pawati.print" not in perms["VIEWER"]
+
+
+def test_split_invoice_has_an_lr_for_each_receiver_and_each_receipt(db, world):  # noqa: F811
+    api = _token_client("admin")
+    admin = WebClient("admin")
+    t1, t2 = world["tr"].id, world["tr2"].id
+    a = _inv(api, "P3-TOWN", 10, "C-VDP01")
+    sid = _slip_of(_local(admin, [a], {0: f"{t1}:6,{t2}:4"}, db))
+    admin.post(f"/gatepass/{sid}/print", data={"size": "A5", "mode": "pdf"})
+    admin.post("/pawati/print", data={"ids": [str(p.id) for p in _pawatis(db, sid)]})
+    admin.post(f"/gatepass/{sid}/gate-out")
+    inv = db.get(Invoice, a["id"])
+    page = admin.get(f"/gatepass/{sid}").text
+    assert f'name="lr_{inv.customer_id}_{t1}"' in page and f'name="lr_{inv.customer_id}_{t2}"' in page   # one row per receiver
+    r = admin.post(f"/gatepass/{sid}/lr", data={f"lr_{inv.customer_id}_{t2}": "SPL-2", f"lrdate_{inv.customer_id}_{t2}": TODAY.isoformat()})
+    db.expire_all()
+    by = {p.receiving_transporter_id: p for p in _pawatis(db, sid)}
+    assert by[t2].received_via == "LR" and by[t1].received_at is None            # only the part whose LR came in
+    alloc = {x.receiving_transporter_id: x for x in db.scalars(select(DispatchAllocation).where(DispatchAllocation.slip_id == sid))}
+    assert alloc[t2].lr_no == "SPL-2" and alloc[t1].lr_no is None and db.get(Invoice, a["id"]).lr_no is None
+    admin.post(f"/gatepass/{sid}/lr", data={f"lr_{inv.customer_id}_{t1}": "SPL-1", f"lrdate_{inv.customer_id}_{t1}": TODAY.isoformat()})
+    db.expire_all()
+    assert db.get(Invoice, a["id"]).lr_no == "SPL-1" and _pawatis(db, sid)[0].received_at and all(p.received_at for p in _pawatis(db, sid))
+    assert "LR_ENTERED" in audit_actions(db, inv.invoice_no)
+    # changing the other part's LR needs a reason
+    bad = admin.post(f"/gatepass/{sid}/lr", data={f"lr_{inv.customer_id}_{t2}": "SPL-9"})
+    assert "give a reason" in bad.text

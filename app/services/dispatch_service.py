@@ -958,6 +958,53 @@ def set_lr(db: Session, user: User, invs: list[Invoice], lr_no: str | None, lr_d
     return n
 
 
+def set_alloc_lr(db: Session, user: User, slip: DispatchSlip, allocs: list[DispatchAllocation], lr_no: str | None,
+                 lr_date=None, reason: str | None = None) -> int:
+    """LR of a receiving transporter's PART of a split invoice (the invoice itself carries the main receiver's LR)."""
+    _perm(user, "dispatch.operate")
+    if slip.is_void:
+        raise BusinessError("This gatepass is void")
+    lr = (str(lr_no or "").strip().upper()) or None
+    if lr and len(lr) > 40:
+        raise BusinessError("LR number is too long")
+    try:
+        d = parse_date(lr_date) if lr_date not in (None, "") else None
+    except ValueError as e:
+        raise BusinessError(f"LR date: {e}") from e
+    if not allocs:
+        raise BusinessError("Nothing selected")
+    t_id = allocs[0].receiving_transporter_id
+    if lr:
+        other = db.scalar(select(DispatchAllocation).join(Invoice, Invoice.id == DispatchAllocation.invoice_id).where(
+            DispatchAllocation.receiving_transporter_id == t_id, DispatchAllocation.lr_no == lr,
+            Invoice.customer_id != allocs[0].invoice.customer_id).limit(1))
+        if other:
+            raise BusinessError(f"LR {lr} of this transporter is already used for {other.invoice.customer.name}. "
+                                "One LR belongs to one consignee - check the number.")
+    if d and d < (slip.dispatch_date or d):
+        raise BusinessError("LR date cannot be before the dispatch date")
+    n = 0
+    for a in allocs:
+        if a.lr_no == lr and (not d or a.lr_date == d):
+            continue
+        changed = a.lr_no is not None and a.lr_no != lr
+        if changed and (not reason or len(reason.strip()) < 3):
+            raise BusinessError(f"{a.transporter.name} already has LR {a.lr_no} here; give a reason for changing it")
+        audit.log(db, user, "LR_CHANGED" if changed else "LR_ENTERED", MODULE, record_type="DispatchAllocation",
+                  record_id=a.id, ref=a.invoice.invoice_no, field="lr_no", old=a.lr_no, new=lr, reason=reason,
+                  details={"lr_date": d.isoformat() if d else None, "dispatch_no": slip.dispatch_no,
+                           "receiver": a.transporter.code, "part_of_split_invoice": True})
+        old_lr = a.lr_no
+        a.lr_no = lr
+        lrb.on_lr_changed_t(db, user, t_id, old_lr, lr, reason)
+        if d or not lr:
+            a.lr_date = d
+        n += 1
+    if n and lr:
+        pws.receive_by_lr(db, user, slip, {a.invoice_id for a in allocs}, t_id)
+    return n
+
+
 # ----------------------------------------------------------------------------- void / cancel
 def _release(db: Session, inv: Invoice) -> None:
     """Take an invoice off its gatepass: back to the dispatch queue; card-priced freight is worked out again next time."""

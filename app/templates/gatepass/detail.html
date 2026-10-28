@@ -51,7 +51,7 @@
           <td class="num">{% for inv, ln in g.invs %}<div>{{ ln.cases if ln else inv.boxes }}</div>{% endfor %}</td>
           <td class="num">{% for inv, ln in g.invs %}<div>{{ (ln.rate_per_case if ln else inv.rate_per_box)|rate }}{% if ln and ln.calc_note and ln.calc_note.get('rule') and ln.calc_note.get('rule') != 'General rate' %} <span class="tag" title="{{ ln.calc_note.rule }}: {{ ln.calc_note.scope }}">exception</span>{% endif %}</div>{% endfor %}</td>
           <td class="num">{% for inv, ln in g.invs %}<div>{{ ((ln.freight + ln.extra_charge) if ln else inv.freight_amount)|money }}</div>{% endfor %}</td>
-          <td>{% set first = g.invs[0][0] %}
+          <td>{% set first = g.lr %}
             {% if (slip.transporter_id or slip.dispatch_mode == 'TRANSPORTER') and not slip.is_void and can('dispatch.operate') and not locked %}
               <div class="row" style="gap:4px;flex-wrap:nowrap"><input type="text" name="lr_{{ g.key }}" value="{{ first.lr_no or '' }}" placeholder="LR no" data-upper{% if slip.gate_out_at and not first.lr_no and not lrf.done %} data-autofocus{% set lrf.done = true %}{% endif %} style="min-height:28px;padding:3px 6px;width:110px"><input type="date" name="lrdate_{{ g.key }}" value="{{ first.lr_date.isoformat() if first.lr_date else '' }}" style="min-height:28px;padding:3px 4px;width:118px"></div>
               {% if first.lr_updated_by %}<div class="small muted">by {{ first.lr_updated_by.full_name }} {{ first.lr_updated_at|dt }}</div>{% endif %}

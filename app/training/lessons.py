@@ -594,6 +594,70 @@ D02 = Lesson("d02-gate", "Gate check, LR pending and common errors",
          "A reprint needs a reason.", do="Finish."),
 ])
 
+D03 = Lesson("d03-pawati", "Local-auto trip to transporters: Garage Pawati",
+             "One invoice split between two receiving transporters; print the Pawatis, gate-out, record receipt.",
+             start="invoices", needs="korba_waiting", page="/gatepass/new", source="v1.7 Garage Pawati", steps=[
+    Step("idea", "What a Garage Pawati is",
+         what="A local auto carries goods to the transporters' garages. For each receiving transporter, for each "
+              "customer and company, CTDMS prints one small white slip - the Garage Pawati - with its number, the garage, "
+              "the customer, cartons, bill numbers, amount and freight. The garage signs it when it takes the goods.",
+         why="The Pawati is the proof that the goods reached the transporter. It stays with the transporter.",
+         do="Next."),
+    GP_OPEN,
+    Step("depot", "Bilaspur depot", do="Depot: type BSP, Enter.", ui={"value": ["#gp-cfa", "BSP|Bilaspur"]}, hl="#gp-cfa-q"),
+    Step("invoice", "Add invoice 001250", what="District Govt Store Korba - 8 cartons.",
+         do="Add 001250.", keys="type 001250 · Enter", ui={"text": ["#gp-lines tbody", "001250"]}, hl="#gp-scan"),
+    Step("pickup", "Transporter, reached by Local auto",
+         what="Mode stays Transporter. Under 'Goods reach the transporter by' choose Local auto: a column "
+              "'Receiving transporter' appears for every invoice.",
+         do="Move to Who carries the goods and choose Local auto.", keys="Enter on the empty scan box · → to Local auto",
+         ui={"visible": ".th-recv"}, hl="#gp-who"),
+    Step("auto", "Select Sharma Local Auto", do="Select Sharma Local Auto; the usual ₹500 trip charge is filled in.",
+         keys="Enter · type LA1 · Enter", ui={"value": ["#gp-auto", "Sharma"]}, hl="#gp-auto-q"),
+    Step("recv1", "Receiving transporter: Shree Roadlines",
+         what="Only transporters that serve this depot and have a rate for Korba are offered.",
+         do="In the invoice row choose Shree Roadlines as the receiving transporter.",
+         keys="Tab to the Receiving transporter box · S · ↓ · Enter", ui={"value": [".rv1", "Shree"]}, hl=".rv1"),
+    Step("split", "Split the invoice: 3 cartons to Vijay Transport Co",
+         what="An invoice can be shared by two receiving transporters. Shree Roadlines takes 5 cartons, Vijay "
+              "Transport Co takes 3.",
+         do="Press split, choose Vijay Transport Co, type 3 cartons, Tab.",
+         keys="Tab to 'split' · Enter · choose Vijay · type 3 · Tab",
+         ui={"value": [".rv2", "Vijay"], "text": ["#gp-lines tbody", "234"]}, hl=".rv2box"),
+    Step("freight", "Freight per receiver",
+         what="5 × ₹30 (Shree) + 3 × ₹28 (Vijay) = ₹234; plus the ₹500 trip of the auto. Each receiver's share is "
+              "kept separately - it is the freight printed on its Pawati.",
+         do="Look at the Charges panel, then Next."),
+    Step("generate", "Generate the gatepass", keys="F8", do="Generate the gatepass.", check="pawati_generated",
+         hl="#gp-submit"),
+    Step("panel", "The Garage Pawati panel",
+         what="The gatepass now lists its Garage Pawatis - one per receiving transporter - and the LR rows are "
+              "per customer and receiver.", do="Find the Garage Pawati panel on the gatepass, then Next."),
+    Step("print", "Print the gatepass", do="Print the gatepass.", keys="F8", check="pawati_gatepass_printed",
+         hl="[data-key=F8]"),
+    Step("blocked", "The auto cannot leave without its Pawatis",
+         what="Try to record gate-out now. CTDMS refuses: the Pawatis travel with the auto, so they are printed first.",
+         do="Press F9 and answer Yes.", keys="F9 · Enter (Yes)", ui={"text": [".alert-error", "Garage Pawati not printed"]}),
+    Step("pawati-print", "Print the Garage Pawatis",
+         what="Four slips fit one A4 sheet. A reprint later needs a reason and is recorded.",
+         do="In the Garage Pawati panel both slips are ticked - press Print.", check="pawati_printed"),
+    Step("out", "Gate-out", do="Record gate-out and answer Yes.", keys="F9 · Enter (Yes)", check="pawati_gone",
+         hl="[data-key=F9]"),
+    Step("receive-hand", "Receipt: tick it when the garage has signed",
+         what="When the garage signs and returns nothing - the slip stays with the transporter - you record that the "
+              "goods were received.",
+         do="Dispatch desk › Garage Pawati: press Received on the Shree Roadlines slip.", keys="F3 garage pawati Enter",
+         page="/pawati", check="pawati_received_by_hand"),
+    Step("receive-lr", "Receipt: the LR does it for you",
+         what="When a transporter later gives the LR number, entering it on the gatepass records that Pawati as "
+              "received automatically.",
+         do="Open the gatepass, enter VTC-7001 for the Vijay Transport Co row, then Save LR numbers.",
+         keys="Tab to the LR box · type · F6", check="pawati_received_by_lr", hl="input[name^=lr_]"),
+    Step("register", "The register", what="Garage Pawati lists every slip: open, received (by hand or by LR), not "
+         "printed, cancelled - and how many days a slip has been open.", do="Open Garage Pawati.", page="/pawati",
+         ui={"path": r"^/pawati"}),
+])
+
 DM1 = Lesson("dm-monitor", "Depot operations and dispatch monitoring",
              "Pending invoices, filters by depot, gatepasses, the gate.", start="invoices", needs="anything",
              page="/dispatch/pending", source="Master User Manual (dispatch control) adapted to v1.6", steps=[
@@ -697,7 +761,7 @@ V02 = Lesson("v-reports", "Company and depot reports, exports", "Company-, depot
 
 LESSONS: dict[str, Lesson] = {l.code: l for l in (L01, L02, L03, L04, L05, L06, L07, L08, L09, L10, L11, L12, L13,
                                                    L14, L15, K00, D02, DM1, DM2, DM3, C01, C02, C03, A01, A02, A03,
-                                                   V01, V02)}
+                                                   V01, V02, D03)}
 
 PATHS: dict[str, dict] = {
     "MASTER": {"name": "Master Administrator", "roles": ["ADMIN"],
@@ -705,7 +769,7 @@ PATHS: dict[str, dict] = {
                            "m06-imports", "m07-long", "m08-trip", "m09-box", "m10-reports", "m11-users",
                            "m12-controls", "m13-delivery", "m14-bills", "m15-audit"]},
     "DISPATCH": {"name": "Dispatch Operator", "roles": ["DISPATCH_OPERATOR"],
-                 "lessons": ["k00-keys", "m07-long", "m08-trip", "m09-box", "d02-gate"]},
+                 "lessons": ["k00-keys", "m07-long", "m08-trip", "m09-box", "d02-gate", "d03-pawati"]},
     "DEPOT": {"name": "Depot Manager", "roles": ["CFA_MANAGER"],
               "lessons": ["k00-keys", "dm-monitor", "m07-long", "dm-exceptions", "dm-reports"]},
     "CHECKER": {"name": "Checker / Approver", "roles": ["CHECKER"],

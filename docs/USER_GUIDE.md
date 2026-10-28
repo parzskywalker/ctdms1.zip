@@ -114,7 +114,7 @@ Delete, void, cancel and reject always ask first with **No** pre-selected.
    invoice (use *split* to send some cases to another). After the gatepass is made, open *Garage Pawati* on it and print the
    white slips (4 per A4) - the auto cannot be gated out before that. When the garage signs, press *Received* (or just enter the LR
    later; that records it). A reprint needs a reason. *LR Books* (Dispatch desk) holds each transporter's builty numbers; CTDMS gives the next
-   one to each consignment and you may change it.
+   one to each consignment and you may change it. If one invoice is split between two transporters, each gets its own LR row. Practise it in Guided Training: lesson "Local-auto trip to transporters: Garage Pawati".
    (Older description, depots without case control:) **Case labels** (gatepass page): one label per case — customer, area, invoices, carrier, "case 3 / 12" and the
    gatepass barcode (scanning any case at the gate opens its gatepass). 100 × 50 mm label printer or A4 sheets.
 9. **E-way bill**: on the consignment's *Track* page (link on the gatepass). When System Settings ›

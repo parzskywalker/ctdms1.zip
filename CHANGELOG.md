@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.7.0 — Guided Training: Garage Pawati lesson
+
+- **New lesson "Local-auto trip to transporters: Garage Pawati"** (Dispatch Operator path, after *Gate check*): invoice 001250
+  (Korba, 8 cartons) goes by a local auto to two receiving transporters - 5 cartons to Shree Roadlines, 3 to Vijay Transport Co.
+  The trainee splits the invoice in the builder, generates and prints the gatepass, sees the gate refuse the trip until the
+  Garage Pawatis are printed, prints them, records gate-out, ticks one Pawati as received and receives the other by entering
+  its LR. Every practical step is checked in the practice database.
+- **Fix found by the lesson:** an invoice split between two receiving transporters could only take one LR (the main
+  receiver's). The gatepass now shows one LR row per customer and receiver, with that receiver's own cases, rate and freight;
+  the other part's LR is kept on its allocation, audited, needs a reason to change, and marks that receiver's Pawati received.
+- Tests: `tests/test_training_pawati.py` (the lesson, end to end) and a split-LR test in `tests/test_v17_phase6.py`.
+
 ## v1.7.0 — Phase 7: release readiness
 
 - **Garage Pawati is white** (plain white A4, 4 slips; no coloured stock needed).

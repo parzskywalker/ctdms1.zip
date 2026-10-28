@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import (
-    DispatchMode, DispatchSlip, Invoice, InvoiceStatus, LabelPrintLog, Location, OutsideAuto, PickupMode, SlipPrintLog,
+    DispatchAllocation, DispatchMode, DispatchSlip, Invoice, InvoiceStatus, LabelPrintLog, Location, OutsideAuto, PickupMode, SlipPrintLog,
     Transporter, User,
 )
 from app.security.auth import csrf_protect, require
@@ -289,17 +289,50 @@ def register(request: Request, db: Session = Depends(get_db), user: User = Depen
         "pages": max(math.ceil(total / per), 1), "qs": qs, "lr_missing": lr_missing, "sums": sums})
 
 
+def _lr_groups(db: Session, slip: DispatchSlip, invs: list) -> "OrderedDict":
+    """The consignments of a gatepass as the LR screen shows them: customer (and, when several transporters receive,
+    customer + receiver). An invoice split between two receivers appears once under each, with that receiver's cases,
+    rate and freight; the invoice itself carries the main receiver's LR, the other part's LR lives on its allocation."""
+    from types import SimpleNamespace
+    multi = not slip.transporter_id and slip.dispatch_mode == "TRANSPORTER"
+    line_by_inv = {ln.invoice_id: ln for ln in slip.lines}
+    parts: dict = {}
+    if multi:
+        for a in db.scalars(select(DispatchAllocation).where(DispatchAllocation.slip_id == slip.id)
+                            .order_by(DispatchAllocation.id)):
+            parts.setdefault(a.invoice_id, []).append(a)
+    groups: OrderedDict = OrderedDict()
+
+    def grp(inv, key, receiver):
+        return groups.setdefault(key, {"customer": inv.customer, "location": inv.location, "invs": [], "key": key,
+                                       "receiver": receiver, "prim": [], "sec": [], "lr": None})
+
+    for inv in invs:
+        ln = line_by_inv.get(inv.id)
+        split = parts.get(inv.id, [])
+        if multi and len(split) > 1:
+            for a in split:
+                g = grp(inv, f"{inv.customer_id}_{a.receiving_transporter_id}", a.transporter)
+                g["invs"].append((inv, SimpleNamespace(cases=a.cases, rate_per_case=a.rate_per_case, freight=a.freight,
+                                                       extra_charge=0, calc_note=a.calc_note,
+                                                       consignment_no=ln.consignment_no if ln else None)))
+                (g["prim"] if a.receiving_transporter_id == inv.transporter_id else g["sec"]).append(
+                    inv if a.receiving_transporter_id == inv.transporter_id else a)
+        else:
+            key = inv.customer_id if not multi else f"{inv.customer_id}_{inv.transporter_id}"
+            g = grp(inv, key, inv.transporter if multi else None)
+            g["invs"].append((inv, ln))
+            g["prim"].append(inv)
+    for g in groups.values():
+        g["lr"] = g["prim"][0] if g["prim"] else g["sec"][0]
+    return groups
+
+
 @router.get("/gatepass/{slip_id:int}")
 def detail(slip_id: int, request: Request, db: Session = Depends(get_db), user: User = Depends(require("dispatch.view"))):
     slip = _slip(db, user, slip_id)
     invs = ds.slip_invoices(db, slip)
-    groups: OrderedDict = OrderedDict()
-    line_by_inv = {ln.invoice_id: ln for ln in slip.lines}
-    for inv in invs:
-        key = inv.customer_id if slip.transporter_id or not slip.dispatch_mode == "TRANSPORTER" else f"{inv.customer_id}_{inv.transporter_id}"
-        groups.setdefault(key, {"customer": inv.customer, "location": inv.location, "invs": [], "key": key,
-                                "receiver": inv.transporter if not slip.transporter_id else None})["invs"] \
-            .append((inv, line_by_inv.get(inv.id)))
+    groups = _lr_groups(db, slip, invs)
     prints = list(db.scalars(select(SlipPrintLog).where(SlipPrintLog.slip_id == slip.id)
                              .order_by(SlipPrintLog.id)))
     seen, print_events = set(), []
@@ -310,7 +343,7 @@ def detail(slip_id: int, request: Request, db: Session = Depends(get_db), user: 
     complete_blockers = sorted({b for i in invs for b in ds.completion_blockers(db, i) if b != "Already dispatched"}) \
         if not slip.gate_out_at and not slip.is_void else []
     for g in groups.values():
-        g["locked"] = next((r for r in (ds.lr_locked_reason(db, inv) for inv, _ in g["invs"]) if r), None)
+        g["locked"] = next((r for r in (ds.lr_locked_reason(db, inv) for inv in g["prim"]) if r), None)
     from app.models import Notification
     alerts = list(db.scalars(select(Notification).where(Notification.slip_id == slip.id).order_by(Notification.id)))
     cases = cs.cases_of(db, slip, include_void=True) if slip.case_control == "REQUIRED" else []
@@ -447,22 +480,19 @@ def save_lr(slip_id: int, request: Request, form=Depends(get_form), db: Session 
             user: User = Depends(require("dispatch.operate"))):
     """LR per consignment (customer) on this gatepass: fields lr_<customer_id>, lrdate_<customer_id>."""
     slip = _slip(db, user, slip_id)
-    invs = ds.slip_invoices(db, slip)
-    by_cust: dict = {}
-    for inv in invs:
-        if inv.status != S.CANCELLED:  # several receiving transporters: one LR per customer AND transporter
-            k = inv.customer_id if slip.transporter_id or slip.dispatch_mode != "TRANSPORTER" else f"{inv.customer_id}_{inv.transporter_id}"
-            by_cust.setdefault(k, []).append(inv)
+    invs = [i for i in ds.slip_invoices(db, slip) if i.status != S.CANCELLED]
     n = 0
-    for cid, group in by_cust.items():
-        key = f"lr_{cid}"
-        if key not in form:
+    for key, g in _lr_groups(db, slip, invs).items():   # several receiving transporters: one LR per customer AND transporter
+        field = f"lr_{key}"
+        if field not in form:
             continue
-        lr = (form.get(key) or "").strip().upper() or None
-        d = form.get(f"lrdate_{cid}") or None
-        if all(i.lr_no == lr for i in group) and (not d or all(str(i.lr_date) == d for i in group)):
-            continue
-        n += ds.set_lr(db, user, group, lr, d, reason=form.get("reason"))
+        lr = (form.get(field) or "").strip().upper() or None
+        d = form.get(f"lrdate_{key}") or None
+        group = g["prim"]
+        if group and not (all(i.lr_no == lr for i in group) and (not d or all(str(i.lr_date) == d for i in group))):
+            n += ds.set_lr(db, user, group, lr, d, reason=form.get("reason"))
+        if g["sec"]:
+            n += ds.set_alloc_lr(db, user, slip, g["sec"], lr, d, reason=form.get("reason"))
     db.commit()
     flash(request, f"LR saved for {n} invoice(s)." if n else "No LR changes.", "success" if n else "info")
     return redirect(form.get("back") or f"/gatepass/{slip.id}")
