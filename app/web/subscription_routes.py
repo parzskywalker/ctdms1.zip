@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import ReportSubscription, User
-from app.security.auth import csrf_protect, require
+from app.security.auth import csrf_protect, require_any
 from app.services import audit
 from app.services import subscription_service as subs
 from app.services.errors import BusinessError
@@ -27,7 +27,7 @@ def _sub(db: Session, user: User, sub_id: int) -> ReportSubscription:
 
 
 @router.get("/report-subscriptions")
-def index(request: Request, db: Session = Depends(get_db), user: User = Depends(require("report.view"))):
+def index(request: Request, db: Session = Depends(get_db), user: User = Depends(require_any("report.view", "mis.view"))):
     stmt = select(ReportSubscription).order_by(ReportSubscription.id.desc())
     if not user.can("admin.settings"):
         stmt = stmt.where(ReportSubscription.owner_id == user.id)
@@ -41,7 +41,7 @@ def index(request: Request, db: Session = Depends(get_db), user: User = Depends(
 
 @router.post("/report-subscriptions")
 def create(request: Request, form=Depends(get_form), db: Session = Depends(get_db),
-           user: User = Depends(require("report.view"))):
+           user: User = Depends(require_any("report.view", "mis.view"))):
     params = {k: safe_int(form.get(k)) for k in PARAM_KEYS if safe_int(form.get(k))}
     sub = subs.create(db, user, name=form.get("name") or "", report_code=form.get("report_code") or "",
                       frequency=form.get("frequency") or "", recipients=form.get("recipients") or "",
@@ -53,7 +53,7 @@ def create(request: Request, form=Depends(get_form), db: Session = Depends(get_d
 
 
 @router.post("/report-subscriptions/{sub_id:int}/toggle")
-def toggle(sub_id: int, request: Request, db: Session = Depends(get_db), user: User = Depends(require("report.view"))):
+def toggle(sub_id: int, request: Request, db: Session = Depends(get_db), user: User = Depends(require_any("report.view", "mis.view"))):
     sub = _sub(db, user, sub_id)
     sub.is_active = not sub.is_active
     if sub.is_active:
@@ -65,7 +65,7 @@ def toggle(sub_id: int, request: Request, db: Session = Depends(get_db), user: U
 
 
 @router.post("/report-subscriptions/{sub_id:int}/delete")
-def delete(sub_id: int, request: Request, db: Session = Depends(get_db), user: User = Depends(require("report.view"))):
+def delete(sub_id: int, request: Request, db: Session = Depends(get_db), user: User = Depends(require_any("report.view", "mis.view"))):
     sub = _sub(db, user, sub_id)
     audit.log(db, user, "SUBSCRIPTION_DELETED", subs.MODULE, record_type="ReportSubscription", record_id=sub.id,
               ref=sub.name, details={"to": sub.recipients, "report": sub.report_code})
@@ -77,7 +77,7 @@ def delete(sub_id: int, request: Request, db: Session = Depends(get_db), user: U
 
 @router.post("/report-subscriptions/{sub_id:int}/send")
 def send_now(sub_id: int, request: Request, db: Session = Depends(get_db),
-             user: User = Depends(require("report.view"))):
+             user: User = Depends(require_any("report.view", "mis.view"))):
     sub = _sub(db, user, sub_id)
     try:
         subs.send(db, sub, user)

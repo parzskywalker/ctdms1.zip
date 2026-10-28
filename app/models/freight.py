@@ -122,11 +122,29 @@ class TransporterRate(Base, TimestampMixin):
     approved_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     approved_at: Mapped[datetime | None] = mapped_column(DateTime)
     rejected_reason: Mapped[str | None] = mapped_column(Text)
+    # v1.7 explicit exceptions: NULL = the general rate for the transporter and area. A depot and / or company
+    # exception wins over the general rate for that depot / company only (rank: depot+company > depot > company > general).
+    cfa_id: Mapped[int | None] = mapped_column(ForeignKey("cfas.id"))
+    company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"))
 
     transporter = relationship("Transporter")
     location = relationship("Location")
+    cfa = relationship("CFA")
+    company = relationship("Company")
     created_by = relationship("User", foreign_keys=[created_by_id])
     approved_by = relationship("User", foreign_keys=[approved_by_id])
+
+    @property
+    def rank(self) -> int:
+        """3 depot + company, 2 depot, 1 company, 0 general."""
+        if self.cfa_id and self.company_id:
+            return 3
+        return 2 if self.cfa_id else (1 if self.company_id else 0)
+
+    @property
+    def scope_label(self) -> str:
+        parts = [self.cfa.code if self.cfa_id else None, self.company.code if self.company_id else None]
+        return " + ".join(p for p in parts if p) or "All depots and companies"
 
     def covers(self, d: date) -> bool:
         return self.effective_from <= d and (self.effective_to is None or self.effective_to >= d)

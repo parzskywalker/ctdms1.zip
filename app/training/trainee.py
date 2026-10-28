@@ -15,7 +15,8 @@ def practice_username(real: User) -> str:
 
 
 def _load(db: Session, uid: int) -> User:
-    return db.get(User, uid, options=[selectinload(User.companies), selectinload(User.cfas)])
+    return db.get(User, uid, options=[selectinload(User.companies), selectinload(User.cfas),
+                                      selectinload(User.permission_overrides), selectinload(User.scope_rows)])
 
 
 def practice_user(db: Session, real: User, act_as: str | None = None) -> User:
@@ -27,7 +28,7 @@ def practice_user(db: Session, real: User, act_as: str | None = None) -> User:
             return _load(db, u.id)
     code = real.role.code if real.role else "VIEWER"
     role = db.scalar(select(Role).where(Role.code == code))
-    live_perms = list(real.role.permissions or []) if real.role else []
+    live_perms = real.effective_permission_list() if real.role else []  # role + this user's own grants / denies
     if role is None:
         role = Role(code=code, name=real.role.name if real.role else code, permissions=live_perms, is_system=False)
         db.add(role)

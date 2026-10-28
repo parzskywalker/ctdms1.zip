@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-head">
   <div><h1>Freight Exceptions</h1><div class="sub">Invoices that cannot be dispatched until resolved. The system never falls back to a guessed rate.</div></div>
-  <div class="actions"><a class="btn" href="/reports/rate-missing">Rate Missing report</a><a class="btn" href="/reports/dispatch-exceptions">Exception report</a></div>
+  <div class="actions">{% if can('report.view') %}<a class="btn" href="/reports/rate-missing">Rate Missing report</a><a class="btn" href="/reports/dispatch-exceptions">Exception report</a>{% endif %}</div>
 </div>
 <form class="filters" method="get">
   <div class="f"><label>Company</label>{{ select('company_id', opts.companies, f.company_id) }}</div>

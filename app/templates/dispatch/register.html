@@ -4,8 +4,8 @@
 <div class="page-head">
   <div><h1>Dispatch Register</h1><div class="sub">Generated dispatch slips by dispatch date · {{ f.describe() }}</div></div>
   <div class="actions">
-    <a class="btn" href="/reports/dispatch-register?{{ qs }}">Report view</a>
-    {% if can('data.export') %}<a class="btn" href="/reports/dispatch-register/export?fmt=xlsx&{{ qs }}">Excel</a>{% endif %}
+    {% if can('report.view') %}<a class="btn" href="/reports/dispatch-register?{{ qs }}">Report view</a>{% endif %}
+    {% if can('data.export') and can('report.view') %}<a class="btn" href="/reports/dispatch-register/export?fmt=xlsx&{{ qs }}">Excel</a>{% endif %}
   </div>
 </div>
 {{ filter_bar(f, opts, ['date','company','cfa','customer','location','transporter','invoice_no'], action='/dispatch/register') }}

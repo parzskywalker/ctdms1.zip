@@ -194,6 +194,23 @@ def next_sequence(db: Session, name: str) -> int:
     return value
 
 
+def next_sequence_block(db: Session, name: str, n: int) -> int:
+    """Reserve n consecutive numbers with ONE update of the counter (so a 200-case gatepass does not hold the write lock
+    for 200 round trips). Returns the first number of the block."""
+    stmt = select(Sequence).where(Sequence.name == name)
+    if db.get_bind().dialect.name == "postgresql":
+        stmt = stmt.with_for_update()
+    seq = db.scalar(stmt)
+    if seq is None:
+        seq = Sequence(name=name, next_value=1)
+        db.add(seq)
+        db.flush()
+    value = seq.next_value
+    db.execute(update(Sequence).where(Sequence.name == name).values(next_value=value + max(n, 1)))
+    db.expire(seq)
+    return value
+
+
 # ----------------------------------------------------------------------------- formatting
 def fmt_money(v, symbol: bool = True) -> str:
     if v is None or v == "":

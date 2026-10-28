@@ -18,7 +18,7 @@ from app.services import recon_service as rs
 from app.services import settings_service as cfg
 from app.services.errors import BusinessError
 from app.services.reports import Filters
-from app.services.scope import apply_strict_scope, can_change
+from app.services.scope import apply_bill_scope, can_change
 from app.services.utils import csv_safe, local_now, local_today, money, parse_date, parse_decimal, safe_int
 from app.web.templating import filter_options, flash, get_form, read_upload, redirect, render
 
@@ -27,7 +27,7 @@ router = APIRouter(dependencies=[Depends(csrf_protect)], include_in_schema=False
 
 def _bill(db, bill_id, user: User) -> TransporterBill:
     b = db.get(TransporterBill, bill_id)
-    if not b or not can_change(user, b.company_id, b.cfa_id):
+    if not b or not user.scope_is_open or not can_change(user, b.company_id, b.cfa_id):
         raise HTTPException(404)  # out-of-scope bills behave as if they do not exist
     return b
 
@@ -35,7 +35,7 @@ def _bill(db, bill_id, user: User) -> TransporterBill:
 @router.get("/recon")
 def bill_list(request: Request, db: Session = Depends(get_db), user: User = Depends(require("recon.view"))):
     f = Filters.from_params(request.query_params, default_range="fy")
-    stmt = apply_strict_scope(select(TransporterBill), user, TransporterBill)
+    stmt = apply_bill_scope(select(TransporterBill), user, TransporterBill)
     if f.date_from:
         stmt = stmt.where(TransporterBill.bill_date >= f.date_from)
     if f.date_to:

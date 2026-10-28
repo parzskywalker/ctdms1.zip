@@ -1,13 +1,14 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="page-head"><div><h1>Users</h1><div class="sub">Role decides the functions; company / Depot assignment decides the data a user can see.</div></div>
+<div class="page-head"><div><h1>Users</h1><div class="sub">The role decides the functions (with individual exceptions); company, Depot, area, customer type and customer decide the data a person sees.</div></div>
   <div class="actions">{% if can('admin.backup') %}<a class="btn" href="/admin/export">Full data export (ZIP)</a>{% endif %}<a class="btn btn-primary" href="/admin/users/new">New user</a></div></div>
 <div class="card flush"><div class="table-wrap"><table class="data">
-  <thead><tr><th>Username</th><th>Name</th><th>Role</th><th>Companies</th><th>Depots</th><th>Last login</th><th class="num">Sessions</th><th>Status</th></tr></thead>
+  <thead><tr><th>Username</th><th>Name</th><th>Role</th><th>Companies</th><th>Depots</th><th>Areas / customers</th><th>Last login</th><th class="num">Sessions</th><th>Status</th></tr></thead>
   <tbody>{% for u in rows %}
     <tr class="{% if not u.is_active %}row-muted{% endif %}"><td><a href="/admin/users/{{ u.id }}"><b>{{ u.username }}</b></a></td><td>{{ u.full_name }}</td><td>{{ u.role.name }}</td>
       <td class="small">{{ 'All' if u.all_companies else (u.companies|map(attribute='code')|join(', ') or 'none') }}</td>
       <td class="small">{{ 'All' if u.all_cfas else (u.cfas|map(attribute='code')|join(', ') or 'none') }}</td>
+      <td class="small">{% if u.scope_is_open %}All{% else %}{% if not u.all_areas %}{{ u.area_ids|length }} area(s){% endif %}{% if not u.all_customer_types %} {{ u.customer_type_codes|join(', ') or 'no type' }}{% endif %}{% if not u.all_customers %} {{ u.customer_ids|length }} customer(s){% endif %}{% endif %}{% if u.permission_overrides %} <span class="badge b-PENDING" title="Individual permission changes">+{{ u.permission_overrides|length }}</span>{% endif %}</td>
       <td class="small">{{ u.last_login_at|dt }}</td><td class="num">{{ active.get(u.id, 0) }}</td>
       <td>{% if u.locked_until %}<span class="badge b-FAILED">Locked</span>{% elif u.is_active %}<span class="badge b-ACTIVE">Active</span>{% else %}<span class="badge b-INACTIVE">Inactive</span>{% endif %}</td></tr>
   {% endfor %}</tbody>

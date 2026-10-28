@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db, write_block
 from app.models import BillStatus, OverrideStatus, RateStatus, User
-from app.security.auth import PermissionDenied, csrf_protect, require
+from app.security.auth import PermissionDenied, csrf_protect, current_user, require, require_any
 from app.services import audit
 from app.services import settings_service as cfg
 from app.services.dashboard import LEVELS, drill, drill_totals
@@ -19,11 +19,13 @@ router = APIRouter(dependencies=[Depends(csrf_protect)], include_in_schema=False
 
 
 def _def(code: str, user: User):
+    """The report definition, if this user may open it: final reports need Final Reports / MIS (mis.view); operational
+    registers and control reports need their own (lower) permission. Views, exports, print and the API all use this."""
     rd = REPORTS.get(code)
     if not rd:
         raise HTTPException(404)
     if not user.can(rd.perm):
-        raise PermissionDenied(rd.perm)
+        raise PermissionDenied(rd.perm, "Your role does not include this report." if rd.final else None)
     return rd
 
 
@@ -42,7 +44,7 @@ def _show_filters(rd) -> tuple[list[str], list[str] | None]:
 
 
 @router.get("/reports")
-def index(request: Request, db: Session = Depends(get_db), user: User = Depends(require("report.view"))):
+def index(request: Request, db: Session = Depends(get_db), user: User = Depends(require_any("report.view", "mis.view"))):
     sku = cfg.get(db, "features.sku_lines")  # v1.6: product / SKU reporting postponed
     groups = [(g, [r for r in REPORTS.values() if r.group == g and user.can(r.perm)
                    and (sku or r.code != "sku-dispatch")]) for g in REPORT_GROUPS]
@@ -50,14 +52,14 @@ def index(request: Request, db: Session = Depends(get_db), user: User = Depends(
 
 
 @router.get("/mis")
-def mis(request: Request, db: Session = Depends(get_db), user: User = Depends(require("report.view"))):
+def mis(request: Request, db: Session = Depends(get_db), user: User = Depends(require("mis.view"))):
     f = Filters.from_params(request.query_params, default_range="fy")
     return render(request, "reports/mis.html", {"title": "Transportation MIS", "f": f, "opts": filter_options(db, user),
                                                 "totals": drill_totals(db, user, f), "qs": f.query()})
 
 
 @router.get("/mis/data")
-def mis_data(request: Request, db: Session = Depends(get_db), user: User = Depends(require("report.view"))):
+def mis_data(request: Request, db: Session = Depends(get_db), user: User = Depends(require("mis.view"))):
     qp = request.query_params
     level = qp.get("level", "company")
     if level not in LEVELS:
@@ -72,7 +74,7 @@ def mis_data(request: Request, db: Session = Depends(get_db), user: User = Depen
 
 
 @router.get("/reports/{code}")
-def view(code: str, request: Request, db: Session = Depends(get_db), user: User = Depends(require("report.view"))):
+def view(code: str, request: Request, db: Session = Depends(get_db), user: User = Depends(current_user)):
     rd = _def(code, user)
     f = Filters.from_params(request.query_params, default_range=rd.default_range)
     res = rd.run(db, user, f)
@@ -87,7 +89,7 @@ def view(code: str, request: Request, db: Session = Depends(get_db), user: User 
 
 @router.get("/reports/{code}/export")
 def export(code: str, request: Request, fmt: str = "xlsx", db: Session = Depends(get_db),
-           user: User = Depends(require("report.view"))):
+           user: User = Depends(current_user)):
     rd = _def(code, user)
     if not user.can("data.export"):
         raise PermissionDenied("data.export")

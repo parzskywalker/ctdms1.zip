@@ -46,7 +46,7 @@
         <td>
           <form method="post" action="/admin/training/{{ u.id }}" class="row" style="gap:4px;margin:0 0 4px">
             <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="do" value="assign">
-            <select name="path" style="width:auto" aria-label="Learning path for {{ u.username }}" data-native>{% for k, pth in paths.items() %}<option value="{{ k }}" {% if k == r.path %}selected{% endif %}>{{ pth.name }}</option>{% endfor %}</select>
+            <select name="path" style="width:auto" aria-label="Learning path for {{ u.username }}" data-native>{% for k, pth in paths.items() if k in r.allowed %}<option value="{{ k }}" {% if k == r.path %}selected{% endif %}>{{ pth.name }}</option>{% endfor %}</select>
             <button class="btn btn-sm" type="submit">Assign</button>
           </form>
           <form method="post" action="/admin/training/{{ u.id }}" class="inline-form"><input type="hidden" name="csrf_token" value="{{ csrf }}">

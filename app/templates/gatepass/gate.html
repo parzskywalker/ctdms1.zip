@@ -21,6 +21,27 @@
   {% else %}
     <div class="alert alert-success" style="font-size:16px"><b>Cleared.</b> Count the cases, then confirm gate-out.</div>
   {% endif %}
+  {% if prog and not slip.is_void and not slip.gate_out_at %}
+  <div class="card" id="gate-scan" data-slip="{{ slip.id }}" data-no="{{ slip.dispatch_no }}" data-auto="{{ autoscan }}" data-total="{{ prog.total }}">
+    <div class="row" style="align-items:center;gap:16px;flex-wrap:wrap">
+      <div style="flex:1 1 320px"><label for="case-code"><b>Scan each case</b> <span class="muted small">(the barcode on its label - the cursor stays here)</span></label>
+        <input id="case-code" type="text" autocomplete="off" inputmode="numeric" placeholder="scan a case label" data-enter-skip {% if not autoscan %}autofocus{% endif %}></div>
+      <div style="text-align:center"><div class="bigfig" id="gs-count" style="font-size:38px">{{ prog.scanned }} / {{ prog.total }}</div><div class="small muted">cases scanned</div></div>
+    </div>
+    <div id="gs-msg" class="alert" role="status" aria-live="assertive" style="margin:10px 0 0;font-size:17px" hidden></div>
+    <div class="table-wrap" style="margin-top:10px"><table class="data compact" id="gs-inv"><thead><tr><th>Invoice</th><th class="num">Scanned</th></tr></thead>
+      <tbody>{% for r in prog.per_invoice %}<tr data-inv="{{ r.invoice.invoice_no }}"><td>{{ r.invoice.invoice_no }} <span class="muted small">{{ r.invoice.customer.name }}</span></td><td class="num"><b>{{ r.scanned }} / {{ r.total }}</b></td></tr>{% endfor %}</tbody></table></div>
+    <details id="gs-missing" {% if prog.missing and prog.scanned %}open{% endif %} style="margin-top:8px"><summary class="small"><b id="gs-missing-n">{{ prog.missing|length }}</b> case(s) not scanned yet</summary>
+      <div class="small mono" id="gs-missing-list" style="max-height:140px;overflow:auto">{% for c in prog.missing %}<div>{{ c.invoice.invoice_no }} · {{ c.seq_in_consignment }}/{{ c.consignment_total }} · {{ c.case_code }}</div>{% endfor %}</div></details>
+    {% if prog.exception %}<div class="alert alert-warn" style="margin-top:8px">Exception recorded by {{ slip.gate_exception_by.full_name if slip.gate_exception_by else '' }}: {{ slip.gate_exception_reason }}</div>
+    {% elif can_exception and prog.missing %}
+    <form method="post" action="/gatepass/{{ slip.id }}/gate-exception" class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <input type="text" name="reason" placeholder="Let it leave with cases missing - reason (required)" minlength="5" required style="flex:1;min-width:260px">
+      <button class="btn btn-danger" type="submit" data-confirm="Let {{ slip.dispatch_no }} leave with the unscanned cases marked MISSING?">Record exception</button>
+    </form>{% endif %}
+  </div>
+  {% endif %}
   <div class="grid g-side">
     <div class="card flush">
       <div class="card-head"><h3><span class="mono">{{ slip.dispatch_no }}</span> · {{ slip.mode_label }}</h3><span>{{ slip.transporter.name if slip.transporter else '' }}{% if slip.outside_auto %} · {{ slip.outside_auto.name }} {{ slip.outside_auto.mobile or '' }}{% endif %}</span></div>
@@ -34,7 +55,7 @@
       {% if not slip.is_void and not slip.gate_out_at and not blockers and can('dispatch.complete') %}
       <form method="post" action="/gatepass/{{ slip.id }}/gate-out" class="card stack">
         <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="back" value="gate">
-        <h3 style="margin:0">{{ slip.total_cases }} cases counted?</h3>
+        <h3 style="margin:0">{% if prog %}All {{ prog.total }} cases scanned{% if prog.exception %} (exception recorded){% endif %}{% else %}{{ slip.total_cases }} cases counted?{% endif %}</h3>
         <button class="btn btn-ok btn-lg" type="submit" data-key="F9">Confirm gate-out</button>
       </form>
       {% endif %}
@@ -51,4 +72,41 @@
     {% else %}<tr><td colspan="6" class="empty">Nothing waiting.</td></tr>{% endfor %}</tbody>
   </table></div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const box = document.getElementById('gate-scan'); if (!box) return;
+  const input = document.getElementById('case-code'), msg = document.getElementById('gs-msg');
+  const csrf = document.querySelector('input[name=csrf_token]') ? document.querySelector('input[name=csrf_token]').value : '{{ csrf }}';
+  const esc = (t) => String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  let ctx = null;
+  function beep(ok) {
+    try { ctx = ctx || new (window.AudioContext || window.webkitAudioContext)(); const o = ctx.createOscillator(), g = ctx.createGain();
+      o.frequency.value = ok ? 880 : 220; g.gain.value = 0.15; o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + (ok ? 0.08 : 0.4)); } catch (e) {}
+  }
+  function show(j) {
+    msg.hidden = false; msg.className = 'alert alert-' + (j.ok ? 'success' : (j.result === 'DUPLICATE' ? 'warn' : 'error'));
+    msg.innerHTML = (j.ok ? '✔ ' : '✖ STOP · ') + esc(j.message || j.result);
+    beep(j.ok);
+  }
+  function paint(j) {
+    if (j.total != null) document.getElementById('gs-count').textContent = j.scanned + ' / ' + j.total;
+    (j.per_invoice || []).forEach((r) => { const tr = box.querySelector('tr[data-inv="' + r.invoice + '"] td.num'); if (tr) tr.innerHTML = '<b>' + r.scanned + ' / ' + r.total + '</b>'; });
+    document.getElementById('gs-missing-n').textContent = (j.missing || []).length;
+    document.getElementById('gs-missing-list').innerHTML = (j.missing || []).map((c) => '<div>' + esc(c.invoice) + ' · ' + c.k + '/' + c.n + ' · ' + esc(c.code) + '</div>').join('');
+    if (j.cleared) setTimeout(() => { location.href = '/gatepass/gate?code=' + encodeURIComponent(box.dataset.no); }, 900);
+  }
+  async function send(code) {
+    const body = new FormData(); body.append('code', code); body.append('slip_id', box.dataset.slip); body.append('station', 'gate');
+    try {
+      const r = await fetch('/gatepass/scan-case', {method: 'POST', headers: {'X-CSRF-Token': csrf}, body}); const j = await r.json();
+      show(j); if (j.total != null) paint(j);
+    } catch (e) { show({ok: false, message: 'Could not reach the server - scan again'}); }
+    input.value = ''; input.focus();
+  }
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); const c = input.value.trim(); if (c) send(c); } });
+  if (box.dataset.auto) send(box.dataset.auto);
+})();
+</script>
 {% endblock %}

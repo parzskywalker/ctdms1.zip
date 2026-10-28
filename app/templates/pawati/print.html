@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Garage Pawati</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111; }
+  .bar { padding: 8px 12px; background: #f1f5f9; font-size: 13px; }
+  .bar button { font-size: 13px; padding: 5px 12px; cursor: pointer; }
+  @page { size: A4; margin: 6mm; }
+  .sheet { display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 138mm; gap: 0; page-break-after: always; }
+  .slip { border: 1px solid #333; padding: 4mm; background: #fff; display: flex; flex-direction: column; gap: 2mm; overflow: hidden; }
+  .firm { text-align: center; font-weight: 800; font-size: 12pt; }
+  .addr { text-align: center; font-size: 7.5pt; line-height: 1.25; }
+  .co { text-align: center; font-weight: 700; font-size: 9pt; border-top: 1px solid #333; border-bottom: 1px solid #333; padding: 1mm 0; }
+  .title { text-align: center; font-weight: 800; letter-spacing: 1px; font-size: 11pt; }
+  .no { display: flex; justify-content: space-between; font-size: 11pt; font-weight: 800; }
+  table { border-collapse: collapse; width: 100%; font-size: 9.5pt; }
+  td { border: 1px solid #444; padding: 1.2mm 1.5mm; vertical-align: top; }
+  td.k { width: 22mm; font-weight: 700;  }
+  .big { font-size: 12pt; font-weight: 800; }
+  .sign { margin-top: auto; display: flex; justify-content: space-between; font-size: 8pt; align-items: flex-end; }
+  .sign div { border-top: 1px solid #333; padding-top: 1mm; width: 46%; text-align: center; }
+  .foot { font-size: 7pt; color: #333; text-align: center; }
+  .dup { text-align: center; font-weight: 800; color: #9a3412; font-size: 9pt; }
+  @media print { .bar { display: none; } }
+  .trn { color: #b45309; font-weight: 800; text-align: center; font-size: 9pt; border: 2px dashed #b45309; }
+</style>
+</head>
+<body>
+<div class="bar"><b>{{ rows|length }} Garage Pawati</b> · A4, 4 slips per sheet <button onclick="window.print()">Print</button> <a href="/pawati">Register</a></div>
+{% set wm = training_watermark() %}
+{% for chunk in rows|batch(4) %}
+<div class="sheet">
+  {% for p in chunk %}{% set s = p.snapshot %}
+  <div class="slip">
+    {% if wm %}<div class="trn">TRAINING - NOT VALID</div>{% endif %}
+    <div class="firm">{{ s.firm }}</div>
+    <div class="addr">{{ s.depot }}{% if s.depot_address %} · {{ s.depot_address }}{% endif %}{% if s.depot_phone %}<br>Ph: {{ s.depot_phone }}{% endif %}</div>
+    <div class="co">{{ s.company }}</div>
+    <div class="title">GARAGE PAWATI</div>
+    <div class="no"><span>No. {{ p.pawati_no }}</span><span>Date: {{ s.date }}</span></div>
+    {% if p.print_count > 1 %}<div class="dup">DUPLICATE · reprint #{{ p.print_count - 1 }}</div>{% endif %}
+    <table>
+      <tr><td class="k">Garage</td><td class="big">{{ s.garage }}{% if s.garage_city %}, {{ s.garage_city }}{% endif %}</td></tr>
+      <tr><td class="k">To</td><td class="big">{{ s.to }}{% if s.to_place %} <span style="font-weight:400">· {{ s.to_place }}</span>{% endif %}</td></tr>
+      <tr><td class="k">Cartons</td><td class="big">{{ p.cartons }}</td></tr>
+      <tr><td class="k">Bill No.</td><td>{{ p.bill_nos }}</td></tr>
+      <tr><td class="k">Amount</td><td>₹ {{ '{:,.2f}'.format(p.amount) }}</td></tr>
+      <tr><td class="k">Freight</td><td>₹ {{ '{:,.2f}'.format(p.freight) }}</td></tr>
+    </table>
+    <div class="sign"><div>Receiver's signature</div><div>For {{ s.firm }}</div></div>
+    <div class="foot">Gatepass {{ s.gatepass }}{% if s.auto %} · auto {{ s.auto }} {{ s.vehicle }}{% endif %}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endfor %}
+</body>
+</html>

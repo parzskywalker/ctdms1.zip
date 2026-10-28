@@ -59,7 +59,7 @@ def _step(w, action="next") -> dict:
 
 # ----------------------------------------------------------------------------- lesson catalogue
 def test_lessons_paths_checks_and_starting_points_are_consistent():
-    assert len(PATHS["MASTER"]["lessons"]) == 15
+    assert len(PATHS["MASTER"]["lessons"]) == 16
     for code, p in PATHS.items():
         assert p["lessons"], code
         for c in p["lessons"]:
@@ -82,7 +82,8 @@ def test_lessons_paths_checks_and_starting_points_are_consistent():
     for code in ("MASTER", "DISPATCH", "DEPOT", "CHECKER", "ACCOUNTS", "MANAGEMENT"):
         assert any(LESSONS[c].practical for c in PATHS[code]["lessons"]), code
     assert progress.path_for_role("DISPATCH_OPERATOR") == "DISPATCH"
-    assert progress.path_for_role("CFA_MANAGER") == "DEPOT" and progress.path_for_role("VIEWER") == "MANAGEMENT"
+    assert progress.path_for_role("CFA_MANAGER") == "DEPOT" and progress.path_for_role("MANAGEMENT") == "MANAGEMENT"
+    assert progress.path_for_role("VIEWER") == "VIEWER"  # a Viewer is not a Management user (no final reports)
 
 
 def test_starting_points_rebuild_the_v16_demonstration():
@@ -272,13 +273,21 @@ def test_progress_survives_logout_and_the_master_can_reset_it(web, db):
     db.expire_all()
     p = db.scalar(select(TrainingProgress).where(TrainingProgress.user_id == uid))
     assert p.status == "NOT_STARTED" and not p.lessons and not runtime.has_practice_db(uid)
+    # the Master cannot give a Dispatch Operator another role's tutorial (its screens would not open for the role)
     a.post(f"/admin/training/{uid}", data={"do": "assign", "path": "MANAGEMENT"})
+    a.post(f"/admin/training/{uid}", data={"do": "assign", "path": "MASTER"})
     db.expire_all()
-    assert db.scalar(select(TrainingProgress.path).where(TrainingProgress.user_id == uid)) == "MANAGEMENT"
+    assert db.scalar(select(TrainingProgress.path).where(TrainingProgress.user_id == uid)) == "DISPATCH"
+    # an Administrator can practise any path; the assignment is audited
+    aid = _make_user(web, "trn.adm", "ADMIN")
+    a.post(f"/admin/training/{aid}", data={"do": "assign", "path": "MANAGEMENT"})
+    db.expire_all()
+    assert db.scalar(select(TrainingProgress.path).where(TrainingProgress.user_id == aid)) == "MANAGEMENT"
     page = a.get("/admin/training").text
-    assert "trn.resume" in page and "Management / Viewer" in page
-    detail = a.get(f"/admin/training/{uid}").text
-    assert "Dashboard, filters and MIS" in detail and "Reassigned" in detail and "Reset" in detail
+    assert "trn.resume" in page and "Dispatch Operator" in page
+    assert 'value="MASTER"' not in page.split("trn.resume")[1].split("</tr>")[0]  # not offered for an operator
+    detail = a.get(f"/admin/training/{aid}").text
+    assert "Dashboard, filters and MIS" in detail and "Reassigned" in detail
 
 
 def test_completing_a_path_needs_real_results_and_unlocks_live_work(web, db):

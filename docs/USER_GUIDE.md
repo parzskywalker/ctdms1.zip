@@ -31,8 +31,9 @@ result is really there (a gatepass generated, printed and gone out; a bill appro
 * Log out at any time; *Continue* resumes at the same step. *Replay lesson* repeats a lesson; *Prepare practice data*
   resets your practice copy to the lesson's starting point. *Save & exit* returns to live work.
 * Two-person steps (rate or bill approval): press *Act as Demo Checker* in the panel, then *Act as myself*.
-* Learning paths: Master Administrator (15 lessons), Dispatch Operator, Depot Manager, Checker / Approver, Accounts,
-  Management / Viewer - chosen from your role; the Master can assign another.
+* Learning paths: Master Administrator (16 lessons), Dispatch Operator, Depot Manager, Checker / Approver, Accounts,
+  Management, Read-only Viewer - chosen from your role; the Master can only assign the tutorial that belongs to the
+  user's role (a Dispatch Operator is not given the Master Administrator tutorial).
 
 **For the Master - Administration › Guided Training:** switch compulsory training ON / OFF (also in System Settings ›
 Guided Training). ON: users created from then on must finish their path before live screens open; OFF: everybody works,
@@ -80,14 +81,41 @@ Delete, void, cancel and reject always ask first with **No** pre-selected.
 4. The right-hand panel shows freight, extras, **total charged** and **amount paid now** (cash for autos and CASH
    transporters; TBB transporters bill later). Invoices whose area has no rate on that transporter's card are
    flagged — add the rate under *Transporter Rate Cards* (a second person approves it).
+   **v1.7 – who is offered.** Only transporters that can carry these goods are listed: they serve the depot (Master
+   Settings › Transporters › *Depots served*; nothing ticked = every depot) and have an approved rate for **every area**
+   on the gatepass. With invoices for several areas, only a transporter that has all of them appears; if there is none
+   the screen names the areas and says to split the gatepass or ask for a Master update. A manager who holds the
+   permission can tick *Choose a transporter that does not serve this depot* and type a reason - it is audited and shown
+   on the gatepass. A rate exception (see *Transporter Rate Cards*) for this depot / company is used automatically, and
+   the gatepass keeps a note of *how the freight was calculated*.
+   **Companies.** Invoices of different companies go on one gatepass only if you tick *Group across companies* (Enter
+   on the empty scan box takes you to the tick box, Space ticks it). It is recorded; every invoice keeps its own company,
+   number and cases. The *Consignments* panel shows one line per customer and delivery area.
+   **Delivery area.** A customer with several delivery locations (Master Settings › Customers › *Delivery locations*)
+   has the invoice held as *choose the delivery location* until you pick one on the invoice screen (recorded). If an
+   import file names an area that is not one of the customer's, System Settings › `area.mismatch_action` decides:
+   ACCEPT (use the file's area, as before) or EXCEPTION (hold the invoice until the area is confirmed).
 5. **Generate gatepass** → one number for the whole pickup. **Print** it (A5/A4/PDF): it carries a barcode, every
    customer with its invoices, cases and charge, the transporter's name/contact/GST/payment mode — no vehicle number.
 6. **Gate check**: the guard scans the gatepass barcode, counts the cases and presses **Confirm gate-out**. All its
    invoices become DISPATCHED. A void, unprinted or already-used gatepass shows a red STOP.
+   **v1.7 – case control.** For a depot with case control the guard scans every case label on *Gate check* (the cursor
+   stays in the scan box). A green tick means counted; a red STOP says why (wrong gatepass, void label, same case twice,
+   training label...). *Confirm gate-out* appears only when every case is scanned. If cartons are genuinely missing, a manager
+   records an *exception* with a reason; the cases are marked missing and it is audited.
 7. **LR numbers** come later from the transporter: type them on the gatepass page (one per customer) or on
    **LR Pending** in bulk. They can be corrected (with a reason) until the transporter's bill is approved.
 
-8. **Case labels** (gatepass page): one label per case — customer, area, invoices, carrier, "case 3 / 12" and the
+8. **Case labels with a barcode per case** (v1.7, depots with case control switched on): on the gatepass page press
+   *Print the labels*. Every carton has its own code (shown under the barcode) and "case k / n" of its consignment. Print
+   with the normal print dialog, then answer *Did all labels print?* - *No* keeps them in the to-print list. A torn label
+   is reprinted from *Reprint* (same code, a reason is asked). The label size is a setting (System Settings › Case labels).
+   **v1.7 – local auto, several transporters, Garage Pawati.** For a *Transporter + Local auto* trip, choose the receiving transporter on each
+   invoice (use *split* to send some cases to another). After the gatepass is made, open *Garage Pawati* on it and print the
+   white slips (4 per A4) - the auto cannot be gated out before that. When the garage signs, press *Received* (or just enter the LR
+   later; that records it). A reprint needs a reason. *LR Books* (Dispatch desk) holds each transporter's builty numbers; CTDMS gives the next
+   one to each consignment and you may change it. If one invoice is split between two transporters, each gets its own LR row. Practise it in Guided Training: lesson "Local-auto trip to transporters: Garage Pawati".
+   (Older description, depots without case control:) **Case labels** (gatepass page): one label per case — customer, area, invoices, carrier, "case 3 / 12" and the
    gatepass barcode (scanning any case at the gate opens its gatepass). 100 × 50 mm label printer or A4 sheets.
 9. **E-way bill**: on the consignment's *Track* page (link on the gatepass). When System Settings ›
    `gate.eway_required_above` is set (e.g. 50000), gate-out is refused for bigger invoices without a valid e-way bill.
@@ -159,10 +187,23 @@ Reprints need a reason and are marked "REPRINT #n (DUPLICATE)".
 
 ## Administrator
 
-* **Users** (Administration › Users › *New user*): username, name, role (Admin, Management, Accounts, CFA
-  Manager, Dispatch Operator, Checker, Viewer), the companies / CFAs they may see, and a password you choose.
+* **Roles and access** (Administration › Roles): the permission matrix per role - tick what a role may do, rename it,
+  copy it into a new role, or *Reset* a system role to the template it started from. Also shown: what each role sees
+  in the menu, and every user with their role and scope. Nothing is locked, so give Master Settings, final reports or
+  user administration only to people you trust. Every change is audited and applies on the user's next request. Nobody
+  can change their own role, permissions or scope, nobody can hand out more than they hold themselves, and at least one
+  active user must always be able to manage users and roles.
+* **Users** (Administration › Users › *New user*): username, name, role (Admin, Management, Accounts, Depot
+  Manager, Dispatch Operator, Checker, Viewer), the **scope** (companies, depots, delivery areas, customer types and
+  individual customers - the person sees only those invoices, gatepasses, reports, exports and dropdown entries), optional
+  **individual permission changes** (give or take away one permission, with a reason, on top of the role - the
+  *Effective access* panel previews the result), and a password you choose.
   Untick *Must change it at first login* to hand over a fixed password. *Set new password* on a user unlocks the
   account and signs them out everywhere. Every change is in the audit log.
+* **Freight and masters (v1.7)**: *Transporter Rate Cards* take an optional **exception** for one depot and / or one
+  company (the most specific rate wins: depot + company, then depot, then company, then the general rate; a second
+  person approves it like any rate). *Transporters* list the depots they serve and whether they give their own LR book.
+  *Customers* list their delivery locations (area, label, ship-to code, a default).
 * **Locked (paid) features**: automatic bill reading (AI) and WhatsApp / SMS alerts cost money and are locked while
   `CTDMS_PAID_SERVICES=false` (the default). Bills are typed next to the photo; alerts can be tried with
   `notify.provider = LOG`. Nothing else depends on them.

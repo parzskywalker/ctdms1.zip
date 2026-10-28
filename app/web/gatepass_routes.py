@@ -12,18 +12,21 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import (
-    DispatchMode, DispatchSlip, Invoice, InvoiceStatus, Location, OutsideAuto, PickupMode, SlipPrintLog, Transporter,
-    User,
+    DispatchAllocation, DispatchMode, DispatchSlip, Invoice, InvoiceStatus, LabelPrintLog, Location, OutsideAuto, PickupMode, SlipPrintLog,
+    Transporter, User,
 )
 from app.security.auth import csrf_protect, require
+from app.services import case_service as cs
+from app.services import pawati_service as pws
 from app.services import dispatch_service as ds
 from app.services import local_auto_service as las
 from app.services import einvoice_service as einv
+from app.services import eligibility_service as es
 from app.services import settings_service as cfg
 from app.services import transporter_rate_service as trs
 from app.services.errors import BusinessError
 from app.services.pdf_service import dispatch_slips_pdf
-from app.services.scope import apply_cfa_scope, apply_invoice_scope, can_see, can_see_invoice, visible_cfas
+from app.services.scope import apply_invoice_scope, apply_slip_scope, can_see, can_see_invoice, visible_cfas
 from app.services.utils import local_now, local_today, parse_date, parse_time, safe_int
 from app.web.templating import flash, get_form, redirect, render, templates
 
@@ -45,7 +48,13 @@ def _find_slip(db: Session, user: User, text: str) -> DispatchSlip | None:
     t = (text or "").strip().upper()
     if not t:
         return None
-    stmt = apply_cfa_scope(select(DispatchSlip), user, DispatchSlip.cfa_id)
+    stmt = apply_slip_scope(select(DispatchSlip), user)
+    if len(t) == 10 and t.isdigit():  # a case label: its gatepass (before the "last digits" shortcut below)
+        case = cs.find_case(db, t)
+        if case:
+            slip = db.scalar(stmt.where(DispatchSlip.id == case.slip_id))
+            if slip:
+                return slip
     slip = db.scalar(stmt.where(func.upper(DispatchSlip.dispatch_no) == t))
     if slip:
         return slip
@@ -79,8 +88,14 @@ def _inv_json(db: Session, inv: Invoice) -> dict:
 
 
 def _cards(db: Session, on) -> dict:
-    return {str(t.id): {str(k): float(v) for k, v in trs.card(db, t.id, on).items()}
-            for t in db.scalars(select(Transporter).where(Transporter.is_active.is_(True)))}
+    """Per active transporter: every effective rate as [area, depot or 0, company or 0, rate] (the screen prices a line
+    with the most specific row, like the server) and the depots it serves (None = all)."""
+    out = {}
+    for t in db.scalars(select(Transporter).where(Transporter.is_active.is_(True))):
+        served = es.depot_ids(db, t.id)
+        out[str(t.id)] = {"rows": [[lo, cf, co, float(rt)] for lo, cf, co, rt in trs.card_rows(db, t.id, on)],
+                          "serves": sorted(served) if served else None}
+    return out
 
 
 def _builder(request: Request, db: Session, user: User, *, ids: list[int] | None = None, form=None,
@@ -116,7 +131,9 @@ def _builder(request: Request, db: Session, user: User, *, ids: list[int] | None
         "auto_rates": las.rates_for_screen(db, autos, today),
         "tr_info": {str(t.id): {"pay": t.payment_mode, "pickup": float(t.direct_pickup_charge or 0),
                                 "pickup_basis": t.direct_pickup_basis} for t in transporters},
-        "cash_default": cfg.get(db, "gatepass.cash_paid_default")}, status_code=status_code)
+        "cash_default": cfg.get(db, "gatepass.cash_paid_default"),
+        "can_override_elig": user.can("transporter.override_eligibility"),
+        "can_group_cross": user.can("dispatch.group_cross_company")}, status_code=status_code)
 
 
 @router.api_route("/gatepass/new", methods=["GET"])
@@ -170,7 +187,9 @@ def _request_from(form) -> ds.GatepassRequest:
         pickup_mode=PickupMode.OUTSIDE_AUTO if form.get("pickup_mode") == PickupMode.OUTSIDE_AUTO else PickupMode.REGULAR,
         dispatch_date=d, dispatch_time=t, cases={}, remarks=form.get("remarks"),
         amount_paid=ds.parse_money(paid_raw) if paid_raw and form.get("paid_edited") == "1" else None,
-        auto_method=(form.get("auto_method") or None), vehicle_no=(form.get("vehicle_no") or "").strip() or None)
+        auto_method=(form.get("auto_method") or None), vehicle_no=(form.get("vehicle_no") or "").strip() or None,
+        group_cross_company=form.get("group_cross_company") == "1",
+        eligibility_override_reason=(form.get("eligibility_override_reason") or "").strip() or None)
     trip_raw = (form.get("trip_charge") or "").strip()
     if trip_raw:
         req.trip_charge = ds.parse_money(trip_raw)
@@ -196,11 +215,21 @@ def create(request: Request, form=Depends(get_form), db: Session = Depends(get_d
                 raise BusinessError("An invoice on the list is not available any more - reload")
             invs.append(inv)
             req.cases[inv.id] = form.get(f"cases_{inv.id}")
+        recv = {}
+        for inv in invs:  # v1.7 local-auto path: recv_<invoice> = "12" (one receiver) or "12:3,14:2" (split)
+            raw = (form.get(f"recv_{inv.id}") or "").strip()
+            if raw:
+                n_all = safe_int(form.get(f"cases_{inv.id}")) or inv.boxes or 0
+                parts = [x.split(":") for x in raw.split(",") if x.strip()]
+                recv[inv.id] = [(safe_int(p[0]), safe_int(p[1]) if len(p) > 1 else n_all) for p in parts]
+        req.receivers = recv or None
         slip = ds.create_gatepass(db, user, invs, req)
     except BusinessError as e:
         db.rollback()
         problems = [p.strip() for p in e.message.replace("Cannot generate gatepass: ", "").split(";") if p.strip()]
         return _builder(request, db, user, ids=ids, form=form, problems=problems, status_code=200)
+    for w in getattr(slip, "lr_warnings", []) or []:
+        flash(request, w, "warn")
     db.commit()
     flash(request, f"Gatepass {slip.dispatch_no} generated: {slip.invoice_count} invoice(s), {slip.total_cases} cases, "
                    f"₹{slip.total_charge:,.2f}. Print it - the goods may leave only with the printed gatepass.",
@@ -221,7 +250,7 @@ def register(request: Request, db: Session = Depends(get_db), user: User = Depen
         d_to = parse_date(qp.get("date_to")) if qp.get("date_to") else local_today()
     except ValueError:
         d_from, d_to = local_today() - timedelta(days=30), local_today()
-    stmt = apply_cfa_scope(select(DispatchSlip), user, DispatchSlip.cfa_id).where(
+    stmt = apply_slip_scope(select(DispatchSlip), user).where(
         DispatchSlip.dispatch_date >= d_from, DispatchSlip.dispatch_date <= d_to)
     tid = safe_int(qp.get("transporter_id"))
     if tid:
@@ -260,15 +289,50 @@ def register(request: Request, db: Session = Depends(get_db), user: User = Depen
         "pages": max(math.ceil(total / per), 1), "qs": qs, "lr_missing": lr_missing, "sums": sums})
 
 
+def _lr_groups(db: Session, slip: DispatchSlip, invs: list) -> "OrderedDict":
+    """The consignments of a gatepass as the LR screen shows them: customer (and, when several transporters receive,
+    customer + receiver). An invoice split between two receivers appears once under each, with that receiver's cases,
+    rate and freight; the invoice itself carries the main receiver's LR, the other part's LR lives on its allocation."""
+    from types import SimpleNamespace
+    multi = not slip.transporter_id and slip.dispatch_mode == "TRANSPORTER"
+    line_by_inv = {ln.invoice_id: ln for ln in slip.lines}
+    parts: dict = {}
+    if multi:
+        for a in db.scalars(select(DispatchAllocation).where(DispatchAllocation.slip_id == slip.id)
+                            .order_by(DispatchAllocation.id)):
+            parts.setdefault(a.invoice_id, []).append(a)
+    groups: OrderedDict = OrderedDict()
+
+    def grp(inv, key, receiver):
+        return groups.setdefault(key, {"customer": inv.customer, "location": inv.location, "invs": [], "key": key,
+                                       "receiver": receiver, "prim": [], "sec": [], "lr": None})
+
+    for inv in invs:
+        ln = line_by_inv.get(inv.id)
+        split = parts.get(inv.id, [])
+        if multi and len(split) > 1:
+            for a in split:
+                g = grp(inv, f"{inv.customer_id}_{a.receiving_transporter_id}", a.transporter)
+                g["invs"].append((inv, SimpleNamespace(cases=a.cases, rate_per_case=a.rate_per_case, freight=a.freight,
+                                                       extra_charge=0, calc_note=a.calc_note,
+                                                       consignment_no=ln.consignment_no if ln else None)))
+                (g["prim"] if a.receiving_transporter_id == inv.transporter_id else g["sec"]).append(
+                    inv if a.receiving_transporter_id == inv.transporter_id else a)
+        else:
+            key = inv.customer_id if not multi else f"{inv.customer_id}_{inv.transporter_id}"
+            g = grp(inv, key, inv.transporter if multi else None)
+            g["invs"].append((inv, ln))
+            g["prim"].append(inv)
+    for g in groups.values():
+        g["lr"] = g["prim"][0] if g["prim"] else g["sec"][0]
+    return groups
+
+
 @router.get("/gatepass/{slip_id:int}")
 def detail(slip_id: int, request: Request, db: Session = Depends(get_db), user: User = Depends(require("dispatch.view"))):
     slip = _slip(db, user, slip_id)
     invs = ds.slip_invoices(db, slip)
-    groups: OrderedDict = OrderedDict()
-    line_by_inv = {ln.invoice_id: ln for ln in slip.lines}
-    for inv in invs:
-        groups.setdefault(inv.customer_id, {"customer": inv.customer, "location": inv.location, "invs": []})["invs"] \
-            .append((inv, line_by_inv.get(inv.id)))
+    groups = _lr_groups(db, slip, invs)
     prints = list(db.scalars(select(SlipPrintLog).where(SlipPrintLog.slip_id == slip.id)
                              .order_by(SlipPrintLog.id)))
     seen, print_events = set(), []
@@ -279,10 +343,15 @@ def detail(slip_id: int, request: Request, db: Session = Depends(get_db), user: 
     complete_blockers = sorted({b for i in invs for b in ds.completion_blockers(db, i) if b != "Already dispatched"}) \
         if not slip.gate_out_at and not slip.is_void else []
     for g in groups.values():
-        g["locked"] = next((r for r in (ds.lr_locked_reason(db, inv) for inv, _ in g["invs"]) if r), None)
+        g["locked"] = next((r for r in (ds.lr_locked_reason(db, inv) for inv in g["prim"]) if r), None)
     from app.models import Notification
     alerts = list(db.scalars(select(Notification).where(Notification.slip_id == slip.id).order_by(Notification.id)))
+    cases = cs.cases_of(db, slip, include_void=True) if slip.case_control == "REQUIRED" else []
     return render(request, "gatepass/detail.html", {
+        "pawatis": pws.active(db, slip) if pws.applies(slip) else [],
+        "cases": cases, "case_counts": cs.counts(db, slip) if cases else {},
+        "label_log": list({lg.batch_no: lg for lg in db.scalars(select(LabelPrintLog).where(
+            LabelPrintLog.slip_id == slip.id).order_by(LabelPrintLog.id.desc()))}.values()) if cases else [],
         "title": f"Gatepass {slip.dispatch_no}", "slip": slip, "groups": list(groups.values()), "invs": invs,
         "print_events": print_events, "complete_blockers": complete_blockers, "alerts": alerts,
         "slip_size": cfg.get(db, "dispatch.default_slip_size"), "rule": cfg.get(db, "dispatch.complete_requires")})
@@ -296,6 +365,8 @@ def case_labels(slip_id: int, request: Request, db: Session = Depends(get_db),
     slip = _slip(db, user, slip_id)
     if slip.is_void:
         raise BusinessError("This gatepass is void - no labels")
+    if slip.case_control == "REQUIRED":
+        return _case_labels(request, db, user, slip)
     line_by_inv = {ln.invoice_id: ln for ln in slip.lines}
     groups: OrderedDict = OrderedDict()
     for inv in ds.slip_invoices(db, slip):
@@ -312,6 +383,43 @@ def case_labels(slip_id: int, request: Request, db: Session = Depends(get_db),
     return templates.TemplateResponse(request, "gatepass/labels.html", {
         "request": request, "slip": slip, "labels": labels[:2000], "carrier": carrier,
         "org": cfg.get(db, "org.name"), "sheet": request.query_params.get("sheet") == "a4"})
+
+
+def _case_labels(request: Request, db: Session, user: User, slip: DispatchSlip):
+    """v1.7: one label per case, each with its own barcode. Default = the labels not printed yet; ?show=all lists every
+    case (printing labels that were already printed is a reprint: it needs a reason). ?from= / ?to= pick a range."""
+    qp = request.query_params
+    allc = cs.cases_of(db, slip)
+    pending = [c for c in allc if c.status == "LABEL_PENDING"]
+    show = qp.get("show") or ("pending" if pending else "all")
+    chosen = allc if show == "all" else pending
+    lo, hi = safe_int(qp.get("from"), 1, minimum=1), safe_int(qp.get("to"), len(allc) or 1, minimum=1)
+    pos = {c.id: i + 1 for i, c in enumerate(allc)}
+    chosen = [c for c in chosen if lo <= pos[c.id] <= hi]
+    carrier = slip.transporter.name if slip.transporter else (slip.outside_auto.name if slip.outside_auto
+                                                               else "Self pickup")
+    log = list(db.scalars(select(LabelPrintLog).where(LabelPrintLog.slip_id == slip.id).order_by(LabelPrintLog.id.desc())
+                          .limit(50)))
+    return templates.TemplateResponse(request, "gatepass/labels_cases.html", {
+        "request": request, "slip": slip, "rows": cs.label_rows(db, slip, chosen), "show": show, "total": len(allc),
+        "pending": len(pending), "carrier": carrier, "org": cfg.get(db, "org.name"), "pos": pos,
+        "sheet": qp.get("sheet") == "a4", "w": cfg.get(db, "labels.width_mm") or 100,
+        "h": cfg.get(db, "labels.height_mm") or 50, "reprint": show == "all" or any(
+            c.status != "LABEL_PENDING" for c in chosen), "log": log, "csrf": request.session.get("csrf", ""),
+        "can_print": user.can("case.print"), "can_reprint": user.can("case.reprint"), "lo": lo, "hi": hi,
+        "ids": ",".join(str(c.id) for c in chosen)})
+
+
+@router.post("/gatepass/{slip_id:int}/labels/confirm")
+def labels_confirm(slip_id: int, request: Request, form=Depends(get_form), db: Session = Depends(get_db),
+                   user: User = Depends(require("dispatch.view"))):
+    slip = _slip(db, user, slip_id)
+    ids = [i for i in (safe_int(x) for x in (form.get("case_ids") or "").split(",")) if i]
+    batch = cs.record_print(db, user, slip, ids, result=form.get("result") or "", reason=form.get("reason"))
+    db.commit()
+    flash(request, f"Label batch {batch} recorded ({'printed' if form.get('result') == 'PRINTED' else 'FAILED - print again'}).",
+          "success" if form.get("result") == "PRINTED" else "warn")
+    return redirect(f"/gatepass/{slip.id}")
 
 
 def _label(slip: DispatchSlip, log: SlipPrintLog) -> tuple[str, str]:
@@ -372,21 +480,19 @@ def save_lr(slip_id: int, request: Request, form=Depends(get_form), db: Session 
             user: User = Depends(require("dispatch.operate"))):
     """LR per consignment (customer) on this gatepass: fields lr_<customer_id>, lrdate_<customer_id>."""
     slip = _slip(db, user, slip_id)
-    invs = ds.slip_invoices(db, slip)
-    by_cust: dict[int, list[Invoice]] = {}
-    for inv in invs:
-        if inv.status != S.CANCELLED:
-            by_cust.setdefault(inv.customer_id, []).append(inv)
+    invs = [i for i in ds.slip_invoices(db, slip) if i.status != S.CANCELLED]
     n = 0
-    for cid, group in by_cust.items():
-        key = f"lr_{cid}"
-        if key not in form:
+    for key, g in _lr_groups(db, slip, invs).items():   # several receiving transporters: one LR per customer AND transporter
+        field = f"lr_{key}"
+        if field not in form:
             continue
-        lr = (form.get(key) or "").strip().upper() or None
-        d = form.get(f"lrdate_{cid}") or None
-        if all(i.lr_no == lr for i in group) and (not d or all(str(i.lr_date) == d for i in group)):
-            continue
-        n += ds.set_lr(db, user, group, lr, d, reason=form.get("reason"))
+        lr = (form.get(field) or "").strip().upper() or None
+        d = form.get(f"lrdate_{key}") or None
+        group = g["prim"]
+        if group and not (all(i.lr_no == lr for i in group) and (not d or all(str(i.lr_date) == d for i in group))):
+            n += ds.set_lr(db, user, group, lr, d, reason=form.get("reason"))
+        if g["sec"]:
+            n += ds.set_alloc_lr(db, user, slip, g["sec"], lr, d, reason=form.get("reason"))
     db.commit()
     flash(request, f"LR saved for {n} invoice(s)." if n else "No LR changes.", "success" if n else "info")
     return redirect(form.get("back") or f"/gatepass/{slip.id}")
@@ -400,11 +506,57 @@ def gate(request: Request, db: Session = Depends(get_db), user: User = Depends(r
     invs = ds.slip_invoices(db, slip) if slip else []
     blockers = sorted({b for i in invs for b in ds.completion_blockers(db, i) if b != "Already dispatched"}) \
         if slip and not slip.gate_out_at and not slip.is_void else []
-    waiting = list(db.scalars(apply_cfa_scope(select(DispatchSlip), user, DispatchSlip.cfa_id).where(
+    waiting = list(db.scalars(apply_slip_scope(select(DispatchSlip), user).where(
         DispatchSlip.is_void.is_(False), DispatchSlip.gate_out_at.is_(None)).order_by(DispatchSlip.id.desc()).limit(30)))
+    prog = cs.progress(db, slip) if slip and slip.case_control == "REQUIRED" else None
     return render(request, "gatepass/gate.html", {"title": "Gate check", "code": code, "slip": slip, "invs": invs,
-                                                  "blockers": blockers, "waiting": waiting,
+                                                  "blockers": blockers, "waiting": waiting, "prog": prog,
+                                                  "autoscan": code if cs.is_valid(code) and slip else "",
+                                                  "can_exception": user.can("gate.exception"),
                                                   "not_found": bool(code and not slip)})
+
+
+def _scan_json(db: Session, slip: DispatchSlip, res: dict | None) -> dict:
+    p = cs.progress(db, slip)
+    blockers = sorted({b for i in ds.slip_invoices(db, slip) if i.status != S.CANCELLED
+                       for b in ds.completion_blockers(db, i) if b != "Already dispatched"}) \
+        if not slip.gate_out_at and not slip.is_void else []
+    out = {"scanned": p["scanned"], "total": p["total"], "complete": p["complete"], "exception": p["exception"],
+           "cleared": not blockers and not slip.is_void and not slip.gate_out_at, "blockers": blockers,
+           "per_invoice": [{"invoice": r["invoice"].invoice_no, "scanned": r["scanned"], "total": r["total"]}
+                           for r in p["per_invoice"]],
+           "missing": [{"code": c.case_code, "invoice": c.invoice.invoice_no, "k": c.seq_in_consignment,
+                        "n": c.consignment_total} for c in p["missing"]][:200]}
+    if res is not None:
+        out.update(result=res["result"], ok=res["ok"], message=res["message"])
+    return out
+
+
+@router.post("/gatepass/scan-case")
+def scan_case(request: Request, form=Depends(get_form), db: Session = Depends(get_db),
+              user: User = Depends(require("dispatch.complete"))):
+    """The guard's scanner: one case code (optionally inside a gatepass the screen has open). Always recorded."""
+    slip = _slip(db, user, safe_int(form.get("slip_id"))) if form.get("slip_id") else None
+    code = (form.get("code") or "").strip()
+    res = cs.scan(db, user, code, slip, station=(form.get("station") or None))
+    db.commit()
+    target = slip or (_slip(db, user, res["slip_id"]) if res["slip_id"] else None)
+    if target is None:
+        return JSONResponse({"result": res["result"], "ok": False, "message": res["message"]})
+    payload = _scan_json(db, target, res)
+    payload["slip_id"] = target.id
+    payload["dispatch_no"] = target.dispatch_no
+    return JSONResponse(payload)
+
+
+@router.post("/gatepass/{slip_id:int}/gate-exception")
+def gate_exception(slip_id: int, request: Request, form=Depends(get_form), db: Session = Depends(get_db),
+                   user: User = Depends(require("dispatch.complete"))):
+    slip = _slip(db, user, slip_id)
+    n = cs.record_exception(db, user, slip, form.get("reason") or "")
+    db.commit()
+    flash(request, f"Exception recorded: {n} case(s) marked missing. The gatepass can now leave.", "warn")
+    return redirect(f"/gatepass/gate?code={slip.dispatch_no}")
 
 
 @router.get("/gatepass/lr-pending")

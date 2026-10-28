@@ -8,10 +8,11 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import (
-    AuditLog, DispatchSlip, Invoice, InvoiceOverride, OverrideField, SlipPrintLog, TransporterBill,
-    TransporterBillLine, User,
+    AuditLog, DispatchSlip, ExceptionCode, Invoice, InvoiceOverride, Location, OverrideField, SlipPrintLog,
+    TransporterBill, TransporterBillLine, User,
 )
 from app.security.auth import PermissionDenied, csrf_protect, require
+from app.services import customer_area_service as cas
 from app.services import invoice_service
 from app.services import settings_service as cfg
 from app.services.dispatch_service import actions_for
@@ -77,15 +78,33 @@ def detail(invoice_id: int, request: Request, db: Session = Depends(get_db),
     prints = list(db.scalars(select(SlipPrintLog).where(SlipPrintLog.invoice_id == inv.id).order_by(SlipPrintLog.id)))
     history = list(db.scalars(select(AuditLog).where(AuditLog.record_type == "Invoice",
                                                      AuditLog.record_id == str(inv.id)).order_by(AuditLog.ts)))
+    # what the transporter billed for this invoice: only for roles that work with transporter bills
     bill_lines = list(db.execute(select(TransporterBillLine, TransporterBill)
                                  .join(TransporterBill, TransporterBillLine.bill_id == TransporterBill.id)
-                                 .where(TransporterBillLine.invoice_id == inv.id)))
+                                 .where(TransporterBillLine.invoice_id == inv.id))) if user.can("recon.view") else []
     current = find_rate(db, company_id=inv.company_id, cfa_id=inv.cfa_id, customer_id=inv.customer_id,
                         location_id=inv.location_id, on_date=inv.invoice_date)
+    dlocs = cas.delivery_locations(db, inv.customer)
     return render(request, "invoices/detail.html", {
+        "dlocs": dlocs, "area_choices": list(db.scalars(select(Location).where(Location.is_active.is_(True))
+                                                        .order_by(Location.name)))
+        if inv.exception_code == ExceptionCode.AREA_MISMATCH else [],
         "title": f"Invoice {inv.invoice_no}", "inv": inv, "overrides": overrides, "slips": slips, "prints": prints,
         "history": history, "bill_lines": bill_lines, "current": current, "acts": actions_for(db, user, inv),
         "fields": OverrideField.LABELS, "sku_lines": cfg.get(db, "features.sku_lines")})
+
+
+@router.post("/invoices/{invoice_id:int}/area")
+def set_area(invoice_id: int, request: Request, delivery_id: str = Form(""), location_id: str = Form(""),
+             reason: str = Form(""), back: str = Form(""), db: Session = Depends(get_db),
+             user: User = Depends(require("dispatch.operate"))):
+    """Choose the delivery location of an invoice (several locations, or a file area that did not match)."""
+    inv = get_invoice(db, user, invoice_id)
+    cas.choose_area(db, user, inv, delivery_id=safe_int(delivery_id) or None, location_id=safe_int(location_id) or None,
+                    reason=reason)
+    db.commit()
+    flash(request, f"Delivery location set to {inv.location.name}. Audited.", "success")
+    return redirect(safe_path(back, f"/invoices/{inv.id}"))
 
 
 @router.post("/invoices/{invoice_id:int}/override")

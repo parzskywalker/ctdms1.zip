@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{# Operations dashboard for roles without Final Reports / MIS: counts and ageing only - no sales, freight or variance figures exist on this page. #}
+{% macro tile(label, value, hint, href, perm, cls='') -%}
+  {%- if href and can(perm) -%}
+  <a class="kpi {{ cls }}" href="{{ href }}"><div class="lbl">{{ label }}</div><div class="val">{{ value|int }}</div><div class="hint">{{ hint }}</div></a>
+  {%- else -%}
+  <div class="kpi {{ cls }}"><div class="lbl">{{ label }}</div><div class="val">{{ value|int }}</div><div class="hint">{{ hint }}</div></div>
+  {%- endif -%}
+{%- endmacro %}
+{% block content %}
+{% set k = d.kpi %}
+<div class="page-head">
+  <div><h1>{{ title }}</h1>
+    <div class="sub">{% if user.all_cfas %}All depots you are authorised for{% else %}Depot{{ 's' if user.cfas|length != 1 }}: {{ user.cfas|map(attribute='name')|join(', ') or 'none assigned' }}{% endif %} · live counts, nothing here is a financial report</div></div>
+  <div class="actions">
+    {% if can('dispatch.operate') %}<a class="btn btn-primary" href="/gatepass/new" data-key="F2">New gatepass</a>{% endif %}
+    {% if can('dispatch.view') %}<a class="btn" href="/dispatch/pending">Pending Dispatch</a>{% endif %}
+  </div>
+</div>
+<div class="kpis">
+  {{ tile('Open invoices', k.open, 'not yet dispatched', '/dispatch/pending', 'dispatch.view', 'warn' if k.open else '') }}
+  {{ tile('Ready to dispatch', k.ready, 'pending / verified', '/dispatch/pending?tab=ready', 'dispatch.view') }}
+  {{ tile('Slip generated', k.slip, 'print / complete next', '/dispatch/pending?tab=slip', 'dispatch.view') }}
+  {{ tile('Rate missing', k.rate_missing, 'needs a freight rate', '/exceptions', 'invoice.view', 'alert' if k.rate_missing else '') }}
+  {{ tile('Dispatch exceptions', k.exceptions, 'boxes / override / conflict', '/dispatch/pending?tab=exceptions', 'dispatch.view', 'warn' if k.exceptions else '') }}
+  {{ tile('At the gate', k.at_gate, 'gatepasses not yet gone out', '/gatepass/gate', 'dispatch.view') }}
+  {{ tile('Dispatched today', k.dispatched_today, 'gone out today', '/dispatch/register', 'dispatch.view', 'good') }}
+  {{ tile('Dispatched · 7 days', k.dispatched_7d, 'last seven days', '/dispatch/register', 'dispatch.view') }}
+  {{ tile('LR pending', k.lr_pending, 'LR number still missing', '/gatepass/lr-pending', 'dispatch.view', 'warn' if k.lr_pending else '') }}
+  {{ tile('Deliveries pending', k.deliveries_pending, 'no proof of delivery yet', '/deliveries', 'dispatch.view') }}
+</div>
+<div class="grid g2">
+  <div class="card">
+    <div class="card-head"><h3>Pending dispatch ageing</h3></div>
+    <div class="chart-box"><canvas id="c-ageing" aria-label="Open invoices by age"></canvas></div>
+    <div class="muted small">All currently open invoices. Age = days since invoice date.</div>
+  </div>
+  <div class="card flush">
+    <div class="card-head"><h3>{{ 'By depot' if d.depots|length != 1 else 'Your depot' }}</h3></div>
+    <div class="table-wrap">
+      <table class="data compact">
+        <thead><tr><th>Depot</th><th class="num">Open</th><th class="num">Ready</th><th class="num">Slip</th><th class="num">Exceptions</th><th class="num">Dispatched today</th></tr></thead>
+        <tbody>
+        {% for r in d.depots %}
+          <tr><td>{{ r.name }}{% if r.city and r.city.lower() not in r.name.lower() %} <span class="muted small">({{ r.city }})</span>{% endif %}</td><td class="num">{{ r.open }}</td><td class="num">{{ r.ready }}</td><td class="num">{{ r.slip }}</td><td class="num">{{ r.exceptions }}</td><td class="num">{{ r.dispatched_today }}</td></tr>
+        {% else %}<tr><td colspan="6" class="empty">No invoices in your depots yet</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/vendor/chart.umd.min.js"></script>
+<script src="/static/js/charts.js?v={{ app_version }}"></script>
+<script>
+  const D = {{ d|jsdata|safe }};
+  CT.bar('c-ageing', D.ageing.map(r => r.label), [{label: 'Open invoices', data: D.ageing.map(r => r.count),
+          backgroundColor: ['#86b6ef', '#5598e7', '#2a78d6', '#1c5cab', '#104281']}], {money: false});
+</script>
+{% endblock %}

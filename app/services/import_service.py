@@ -23,11 +23,12 @@ from app.models import (
     ImportTemplate, Invoice, InvoiceItem, InvoiceStatus, Location, RowStatus, Transporter, User, utcnow,
 )
 from app.services import audit, recognition, storage
+from app.services import customer_area_service as cas
 from app.services import settings_service as cfg
 from app.services.errors import BusinessError
 from app.services.freight_engine import find_rate
 from app.services.invoice_service import apply_freight
-from app.services.scope import can_see
+from app.services.scope import can_see, can_see_area_customer
 from app.services.utils import (
     fiscal_year, local_today, money, next_sequence, norm_code, norm_vehicle, parse_date, parse_decimal, parse_int,
 )
@@ -51,6 +52,8 @@ TARGET_FIELDS: dict[str, tuple[str, bool, list[str]]] = {
                                               "account code", "retailer code", "stockist code"]),
     "customer_name": ("Customer name", False, ["customer name", "party name", "cust name", "sold-to name",
                                                "name of party", "stockist name", "party"]),
+    "ship_to_code": ("Ship-to / delivery point code", False, ["ship to code", "ship-to code", "shipto code", "ship to id",
+                                                             "delivery point", "delivery point code", "delivery code"]),
     "location": ("Delivery location / city", False, ["location", "delivery location", "station", "city",
                                                      "ship-to city", "destination", "town", "delivery city",
                                                      "route", "place"]),
@@ -610,19 +613,28 @@ def validate_row(db: Session, batch: ImportBatch, row: ImportRow, res: Resolver,
         elif company and customer.companies and company not in customer.companies:
             warnings.append(_err("CUSTOMER_COMPANY", f"Customer {customer.code} is not mapped to {company.code}"))
 
-    # location
-    location = None
+    # location (v1.7: the customer's delivery locations decide - see customer_area_service)
+    location = area = None
+    file_loc = None
     if val("location") is not None:
-        location = res.location(val("location"), company.id if company else None)
-        if not location:
+        file_loc = res.location(val("location"), company.id if company else None)
+        if not file_loc:
             errors.append(_err("MISSING_LOCATION", f"Delivery location '{val('location')}' not found in location master",
                                field="location"))
-    elif customer:
-        location = customer.location
-        if not location:
-            errors.append(_err("MISSING_LOCATION", f"Customer {customer.code} has no delivery location", field="location"))
+    if customer and not (val("location") is not None and not file_loc):
+        area = cas.resolve(db, customer, file_loc, ship_to=str(val("ship_to_code")) if val("ship_to_code") is not None else None)
+        location = area.location
+        if area.code == "MISSING_LOCATION":
+            errors.append(_err("MISSING_LOCATION", area.message, field="location"))
+        elif area.code:  # AREA_MISMATCH / AREA_AMBIGUOUS - the invoice is still imported; see area.mismatch_action
+            warnings.append(_err(area.code, area.message, field="location"))
+    elif file_loc:
+        location = file_loc
     if location and not location.is_active:
         errors.append(_err("INACTIVE", f"Location {location.name} is inactive", field="location"))
+    if user and location and not can_see_area_customer(user, location.id, customer):
+        errors.append(_err("SCOPE", f"You are not authorised to import for area {location.name}"
+                                    + (f" / customer {customer.code}" if customer else "")))
 
     invoice_no = str(val("invoice_no")).strip().upper() if val("invoice_no") is not None else None
     fy = fiscal_year(inv_date) if inv_date else None
@@ -692,7 +704,7 @@ def validate_row(db: Session, batch: ImportBatch, row: ImportRow, res: Resolver,
         return None
     row.status = RowStatus.WARNING if warnings else RowStatus.VALID
     return {
-        "company": company, "cfa": cfa, "customer": customer, "location": location, "invoice_no": invoice_no,
+        "company": company, "cfa": cfa, "customer": customer, "location": location, "area": area, "invoice_no": invoice_no,
         "invoice_date": inv_date, "fy": fy, "sales": sales or Decimal("0"), "boxes": boxes, "taxable": taxable,
         "mode": mode,
         "customer_code": str(val("customer_code") or customer.code), "source_invoice_id": src_id or invoice_no,
@@ -797,6 +809,8 @@ def commit_batch(db: Session, user: User, batch: ImportBatch) -> dict:
                 capture_mode={"API": "API", "ADAPTER": "API", "MANUAL": "MANUAL"}.get(batch.source, "IMPORT"),
                 marking_id=v["marking"].id if v.get("marking") is not None else None,
             )
+            if v.get("area") is not None:  # v1.7: which delivery location; ambiguous / mismatched ones wait for a choice
+                cas.apply_to_invoice(inv, v["area"], mismatch_holds=cas.mismatch_action(db) == "EXCEPTION")
             db.add(inv)
             db.flush()
             recognition.assign(db, inv)

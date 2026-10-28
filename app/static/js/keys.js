@@ -145,6 +145,14 @@
     if (!e.repeat) run(k);
   }, true);
 
+  // Alt+D = depot switcher (only exists for users assigned to several depots); Enter on it switches
+  document.addEventListener('keydown', (e) => {
+    const d = $('#depot-switch');
+    if (!d) return;
+    if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key || '').toLowerCase() === 'd') { e.preventDefault(); d.focus(); return; }
+    if (e.key === 'Enter' && e.target === d && !e.defaultPrevented) { e.preventDefault(); d.form.submit(); }
+  });
+
   // ------------------------------------------------------------------ Enter = next field (ERP style)
   function chain(scope) {
     const seen = new Set();
@@ -215,7 +223,9 @@
         .then((ok) => { if (ok) location.href = href; });
     } else location.href = href;
   }
-  function homePath() {  // the Dashboard, or the first screen of the menu for roles without the Dashboard
+  function homePath() {  // the role's own first screen (Dashboard, Approvals ...), else the first screen of the menu
+    const h = document.body.dataset.home;
+    if (h && $(`.side a[href="${h}"]`)) return h;
     if ($('.side a[href="/"]')) return '/';
     const first = $('.side a[href]');
     return first ? first.getAttribute('href') : '/';
@@ -596,6 +606,10 @@
   function goTo() {
     const items = $$('.side a[href]').map((a) => ({href: a.getAttribute('href'), text: a.textContent.trim(),
       group: ((a.closest('.group') || {}).firstElementChild || {}).textContent || ''}));
+    // users with several depots: "Work in <depot>" entries (type part of the depot name, Enter) - same as the top-bar switcher
+    const ds = $('#depot-switch');
+    if (ds) $$('option', ds).forEach((o) => items.push({href: '', run: () => { ds.value = o.value; ds.form.submit(); },
+      text: o.value ? 'Work in ' + o.textContent.trim() : 'Work in all my depots', group: 'Switch depot'}));
     if (!items.length) return;
     const l = mk('div', 'kb-layer kb-modal-wrap');
     l.id = 'kb-goto';
@@ -606,7 +620,7 @@
     document.body.appendChild(l);
     const q = $('.kb-goto-q', l), box = $('.kb-goto-list', l);
     let shown = [], hi = 0;
-    const all = items.map((it, i) => ({...it, i, hay: norm(it.text + ' ' + it.group + ' ' + it.href.replace(/[/-]/g, ' '))}));
+    const all = items.map((it, i) => ({...it, i, hay: norm(it.text + ' ' + it.group + ' ' + (it.href || '').replace(/[/-]/g, ' '))}));
     function draw() {
       const v = norm(q.value);
       shown = v ? all.map((it) => {
@@ -621,7 +635,7 @@
         || '<div class="combo-empty">No screen matches.</div>';
       const h = box.children[hi]; if (h) h.scrollIntoView({block: 'nearest'});
     }
-    function go(i) { const it = shown[i]; if (it) location.href = it.href; }
+    function go(i) { const it = shown[i]; if (it) { if (it.run) it.run(); else location.href = it.href; } }
     q.addEventListener('input', () => { hi = 0; draw(); });
     q.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowDown') { e.preventDefault(); hi = Math.min(shown.length - 1, hi + 1); draw(); }

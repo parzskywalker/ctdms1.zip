@@ -68,6 +68,32 @@
   </form>
   {% endif %}
 </div>
+<div class="card flush">
+  <div class="card-head"><h3>Delivery locations</h3><span class="muted small">Only needed when this customer receives goods in more than one place. The area comes from the Location master.</span></div>
+  <div class="table-wrap"><table class="data compact">
+    <thead><tr><th>Area</th><th>Label</th><th>Ship-to code</th><th>Address</th><th>Default</th><th></th></tr></thead>
+    <tbody>
+      <tr><td>{{ obj.location.name if obj.location else '—' }}</td><td colspan="4" class="muted small">Customer master default - used when the customer has no other delivery location.</td><td></td></tr>
+      {% for d in dlocs %}<tr class="{% if not d.is_active %}row-muted{% endif %}"><td>{{ d.location.name }}</td><td>{{ d.label or '—' }}</td><td class="mono">{{ d.ship_to_code or '—' }}</td><td class="small">{{ d.address or '' }}</td>
+        <td>{{ 'Yes' if d.is_default else '' }}</td>
+        <td>{% if d.is_active and can('master.edit') %}
+          {% if not d.is_default %}<form method="post" action="/masters/customers/{{ obj.id }}/locations/{{ d.id }}/default" style="display:inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn btn-sm" type="submit">Make default</button></form>{% endif %}
+          <form method="post" action="/masters/customers/{{ obj.id }}/locations/{{ d.id }}/remove" style="display:inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn btn-sm btn-danger" type="submit" data-confirm="Remove {{ d.name }} from this customer's delivery locations? Past invoices keep it.">Remove</button></form>
+        {% elif not d.is_active %}<span class="muted small">removed</span>{% endif %}</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  {% if can('master.edit') %}
+  <form method="post" action="/masters/customers/{{ obj.id }}/locations" class="row" style="padding:12px 16px;flex-wrap:wrap;gap:8px">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <select name="location_id" required style="width:200px" aria-label="Area"><option value="">Area…</option>{% for l in areas %}<option value="{{ l.id }}">{{ l.name }}</option>{% endfor %}</select>
+    <input type="text" name="label" placeholder="Label (e.g. Godown)" maxlength="80" style="width:160px">
+    <input type="text" name="ship_to_code" placeholder="Ship-to code (optional)" maxlength="60" style="width:170px">
+    <input type="text" name="address" placeholder="Address (optional)" style="flex:1;min-width:180px">
+    <label class="check"><input type="checkbox" name="is_default" value="1">Default</label>
+    <button class="btn" type="submit">Add delivery location</button>
+  </form>
+  {% endif %}
+</div>
 {% endif %}
 </div>
 

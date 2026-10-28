@@ -8,7 +8,7 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f4e79'/%3E%3Cpath d='M7 20h12V11H7zm12-6h4l3 3v3h-7z' fill='%23fff'/%3E%3Ccircle cx='11' cy='22' r='2' fill='%2310b9a8'/%3E%3Ccircle cx='23' cy='22' r='2' fill='%2310b9a8'/%3E%3C/svg%3E">
   {% block head %}{% endblock %}
 </head>
-<body{% if training %} class="trn-on"{% endif %}>
+<body{% if training %} class="trn-on"{% endif %}{% if user and home_url %} data-home="{{ home_url }}"{% endif %}>
 {% if training %}
 <div class="trn-banner" role="status"><b>{{ training.banner }}</b>{% if training.acting %} · acting as {{ training.acting }} (practice user){% endif %}
   <span class="trn-banner-r">your own practice copy · nothing reaches live data · <a href="/training">Lessons</a></span></div>
@@ -29,6 +29,28 @@
       </div>
     {% endfor %}
   </aside>
+  <script>
+  /* Sidebar scroll position. Every screen is a new page load and .side is its own scroll container, so without this
+     it would restart at the top on each click. Restored here, before the first paint, from this tab's session
+     storage; saved on every scroll (covers clicks, F3, form posts, Back / Forward, reload). Then the selected
+     entry is brought into view only if it is hidden. */
+  (function () {
+    var s = document.querySelector('.side');
+    if (!s) return;
+    var K = 'ctdms.sideTop';
+    try { var v = sessionStorage.getItem(K); if (v !== null && v !== '') s.scrollTop = parseInt(v, 10) || 0; } catch (e) {}
+    var a = s.querySelector('a.active');
+    if (a) {
+      var r = a.getBoundingClientRect(), b = s.getBoundingClientRect(), pad = 6;
+      if (r.top < b.top + pad) s.scrollTop += r.top - b.top - pad;
+      else if (r.bottom > b.bottom - pad) s.scrollTop += r.bottom - b.bottom + pad;
+    }
+    var save = function () { try { sessionStorage.setItem(K, String(Math.round(s.scrollTop))); } catch (e) {} };
+    s.addEventListener('scroll', save, {passive: true});
+    window.addEventListener('pagehide', save);
+    save();
+  })();
+  </script>
   <div class="main">
     <header class="topbar">
       <button class="menu-btn" type="button" aria-label="Menu">☰</button>
@@ -38,9 +60,19 @@
       </form>
       {% endif %}
       <div class="spacer"></div>
+      {% if not user.all_cfas and user.cfas|length > 1 %}
+      <form class="depot-switch" method="post" action="/account/depot" aria-label="Switch depot">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <select id="depot-switch" name="cfa_id" data-native title="Depot you are working in - Alt+D, or F3 and type the depot name" aria-label="Depot you are working in">
+          <option value="">All my depots</option>
+          {% for c in user.cfas|sort(attribute='name') %}<option value="{{ c.id }}" {% if user.active_cfa == c.id %}selected{% endif %}>{{ c.name }} ({{ c.code }})</option>{% endfor %}
+        </select>
+        <button class="btn btn-sm" type="submit">Switch</button>
+      </form>
+      {% endif %}
       <div class="who">
         <b>{{ user.full_name }}</b>
-        <small>{{ user.role.name }}{% if not user.all_cfas %} · {{ user.cfas|map(attribute='code')|join(', ') or 'no depot assigned' }}{% endif %}</small>
+        <small>{{ user.role.name }}{% if not user.all_cfas %} · {% if user.active_cfa %}{% for c in user.cfas if c.id == user.active_cfa %}{{ c.code }}{% endfor %}{% else %}{{ user.cfas|map(attribute='code')|join(', ') or 'no depot assigned' }}{% endif %}{% endif %}</small>
       </div>
       <a class="btn btn-sm" href="/account/password">Password</a>
       <form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn btn-sm" type="submit">Sign out</button></form>
@@ -51,11 +83,12 @@
       {% endfor %}
       {% block content %}{% endblock %}
     </main>
-    {% if can('report.view') %}<a id="kb-reports" href="/reports" hidden tabindex="-1" data-key-label="Reports">Reports</a>{% endif %}
+    {% if can('mis.view') or can('report.view') %}<a id="kb-reports" href="/reports" hidden tabindex="-1" data-key-label="Reports">Reports</a>{% endif %}
     <footer class="keybar no-print" id="keybar" aria-label="Keyboard shortcuts on this screen (F1 for all keys)"></footer>
   </div>
 </div>
 {% else %}
+  <script>try { sessionStorage.removeItem('ctdms.sideTop'); } catch (e) {}</script>
   {% block public %}{% endblock %}
 {% endif %}
 <script src="/static/js/app.js?v={{ app_version }}"></script>

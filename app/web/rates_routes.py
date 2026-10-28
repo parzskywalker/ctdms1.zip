@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import Company, FreightRate, Invoice, Location, RateLevel, RateStatus, User
-from app.security.auth import csrf_protect, require
+from app.security.auth import csrf_protect, require, require_any
 from app.services import rate_service
 from app.services.errors import BusinessError
 from app.services.freight_engine import calc_freight, find_rate
@@ -119,7 +119,8 @@ def create(request: Request, company_id: int = Form(...), cfa_id: str = Form("")
 
 
 @router.get("/rates/{rate_id:int}")
-def detail(rate_id: int, request: Request, db: Session = Depends(get_db), user: User = Depends(require("rate.view"))):
+def detail(rate_id: int, request: Request, db: Session = Depends(get_db),
+           user: User = Depends(require_any("rate.view", "rate.approve"))):  # approvers open the rate they verify
     r = _get_rate(db, user, rate_id)
     history = rate_service.rate_history(db, r)
     used = db.scalar(select(func.count(Invoice.id)).where(Invoice.freight_rate_id == r.id))

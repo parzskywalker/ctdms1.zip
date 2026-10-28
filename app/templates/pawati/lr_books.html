@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head"><div><h1>LR Books</h1><div class="sub">For the few transporters that give us their own LR (builty) book. Import the book's range when it arrives; CTDMS then gives each consignment the next LR number automatically (you can still change it, with a reason). Other transporters are not affected.</div></div></div>
+{% if not transporters %}<div class="alert alert-info">No transporter is marked <b>Gives us its own LR (builty) book</b> yet - tick it under Master Settings › Transporters.</div>{% endif %}
+<form method="post" action="/lr-books/import" class="card row" style="gap:10px;align-items:flex-end;flex-wrap:wrap">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <div><label>Transporter</label><select name="transporter_id" required><option value="">—</option>{% for t in transporters %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</select></div>
+  <div><label>Book label</label><input name="label" placeholder="e.g. Book 12" maxlength="80"></div>
+  <div><label>First LR no.</label><input name="first_no" required placeholder="e.g. SRL-5501"></div>
+  <div><label>Last LR no.</label><input name="last_no" required placeholder="e.g. SRL-5600"></div>
+  <div><label>Received on</label><input type="date" name="received_on"></div>
+  <button class="btn btn-primary" type="submit">Import the book</button>
+</form>
+<div class="card flush"><div class="card-head"><h3>Numbers left</h3></div><div class="table-wrap"><table class="data compact">
+  <thead><tr><th>Transporter</th><th class="num">Available</th><th class="num">Used</th><th class="num">Void</th></tr></thead>
+  <tbody>{% for t in transporters %}{% set s = stats[t.id] %}<tr><td>{{ t.name }}</td><td class="num {{ 'pos' if s.AVAILABLE < 10 }}"><b>{{ s.AVAILABLE }}</b></td><td class="num">{{ s.USED }}</td><td class="num">{{ s.VOID }}</td></tr>{% endfor %}</tbody></table></div></div>
+<div class="card flush"><div class="card-head"><h3>Books imported</h3></div><div class="table-wrap"><table class="data compact">
+  <thead><tr><th>Transporter</th><th>Book</th><th>From</th><th>To</th><th class="num">Numbers</th><th>Received</th></tr></thead>
+  <tbody>{% for b in books %}<tr><td>{{ b.transporter.name }}</td><td>{{ b.label }}</td><td class="mono">{{ b.first_no }}</td><td class="mono">{{ b.last_no }}</td><td class="num">{{ b.count }}</td><td class="small">{{ b.received_on|date if b.received_on else '' }}</td></tr>{% else %}<tr><td colspan="6" class="empty">No book imported yet.</td></tr>{% endfor %}</tbody></table></div></div>
+{% endblock %}

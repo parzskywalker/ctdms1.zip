@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head"><div><h1>Pawati numbering</h1><div class="sub">Each depot numbers its Garage Pawatis 1, 2, 3 … on its own. On the first day type the number the next Pawati should get (e.g. where the paper book stopped). Once Pawatis exist the number can only go up, with a reason.</div></div></div>
+<div class="card flush"><div class="table-wrap"><table class="data compact">
+  <thead><tr><th>Depot</th><th class="num">Next number</th><th class="num">Issued</th><th class="num">Highest</th><th>Set the next number</th></tr></thead>
+  <tbody>{% for s in states %}<tr><td><b>{{ s.cfa.code }}</b> {{ s.cfa.name }}</td><td class="num"><b>{{ s.next }}</b></td><td class="num">{{ s.issued }}</td><td class="num">{{ s.highest or '—' }}</td>
+    <td><form method="post" action="/admin/pawati" class="row" style="gap:6px"><input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="cfa_id" value="{{ s.cfa.id }}">
+      <input type="number" name="start" min="1" style="width:110px" required aria-label="Next number for {{ s.cfa.code }}">{% if s.issued %}<input type="text" name="reason" placeholder="Reason" required minlength="5">{% endif %}<button class="btn btn-sm" type="submit">Set</button></form></td></tr>{% endfor %}</tbody></table></div></div>
+{% endblock %}

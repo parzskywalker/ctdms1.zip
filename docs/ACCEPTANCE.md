@@ -29,7 +29,7 @@ covered by an automated test in `tests/test_acceptance.py` (`T…` = test functi
 | 22 | Old invoices retain old rates | *Reports › Invoice-wise*, filter Company A / Raipur CFA / Durg over two months: last month ₹6.00, this month ₹6.50. Invoice detail shows "Frozen rate retained" when the master has changed | same |
 | 23 | Manual override with audit trail | Dispatch entry → *Change boxes / rate* (reason mandatory). Operator request → invoice on hold → `checker` approves in *Approvals*. *Reports › Manual Override* and the invoice's audit trail show old/new/user/time/reason | `test_23_…` |
 | 24 | Excel / CSV export | Every report: Excel, CSV, PDF, Print buttons (users with *data.export*) | `test_24_excel_csv_pdf_export` |
-| 25 | Role-based permissions | Log in as `viewer` (reports only, no export), `operator.bilaspur` (cannot open Raipur invoices), `accounts`, `checker`. Matrix in *Administration › Roles* | `test_25_role_based_permissions` |
+| 25 | Role-based permissions | Log in as `viewer` (limited read-only screens, no reports / export), `operator.bilaspur` (cannot open Raipur invoices), `accounts`, `checker`. Matrix in *Administration › Roles* | `test_25_role_based_permissions` |
 | 26 | Transporter bill reconciliation | *Operations › Reconciliation*: July bills paid; last month's Speed Cargo bill in VARIANCE (extra charges + unknown LR). *Enter / import bill* → link period dispatches or import `sample_data/transporter_bill_sample.csv` | `test_26_27_…` |
 | 27 | Variance report | *Reports › Variance* (line level) and *Freight vs Actual* (bill level); dashboard KPI "Variance" | same |
 

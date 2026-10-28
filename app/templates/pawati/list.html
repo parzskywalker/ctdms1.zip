@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head"><div><h1>Garage Pawati</h1><div class="sub">The handover slips given to the transporters that receive goods from our local autos. The slip stays with the transporter - this register is the depot's record.</div></div></div>
+<form method="get" class="card row" style="gap:10px;align-items:flex-end;flex-wrap:wrap">
+  <div><label>Show</label><select name="state">{% for k, l in [('open','Printed, left, receipt not recorded'),('unprinted','Not printed yet'),('received','Received'),('cancelled','Cancelled'),('all','All')] %}<option value="{{ k }}" {% if k == state %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+  <div><label>Transporter</label><select name="transporter_id"><option value="">All</option>{% for t in transporters %}<option value="{{ t.id }}" {% if t.id == tid %}selected{% endif %}>{{ t.name }}</option>{% endfor %}</select></div>
+  <div><label>Pawati no. / bill no.</label><input type="search" name="q" value="{{ q }}"></div>
+  <button class="btn btn-primary" type="submit">Show</button>
+</form>
+<form method="post" action="/pawati/print" target="_blank" class="card flush">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <div class="table-wrap"><table class="data compact">
+    <thead><tr><th></th><th>No.</th><th>Date</th><th>Garage (receiving transporter)</th><th>To</th><th>Company</th><th class="num">Cartons</th><th>Bill no.</th><th class="num">Amount</th><th class="num">Freight</th><th>Status</th><th>Receipt</th><th></th></tr></thead>
+    <tbody>{% for p in rows %}
+      <tr class="{{ 'row-muted' if p.status == 'CANCELLED' }}"><td>{% if p.status != 'CANCELLED' %}<input type="checkbox" name="ids" value="{{ p.id }}" aria-label="Select {{ p.pawati_no }}">{% endif %}</td>
+        <td><b>{{ p.cfa.code }}/{{ p.pawati_no }}</b></td><td class="small">{{ p.snapshot.date }}</td><td>{{ p.transporter.name }}</td><td>{{ p.customer.name }}<div class="small muted">{{ p.location.name if p.location }}</div></td>
+        <td>{{ p.company.code }}</td><td class="num">{{ p.cartons }}</td><td class="small">{{ p.bill_nos }}</td><td class="num">{{ p.amount|money }}</td><td class="num">{{ p.freight|money }}</td>
+        <td>{{ {'GENERATED':'not printed','PRINTED':'printed ×%d'|format(p.print_count),'CANCELLED':'cancelled'}[p.status] }}{% if p.cancel_reason %}<div class="small muted">{{ p.cancel_reason }}</div>{% endif %}</td>
+        <td class="small">{% if p.received_at %}<span class="badge b-ACTIVE">received</span> {{ p.received_at|dt }} <span class="muted">({{ 'LR entered' if p.received_via == 'LR' else 'ticked' }})</span>{% elif p.status == 'PRINTED' and p.slip.gate_out_at and can('pawati.receive') %}
+          <form method="post" action="/pawati/{{ p.id }}/receive" style="display:inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn btn-sm" type="submit">Received</button></form>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td class="small"><a href="/gatepass/{{ p.slip_id }}">gatepass</a></td></tr>
+    {% else %}<tr><td colspan="13" class="empty">Nothing here.</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% if can('pawati.print') and rows %}<div class="sticky-bar"><input type="text" name="reason" placeholder="Reason (needed only for a reprint)" style="max-width:300px"><button class="btn btn-primary" type="submit">Print the ticked ones (4 per A4)</button></div>{% endif %}
+</form>
+{% endblock %}

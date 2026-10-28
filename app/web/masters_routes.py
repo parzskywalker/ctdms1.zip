@@ -14,11 +14,12 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import (
-    CFA, Company, Customer, CustomerTypeMaster, ERPCodeMapping, ERPFieldMapping, ERPSystem, FreightRate, ImportTemplate,
+    CFA, Company, Customer, CustomerDeliveryLocation, CustomerTypeMaster, ERPCodeMapping, ERPFieldMapping, ERPSystem, FreightRate, ImportTemplate,
     Invoice, InvoiceMarking, LocalAutoRate, Location, OutsideAuto, Transporter, User,
 )
 from app.security.auth import csrf_protect, require
 from app.services import audit, recognition
+from app.services import customer_area_service as cas
 from app.services.errors import BusinessError
 from app.services.import_service import TARGET_FIELDS, add_code_mapping, find_code_mapping
 from app.services.scope import apply_cfa_scope, apply_company_scope, can_see
@@ -78,6 +79,9 @@ MASTERS: dict[str, MasterDef] = {
         F("default_erp_id", "Source ERP (usual)", "select", options="erp", list=True),
         F("warehouse", "Godown / building"), F("gstin", "GSTIN", upper=True), F("contact_person", "Contact person"),
         F("contact_phone", "Contact number"),
+        F("case_control_enabled", "Case barcode labels and gate scanning", "bool",
+          help="Every case of a gatepass from this depot gets its own barcode label and is scanned before gate-out. "
+               "Switch it on when the depot has its printer and scanner ready."),
         F("is_active", "Active", "bool", list=True),
     ], search=["code", "name", "city", "locality"], scope="cfa"),
     "customer-types": MasterDef("customer-types", CustomerTypeMaster, "Customer Types", "Customer type", [
@@ -126,6 +130,10 @@ MASTERS: dict[str, MasterDef] = {
         F("email", "Email", "email"), F("address", "Address", "textarea"), F("city", "City"), F("state", "State"),
         F("gstin", "GST number", upper=True, list=True), F("pan", "PAN", upper=True),
         F("service_area", "Areas served", list=True, help="Rates per area: Master Settings › Transporter Rate Cards"),
+        F("served_depots", "Depots served", "multi", options="cfa",
+          help="Only these depots are offered this transporter. Leave all unticked = serves every depot."),
+        F("uses_lr_book", "Gives us its own LR (builty) book", "bool",
+          help="For the few transporters whose LR numbers come from their own book (imported per book)"),
         F("payment_mode", "Mode of payment", "select", options="choice:TBB,CASH", required=True, list=True,
           help="TBB = to be billed (periodic bill, reconciled) · CASH = paid at dispatch, no bill expected"),
         F("direct_pickup_charge", "Direct pickup charge (extra, ₹)", "decimal",
@@ -380,6 +388,8 @@ def master_edit(key: str, obj_id: int, request: Request, db: Session = Depends(g
         extra["similar"] = [names[n] for n in difflib.get_close_matches(obj.name.upper(), list(names), n=5, cutoff=0.6)]
         extra["all_customers"] = sorted(others, key=lambda c: c.name)
         extra["invoice_count"] = db.scalar(select(func.count(Invoice.id)).where(Invoice.customer_id == obj.id))
+        extra["dlocs"] = cas.delivery_locations(db, obj, active_only=False)
+        extra["areas"] = list(db.scalars(select(Location).where(Location.is_active.is_(True)).order_by(Location.name)))
     history = list(db.scalars(select(audit.AuditLog).where(audit.AuditLog.record_type == md.model.__name__,
                                                            audit.AuditLog.record_id == str(obj.id))
                               .order_by(audit.AuditLog.ts.desc()).limit(50)))
@@ -500,6 +510,32 @@ def _after_save(db: Session, user: User, md: MasterDef, obj, changes: dict | Non
         recognition.after_master_change(db, md.model, obj)
 
 
+@router.post("/masters/customers/{cid:int}/locations")
+def customer_location_add(cid: int, request: Request, location_id: str = Form(""), label: str = Form(""),
+                          address: str = Form(""), ship_to_code: str = Form(""), is_default: str | None = Form(None),
+                          db: Session = Depends(get_db), user: User = Depends(require("master.edit"))):
+    cust = db.get(Customer, cid)
+    if not cust:
+        raise HTTPException(404)
+    row = cas.add_location(db, user, cust, location_id=safe_int(location_id) or 0, label=label, address=address,
+                           ship_to_code=ship_to_code, is_default=bool(is_default))
+    db.commit()
+    flash(request, f"Delivery location {row.name} added to {cust.name}.", "success")
+    return redirect(f"/masters/customers/{cust.id}")
+
+
+@router.post("/masters/customers/{cid:int}/locations/{lid:int}/{action}")
+def customer_location_action(cid: int, lid: int, action: str, request: Request, db: Session = Depends(get_db),
+                             user: User = Depends(require("master.edit"))):
+    cust = db.get(Customer, cid)
+    if not cust or action not in ("default", "remove"):
+        raise HTTPException(404)
+    (cas.set_default if action == "default" else cas.deactivate)(db, user, cust, lid)
+    db.commit()
+    flash(request, "Delivery locations updated.", "success")
+    return redirect(f"/masters/customers/{cust.id}")
+
+
 @router.post("/masters/customers/{cid:int}/merge")
 def merge_customer(cid: int, request: Request, source_id: int = Form(...), reason: str = Form(""),
                    db: Session = Depends(get_db), user: User = Depends(require("master.edit"))):
@@ -516,6 +552,14 @@ def merge_customer(cid: int, request: Request, source_id: int = Form(...), reaso
     n_map = db.execute(update(ERPCodeMapping).where(ERPCodeMapping.entity_type == "CUSTOMER",
                                                     ERPCodeMapping.target_id == source.id)
                        .values(target_id=target.id)).rowcount
+    have = {(r.location_id, r.label) for r in cas.delivery_locations(db, target, active_only=False)}
+    for r in cas.delivery_locations(db, source, active_only=False):  # the source's delivery locations move over
+        if (r.location_id, r.label) in have:
+            r.is_active = False
+        else:
+            r.customer_id = target.id
+            r.is_default = False
+            have.add((r.location_id, r.label))
     source.merged_into_id = target.id  # future imports using the old code resolve to the target
     for c in source.companies:
         if c not in target.companies:

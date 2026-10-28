@@ -17,6 +17,7 @@ from app.models import (
     AuditLog, CFA, Customer, CustomerTypeMaster, DispatchSlip, ImportBatch, Invoice, MasterUpload, OutsideAuto,
     RateStatus, Setting, TransporterBill, TransporterRate, User,
 )
+from app.models.pawati import GaragePawati
 
 
 @dataclass
@@ -113,6 +114,13 @@ def trip_waiting(db, ctx):
 @needs
 def box_waiting(db, ctx):
     return _pending(db, ["XY/K/2603", "PQR/K/0311", "XY/K/2604"]), "the Kamal Vihar invoices are not waiting"
+
+
+@needs
+def korba_waiting(db, ctx):
+    inv = _inv(db, "001250")
+    ok = inv is not None and inv.dispatch_slip_id is None and inv.status in ("PENDING", "VERIFIED")
+    return ok, "invoice 001250 (Korba) is not waiting for dispatch (it may carry a pending box-change request)"
 
 
 @needs
@@ -495,3 +503,89 @@ def kishore_gone(db, ctx):
     if not slip or not slip.gate_out_at or slip.gate_out_at < ctx.since:
         return False, "The Kishore Mini Truck gatepass has not been confirmed at the gate yet (Gate check, F9)."
     return True, f"{slip.dispatch_no} confirmed at the gate: {slip.total_cases} cases counted, invoices DISPATCHED."
+
+
+# ============================================================================ Garage Pawati (local-auto trip, two receivers)
+PAWATI_INVS = ["001250"]
+
+
+def _pawatis(db: Session, slip: DispatchSlip) -> list[GaragePawati]:
+    return list(db.scalars(select(GaragePawati).where(GaragePawati.slip_id == slip.id, GaragePawati.status != "CANCELLED")
+                           .order_by(GaragePawati.pawati_no)))
+
+
+def _pawati_slip(db: Session, ctx: Ctx):
+    slip = _slip_with(db, ctx, PAWATI_INVS)
+    if not slip:
+        return None, "No gatepass with 001250 has been generated in this lesson yet."
+    return slip, ""
+
+
+@check
+def pawati_generated(db, ctx):
+    slip, msg = _pawati_slip(db, ctx)
+    if not slip:
+        return False, msg
+    if not slip.outside_auto or slip.transporter_id is not None:
+        return False, (f"{slip.dispatch_no} is not a local-auto trip with receiving transporters - void it and choose "
+                       "'Local auto' under 'Goods reach the transporter by'.")
+    ps = _pawatis(db, slip)
+    got = {p.transporter.code: p.cartons for p in ps}
+    if set(got) != {"DM-SRL", "DM-VTC"}:
+        return False, (f"{slip.dispatch_no} has Pawatis for {', '.join(sorted(got)) or 'nobody'}; the exercise gives part "
+                       "of 001250 to Shree Roadlines and part to Vijay Transport Co - void it and split the invoice.")
+    if sum(got.values()) != slip.total_cases:
+        return False, "The cartons on the Pawatis do not add up to the cases on the gatepass."
+    return True, (f"{slip.dispatch_no}: {len(ps)} Garage Pawati - Shree Roadlines {got['DM-SRL']} cartons, "
+                  f"Vijay Transport Co {got['DM-VTC']} cartons.")
+
+
+@check
+def pawati_gatepass_printed(db, ctx):
+    slip, msg = _pawati_slip(db, ctx)
+    if not slip:
+        return False, msg
+    return (True, f"{slip.dispatch_no} is printed.") if slip.print_count else (
+        False, f"{slip.dispatch_no} is not printed yet - press F8 on the gatepass.")
+
+
+@check
+def pawati_printed(db, ctx):
+    slip, msg = _pawati_slip(db, ctx)
+    if not slip:
+        return False, msg
+    open_ = [str(p.pawati_no) for p in _pawatis(db, slip) if not p.print_count]
+    if open_:
+        return False, "Not printed yet: Pawati " + ", ".join(open_) + ". On the gatepass, Garage Pawati panel › Print."
+    return True, "Every Garage Pawati of this trip is printed - the auto may now leave."
+
+
+@check
+def pawati_gone(db, ctx):
+    slip, msg = _pawati_slip(db, ctx)
+    if not slip:
+        return False, msg
+    if not slip.gate_out_at:
+        return False, f"{slip.dispatch_no} has not gone out yet - press F9 (Record gate-out), then Enter."
+    return True, f"{slip.dispatch_no} left the gate with its Garage Pawatis."
+
+
+def _received(db, ctx, via: str, label: str):
+    slip, msg = _pawati_slip(db, ctx)
+    if not slip:
+        return False, msg
+    hit = [p for p in _pawatis(db, slip) if p.received_at and p.received_via == via]
+    if not hit:
+        return False, label
+    return True, f"Pawati {hit[0].pawati_no} ({hit[0].transporter.name}) is recorded as received."
+
+
+@check
+def pawati_received_by_hand(db, ctx):
+    return _received(db, ctx, "MANUAL", "No Pawati has been ticked as received yet - Garage Pawati register › Received.")
+
+
+@check
+def pawati_received_by_lr(db, ctx):
+    return _received(db, ctx, "LR", "The other Pawati is not received yet - enter the LR number of its consignment on the "
+                                    "gatepass and press Save LR numbers.")

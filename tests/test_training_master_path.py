@@ -1,4 +1,4 @@
-"""The complete Master Administrator learning path (15 lessons), every practical step done through the real screens'
+"""The complete Master Administrator learning path (16 lessons), every practical step done through the real screens'
 form posts, in the Master's own practice database. On-screen steps (page opened, key pressed) are confirmed the way
 the guidance panel does after it sees them; every 'check' step must pass the server's check of the practice data."""
 from __future__ import annotations
@@ -53,7 +53,8 @@ def test_master_path_completes_with_real_actions_and_leaves_live_data_alone(web,
         return one("select id from invoices where invoice_no=?", no)
 
     def gatepass(numbers, **fields):
-        data = {"ids": [str(inv_id(n)) for n in numbers], "dispatch_date": today, "pickup_mode": "REGULAR", **fields}
+        data = {"ids": [str(inv_id(n)) for n in numbers], "dispatch_date": today, "pickup_mode": "REGULAR",
+                "group_cross_company": "1", **fields}  # the lessons' trips mix two companies: the operator ticks the box
         for n in numbers:
             data[f"cases_{inv_id(n)}"] = str(one("select boxes from invoices where invoice_no=?", n))
         r = w.post("/gatepass/new", data=data)
@@ -131,6 +132,23 @@ def test_master_path_completes_with_real_actions_and_leaves_live_data_alone(web,
         ("m14-bills", "review"): lambda: w.post(f"/recon/{bill_id()}/rates", data={"note": "card rates checked"}),
         ("m14-bills", "approve"): lambda: (act_as("demo.checker"), w.post(f"/recon/{bill_id()}/approve", data={"remarks": "ok"})),
         ("m14-bills", "pay"): lambda: (act_as(""), w.post(f"/recon/{bill_id()}/pay", data={"payment_ref": "UTR-TRAINING-1"})),
+        ("d03-pawati", "generate"): lambda: w.post("/gatepass/new", data={
+            "ids": [str(inv_id("001250"))], "dispatch_date": today, "mode": "TRANSPORTER", "pickup_mode": "OUTSIDE_AUTO",
+            "outside_auto_id": str(one("select id from outside_autos where code='DM-LA1'")), "auto_method": "PER_TRIP",
+            "trip_charge": "500", f"cases_{inv_id('001250')}": "8",
+            f"recv_{inv_id('001250')}": f"{one('select id from transporters where code=?', 'DM-SRL')}:5,"
+                                         f"{one('select id from transporters where code=?', 'DM-VTC')}:3"}),
+        ("d03-pawati", "print"): lambda: w.post(f"/gatepass/{one('select max(id) from dispatch_slips')}/print", data={"size": "A5", "mode": "print"}),
+        ("d03-pawati", "blocked"): lambda: w.post(f"/gatepass/{one('select max(id) from dispatch_slips')}/gate-out"),
+        ("d03-pawati", "pawati-print"): lambda: w.post("/pawati/print", data={"ids": [
+            str(r[0]) for r in sqlite3.connect(path).execute("select id from garage_pawatis order by pawati_no")]}),
+        ("d03-pawati", "out"): lambda: w.post(f"/gatepass/{one('select max(id) from dispatch_slips')}/gate-out"),
+        ("d03-pawati", "receive-hand"): lambda: w.post(
+            f"/pawati/{one('select id from garage_pawatis where receiving_transporter_id=?', one('select id from transporters where code=?', 'DM-SRL'))}/receive",
+            data={"note": "garage clerk signed"}),
+        ("d03-pawati", "receive-lr"): lambda: w.post(f"/gatepass/{one('select max(id) from dispatch_slips')}/lr", data={
+            f"lr_{one('select customer_id from invoices where id=?', inv_id('001250'))}_{one('select id from transporters where code=?', 'DM-VTC')}": "VTC-7001",
+            f"lrdate_{one('select customer_id from invoices where id=?', inv_id('001250'))}_{one('select id from transporters where code=?', 'DM-VTC')}": today}),
         ("m15-audit", "export"): lambda: w.get("/reports/audit/export?fmt=csv&date_from=2026-01-01"),
     }
 
@@ -155,7 +173,7 @@ def test_master_path_completes_with_real_actions_and_leaves_live_data_alone(web,
         assert state().get("finished"), code
     db.expire_all()
     p = db.scalar(select(TrainingProgress).where(TrainingProgress.user_id == admin_id))
-    assert p.status == "COMPLETED" and len([c for c in p.lessons.values() if c.get("done")]) == 15
+    assert p.status == "COMPLETED" and len([c for c in p.lessons.values() if c.get("done")]) == 16
     w.post("/training/exit")
     db.expire_all()
     after = {t: db.execute(text(f"select count(*) from {t}")).scalar() for t in tables}

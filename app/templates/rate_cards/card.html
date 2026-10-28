@@ -1,27 +1,36 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="crumbs"><a href="/rate-cards">Transporter rate cards</a> › {{ t.name }}</div>
+<div class="crumbs">{% if can('rate.view') %}<a href="/rate-cards">Transporter rate cards</a>{% else %}<a href="/approvals">Approvals</a>{% endif %} › {{ t.name }}</div>
 <div class="page-head">
-  <div><h1>{{ t.name }}</h1><div class="sub">{{ t.payment_label }}{% if t.direct_pickup_charge %} · direct pickup {{ t.direct_pickup_charge|money }} {{ 'per case' if t.direct_pickup_basis == 'PER_CASE' else 'per trip' }}{% endif %} · {{ t.contact_person or '' }} {{ t.mobile or '' }}</div></div>
-  <div class="actions"><a class="btn" href="/masters/transporters/{{ t.id }}">Transporter details</a></div>
+  <div><h1>{{ t.name }}</h1><div class="sub">{{ t.payment_label }}{% if t.direct_pickup_charge %} · direct pickup {{ t.direct_pickup_charge|money }} {{ 'per case' if t.direct_pickup_basis == 'PER_CASE' else 'per trip' }}{% endif %} · {{ t.contact_person or '' }} {{ t.mobile or '' }} · serves {{ served|join(', ') if served else 'every depot' }}</div></div>
+  <div class="actions">{% if can('master.view') %}<a class="btn" href="/masters/transporters/{{ t.id }}">Transporter details</a>{% endif %}</div>
 </div>
 <form method="post" action="/rate-cards/{{ t.id }}/propose" class="card flush">
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
   <div class="table-wrap"><table class="data">
-    <thead><tr><th>Area</th><th class="num">Rate / case today</th><th>Since</th><th>Next / pending</th><th>History</th>{% if can('rate.create') %}<th style="width:250px">New rate · from</th>{% endif %}</tr></thead>
+    <thead><tr><th>Area</th><th>Applies to</th><th class="num">Rate / case today</th><th>Since</th><th>Next / pending</th><th>History</th>{% if can('rate.create') %}<th style="width:250px">New rate · from</th>{% endif %}</tr></thead>
     <tbody>
     {% for a in areas %}
       <tr><td><b>{{ a.location.name }}</b> <span class="small muted">{{ a.location.code }}</span></td>
+        <td class="small">{% if a.rank %}<span class="tag" title="An exception: for this depot / company it wins over the general rate">{{ a.scope }}</span>{% else %}<span class="muted">all depots and companies</span>{% endif %}</td>
         <td class="num"><b>{{ a.current.rate_per_case|rate if a.current else '—' }}</b></td>
         <td class="small">{{ a.current.effective_from|date if a.current else '' }}</td>
         <td class="small">{% if a.future %}{{ a.future.rate_per_case|rate }} from {{ a.future.effective_from|date }}{% endif %}{% if a.pending %}<span class="badge b-PENDING_APPROVAL">{{ a.pending.rate_per_case|rate }} from {{ a.pending.effective_from|date }} awaiting approval</span>{% endif %}</td>
         <td class="small muted">{% for h in a.history|reverse %}{% if h.status in ('APPROVED','REJECTED') %}<div>{{ h.rate_per_case|rate }} {{ h.effective_from|date }}{% if h.effective_to %}–{{ h.effective_to|date }}{% endif %} {% if h.status == 'REJECTED' %}(rejected){% endif %}{% if h.source == 'BILL' %} · from bill{% endif %}</div>{% endif %}{% endfor %}</td>
-        {% if can('rate.create') %}<td>{% if not a.pending %}<div class="row" style="gap:4px;flex-wrap:nowrap"><input type="text" inputmode="decimal" name="rate_{{ a.location.id }}" placeholder="₹" style="width:80px;min-height:28px;padding:3px 6px"><input type="date" name="from_{{ a.location.id }}" value="{{ today.isoformat() }}" style="min-height:28px;padding:3px 4px;width:130px"></div>{% endif %}</td>{% endif %}
+        {% if can('rate.create') %}<td>{% if not a.pending %}<div class="row" style="gap:4px;flex-wrap:nowrap"><input type="text" inputmode="decimal" name="rate_{{ a.key }}" placeholder="₹" style="width:80px;min-height:28px;padding:3px 6px"><input type="date" name="from_{{ a.key }}" value="{{ today.isoformat() }}" style="min-height:28px;padding:3px 4px;width:130px"></div>{% endif %}</td>{% endif %}
       </tr>
-    {% else %}<tr><td colspan="6" class="empty">No rates yet for {{ t.name }}. Add the areas they serve below.</td></tr>{% endfor %}
+    {% else %}<tr><td colspan="7" class="empty">No rates yet for {{ t.name }}. Add the areas they serve below.</td></tr>{% endfor %}
     {% if can('rate.create') and others %}
-      <tr><td colspan="5"><label class="small muted">Add an area</label><select name="new_location" style="max-width:260px"><option value="">— choose area —</option>{% for lo in others %}<option value="{{ lo.id }}">{{ lo.name }} ({{ lo.code }})</option>{% endfor %}</select></td>
+      <tr><td colspan="6"><label class="small muted">Add an area</label><select name="new_location" style="max-width:260px"><option value="">— choose area —</option>{% for lo in others %}<option value="{{ lo.id }}">{{ lo.name }} ({{ lo.code }})</option>{% endfor %}</select></td>
         <td><div class="row" style="gap:4px;flex-wrap:nowrap"><input type="text" inputmode="decimal" name="new_rate" placeholder="₹" style="width:80px;min-height:28px;padding:3px 6px"><input type="date" name="new_from" value="{{ today.isoformat() }}" style="min-height:28px;padding:3px 4px;width:130px"></div></td></tr>
+    {% endif %}
+    {% if can('rate.create') %}
+      <tr><td colspan="6"><label class="small muted">Add an exception <span title="For one depot and / or one company the exception is used instead of the general rate">ⓘ</span></label>
+        <div class="row" style="gap:6px;flex-wrap:wrap">
+          <select name="exc_location" style="max-width:200px"><option value="">area…</option>{% for lo in all_areas %}<option value="{{ lo.id }}">{{ lo.name }} ({{ lo.code }})</option>{% endfor %}</select>
+          <select name="exc_cfa" style="max-width:170px"><option value="">any depot</option>{% for c in cfas %}<option value="{{ c.id }}">{{ c.code }} · {{ c.name }}</option>{% endfor %}</select>
+          <select name="exc_company" style="max-width:170px"><option value="">any company</option>{% for c in companies %}<option value="{{ c.id }}">{{ c.code }} · {{ c.name }}</option>{% endfor %}</select></div></td>
+        <td><div class="row" style="gap:4px;flex-wrap:nowrap"><input type="text" inputmode="decimal" name="exc_rate" placeholder="₹" style="width:80px;min-height:28px;padding:3px 6px"><input type="date" name="exc_from" value="{{ today.isoformat() }}" style="min-height:28px;padding:3px 4px;width:130px"></div></td></tr>
     {% endif %}
     </tbody>
   </table></div>

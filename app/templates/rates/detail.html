@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% from "_macros.html" import badge with context %}
 {% block content %}
-<div class="crumbs"><a href="/rates">Freight Rates</a> › #{{ r.id }}</div>
+<div class="crumbs">{% if can('rate.view') %}<a href="/rates">Freight Rates</a>{% else %}<a href="/approvals">Approvals</a>{% endif %} › #{{ r.id }}</div>
 <div class="page-head">
   <div><h1>Rate #{{ r.id }} · {{ r.rate_per_box|rate }} / box {{ badge(r.status) }}</h1><div class="sub">{{ desc }} · {{ r.level|level_label }}</div></div>
-  <div class="actions"><a class="btn" href="/rates/finder?company_id={{ r.company_id }}&cfa_id={{ r.cfa_id or '' }}&location_id={{ r.location_id or '' }}&customer_id={{ r.customer_id or '' }}">Test in rate finder</a></div>
+  <div class="actions">{% if can('rate.view') %}<a class="btn" href="/rates/finder?company_id={{ r.company_id }}&cfa_id={{ r.cfa_id or '' }}&location_id={{ r.location_id or '' }}&customer_id={{ r.customer_id or '' }}">Test in rate finder</a>{% endif %}</div>
 </div>
 <div class="grid g-side">
   <div>

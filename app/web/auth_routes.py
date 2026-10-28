@@ -11,7 +11,7 @@ from app.security.auth import (
     password_problems, revoke_session, revoke_user_sessions, verify_password,
 )
 from app.services import audit
-from app.web.templating import flash, redirect, render, safe_path
+from app.web.templating import back_url, flash, home_for, redirect, render, safe_path
 
 router = APIRouter(dependencies=[Depends(csrf_protect)], include_in_schema=False)
 
@@ -26,16 +26,6 @@ DEMO_USERS = [
     ("checker", "Demo@123", "Checker / Approver"),
     ("viewer", "Demo@123", "Read-only Viewer"),
 ]
-
-
-def _home_for(user: User) -> str:
-    if user.can("dashboard.view"):
-        return "/"
-    if user.can("dispatch.operate"):
-        return "/dispatch/pending"
-    if user.can("report.view"):
-        return "/reports"
-    return "/invoices"
 
 
 @router.get("/login")
@@ -64,7 +54,7 @@ def login(request: Request, username: str = Form(...), password: str = Form(...)
         flash(request, "Please set a new password before continuing.", "warn")
         return redirect("/account/password")
     target = safe_path(next, "") if next != "/" else ""
-    target = target or _home_for(user)
+    target = target or home_for(user)
     return redirect(target)
 
 
@@ -106,4 +96,26 @@ def change_password(request: Request, current: str = Form(...), new: str = Form(
     request.session["sid"] = token
     db.commit()
     flash(request, "Password changed. Other sessions were signed out.", "success")
-    return redirect(_home_for(user))
+    return redirect(home_for(user))
+
+
+@router.post("/account/depot")
+def switch_depot(request: Request, cfa_id: str = Form(""), user: User = Depends(current_user)):
+    """Work in one of the user's assigned depots (or all of them). Never widens access: only depots already assigned
+    to this user can be chosen; the scope checks everywhere read the choice through User.cfa_ids."""
+    mine = {c.id: c for c in user.cfas}
+    if user.all_cfas or len(mine) < 2:
+        return redirect(back_url(request, "/"))
+    try:
+        want = int(cfa_id) if cfa_id.strip() else 0
+    except ValueError:
+        want = -1
+    if want == 0:
+        request.session.pop("depot", None)
+        flash(request, "Showing all your depots.", "info")
+    elif want in mine:
+        request.session["depot"] = want
+        flash(request, f"Working in {mine[want].name} ({mine[want].code}).", "info")
+    else:
+        flash(request, "That depot is not assigned to you.", "error")
+    return redirect(back_url(request, "/"))

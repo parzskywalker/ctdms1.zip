@@ -216,6 +216,10 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(PermissionDenied)
     async def _denied(request: Request, exc: PermissionDenied):
+        if exc.perm:  # a refused permission is worth a log line (security review); no business data is read for it
+            u = getattr(request.state, "user", None)
+            log.warning("access denied: user=%s %s %s needs %s", getattr(u, "username", "-"), request.method,
+                        request.url.path, exc.perm)
         if is_api(request):
             return JSONResponse({"detail": exc.message}, status_code=403)
         return render(request, "error.html", {"code": 403, "title": "Access denied", "message": exc.message},
@@ -271,11 +275,11 @@ def create_app() -> FastAPI:
     from app.api import v1
     from app.web import (
         admin, approvals, auth_routes, dashboard_routes, dispatch_routes, gatepass_routes, imports_routes,
-        invoices_routes, master_upload_routes, masters_routes, notify_routes, rate_card_routes, rates_routes,
+        invoices_routes, master_upload_routes, masters_routes, notify_routes, pawati_routes, rate_card_routes, rates_routes,
         recon_routes, reports_routes, subscription_routes, tracking_routes, training_routes,
     )
     for mod in (auth_routes, dashboard_routes, invoices_routes, imports_routes, dispatch_routes, gatepass_routes,
-                notify_routes, tracking_routes, approvals, master_upload_routes, masters_routes, rates_routes, rate_card_routes, recon_routes,
+                notify_routes, pawati_routes, tracking_routes, approvals, master_upload_routes, masters_routes, rates_routes, rate_card_routes, recon_routes,
                 subscription_routes, reports_routes, training_routes, admin):
         app.include_router(mod.router)
     app.include_router(v1.router)

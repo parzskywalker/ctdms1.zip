@@ -37,7 +37,7 @@ CBO_FILE = DEMO_FILES / "DEMO_v1.6_CBO_invoices_PQR.csv"
 FILES = {f.name: f for f in (WORKBOOK, SAP_FILE, MARG_FILE, CBO_FILE)}
 
 CHECKPOINTS = ["clean", "uploaded", "masters", "sap", "invoices", "dispatched", "billed"]
-SCENARIO_VERSION = "3"
+SCENARIO_VERSION = "4"
 DEMO_USERS = [("demo.master", "Demo Master (training)", "ADMIN"),
               ("demo.checker", "Demo Checker (training)", "CHECKER"),
               ("demo.accounts", "Demo Accounts (training)", "ACCOUNTS"),
@@ -226,7 +226,7 @@ def _gatepass(db: Session, numbers: list[str], remarks: str, *, transporter=None
     from app.services import dispatch_service as ds
     master = _user(db, "demo.master")
     invs = invoices_by_no(db, numbers)
-    req = ds.GatepassRequest(cases={i.id: str(i.boxes) for i in invs}, remarks=remarks)
+    req = ds.GatepassRequest(cases={i.id: str(i.boxes) for i in invs}, remarks=remarks, group_cross_company=True)
     if transporter:
         req.mode = DispatchMode.TRANSPORTER
         req.transporter_id = db.scalar(select(Transporter.id).where(Transporter.code == transporter))
@@ -239,6 +239,9 @@ def _gatepass(db: Session, numbers: list[str], remarks: str, *, transporter=None
     db.commit()
     ds.print_gatepass(db, master, slip, "PRINT_A5")
     if gate_out:
+        from app.services import pawati_service as pws
+        if pws.active(db, slip):
+            pws.print_sheet(db, master, pws.active(db, slip))
         ds.gate_out(db, master, slip)
     db.commit()
     return slip, invs

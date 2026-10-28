@@ -13,7 +13,7 @@ from app.models import Customer, Notification, NotifyEvent, NotifyStatus, User
 from app.security.auth import csrf_protect, require
 from app.services import notify_service as ns
 from app.services import settings_service as cfg
-from app.services.scope import apply_cfa_scope, can_see
+from app.services.scope import apply_notification_scope, can_see
 from app.services.utils import local_today, parse_date, safe_int, utc_start
 from app.web.templating import back_url, flash, get_form, redirect, render
 
@@ -24,6 +24,9 @@ def _get(db: Session, user: User, n_id: int) -> Notification:
     n = db.get(Notification, n_id)
     if not n or (n.cfa_id and not can_see(user, None, n.cfa_id)):
         raise HTTPException(404)
+    if not user.scope_is_open and not db.scalar(
+            apply_notification_scope(select(Notification.id), user, Notification).where(Notification.id == n.id)):
+        raise HTTPException(404)  # its gatepass is outside the user's area / customer scope
     return n
 
 
@@ -37,7 +40,7 @@ def index(request: Request, db: Session = Depends(get_db), user: User = Depends(
         d_to = parse_date(qp.get("date_to")) if qp.get("date_to") else local_today()
     except ValueError:
         d_from, d_to = local_today() - timedelta(days=7), local_today()
-    stmt = apply_cfa_scope(select(Notification), user, Notification.cfa_id).where(
+    stmt = apply_notification_scope(select(Notification), user, Notification).where(
         Notification.created_at >= utc_start(d_from), Notification.created_at < utc_start(d_to + timedelta(days=1)))
     if status:
         stmt = stmt.where(Notification.status == status)
@@ -50,7 +53,7 @@ def index(request: Request, db: Session = Depends(get_db), user: User = Depends(
     counts = {}
     for s in NotifyStatus.ALL:
         counts[s] = db.scalar(select(func.count()).select_from(
-            apply_cfa_scope(select(Notification.id), user, Notification.cfa_id)
+            apply_notification_scope(select(Notification.id), user, Notification)
             .where(Notification.status == s).subquery())) or 0
     total = db.scalar(select(func.count()).select_from(stmt.subquery()))
     page = safe_int(qp.get("page"), 1, minimum=1)

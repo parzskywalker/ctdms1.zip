@@ -162,7 +162,9 @@ def act_as(request: Request, who: str = Form(""), user: User = Depends(current_u
         raise HTTPException(400, "Only in Training Mode")
     who = (who or "").strip()
     if who:
-        ok = who.startswith(trn_users.DEMO_PREFIX) and any(u.username == who for u in trn_users.demo_users(db))
+        # Only the demonstration checker (the second person of the two-person rule) can be acted as. The demonstration
+        # Master / Accounts users are not offered: a trainee must not get another role's screens through practice.
+        ok = who == "demo.checker" and any(u.username == who for u in trn_users.demo_users(db))
         if not ok:
             raise HTTPException(400, "Unknown demonstration user")
     t = dict(t)
@@ -309,6 +311,7 @@ def _admin_rows(live: Session):
             counts[s["status"]] += 1
             counts["required"] += 1 if p and p.required else 0
         rows.append({"u": u, "p": p, "s": s, "path": p.path if p else prog.default_path(u),
+                     "allowed": prog.allowed_paths(u),
                      "depots": "all" if u.all_cfas else ", ".join(c.code for c in u.cfas) or "-"})
     return rows, counts
 
@@ -365,6 +368,10 @@ def admin_user(uid: int, request: Request, do: str = Form(...), path: str = Form
         raise HTTPException(404)
     p = prog.ensure(live, u, user)
     if do == "assign":
+        if path not in prog.allowed_paths(u):
+            flash(request, f"{u.full_name} cannot be given the {PATHS.get(path, {}).get('name', path)} tutorial - "
+                           "it belongs to a different role. Change the user's role first.", "error")
+            return redirect("/admin/training")
         prog.reassign(live, p, path, user)
         msg = f"{u.full_name}: learning path {PATHS[path]['name']}."
     elif do == "require":

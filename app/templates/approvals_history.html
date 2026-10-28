@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head"><div><h1>Approval History</h1><div class="sub">Requests that were approved or rejected in the last {{ days }} days - only the kinds you may approve, inside your own companies and depots.</div></div>
+  <div class="actions"><a class="btn" href="/approvals" data-key="Esc">Pending approvals</a></div></div>
+<form method="get" class="filter-bar row" role="search" style="margin-bottom:12px">
+  <label>Last <select name="days" onchange="this.form.submit()">{% for d in (30, 90, 180, 365) %}<option value="{{ d }}" {% if d == days %}selected{% endif %}>{{ d }} days</option>{% endfor %}</select></label>
+  <noscript><button class="btn" type="submit">Show</button></noscript>
+</form>
+<div class="card flush">
+  <div class="table-wrap"><table class="data compact">
+    <thead><tr><th>Decided</th><th>Type</th><th>Reference</th><th>Details</th><th>Requested by</th><th>Decision</th><th>Decided by</th><th>Remarks</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr><td class="nowrap small">{{ r.when|dt }}</td><td>{{ r.kind }}</td>
+        <td>{% if r.link %}<a href="{{ r.link }}">{{ r.ref }}</a>{% else %}{{ r.ref }}{% endif %}</td>
+        <td class="wrap small">{{ r.what }}</td><td>{{ r.by }}</td>
+        <td><span class="badge {{ 'b-APPROVED' if r.decision == 'APPROVED' else 'b-REJECTED' }}">{{ r.decision|title }}</span></td>
+        <td>{{ r.decider }}</td><td class="wrap small">{{ r.remarks }}</td></tr>
+    {% else %}<tr><td colspan="8" class="empty">Nothing was decided in this period.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  {% if truncated %}<div class="muted small" style="padding:8px 12px">Showing the latest 500 decisions.</div>{% endif %}
+</div>
+{% endblock %}

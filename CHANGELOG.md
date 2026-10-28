@@ -1,5 +1,233 @@
 # Changelog
 
+## v1.7.0 — Guided Training brought up to date for v1.7
+
+- **Garage Pawati lesson is now on every path that dispatches**: Master Administrator (16 lessons, last), Dispatch Operator and
+  Depot Manager. It needs invoice 001250 to be waiting; if a trainee reaches it from a practice copy where that invoice
+  carries a box-change request, the panel offers *Prepare practice data*.
+- **Corrected: "Transporter selection" (Depot Manager).** It still told the trainee to pick Vijay Transport Co and read "no rate
+  for Durg". Since v1.7 only eligible transporters are offered, so the step now has the trainee read the eligibility line
+  ("1 transporter can carry Durg - hidden: 1 without a rate for Durg") and choose Shree Roadlines; it explains the audited
+  depot override.
+- **Updated lessons**: Introduction (new menus, role-based sidebar), Masters (customer delivery locations, depots a transporter
+  serves, builty-book flag, depot / company rate exceptions), Long distance (how freight was calculated, case barcodes at
+  depots that use them), Local auto (what differs from the Garage Pawati trip), Users (editable roles, scope by company /
+  depot / area / customer type / customer, individual exceptions), System settings (case control per depot, label size, area
+  mismatch, Pawati numbering), Audit (new audited actions), Gate check (scanning cartons, gate exception, Pawati blocker),
+  Depot monitoring (Pawati register, LR Books), Depot registers and Reports (Garage Pawati Register, Gate Exception Report),
+  Rate approvals and Exceptions (rate exceptions, area choice, transporter override).
+- Tests: the Depot Manager path test now drives the Pawati lesson; the Master path test covers 16 lessons.
+
+## v1.7.0 — Guided Training: Garage Pawati lesson
+
+- The lesson is now also the last lesson of the **Depot Manager** path (after *Depot registers and delivery status*); its test runs for both roles.
+- **New lesson "Local-auto trip to transporters: Garage Pawati"** (Dispatch Operator path, after *Gate check*): invoice 001250
+  (Korba, 8 cartons) goes by a local auto to two receiving transporters - 5 cartons to Shree Roadlines, 3 to Vijay Transport Co.
+  The trainee splits the invoice in the builder, generates and prints the gatepass, sees the gate refuse the trip until the
+  Garage Pawatis are printed, prints them, records gate-out, ticks one Pawati as received and receives the other by entering
+  its LR. Every practical step is checked in the practice database.
+- **Fix found by the lesson:** an invoice split between two receiving transporters could only take one LR (the main
+  receiver's). The gatepass now shows one LR row per customer and receiver, with that receiver's own cases, rate and freight;
+  the other part's LR is kept on its allocation, audited, needs a reason to change, and marks that receiver's Pawati received.
+- Tests: `tests/test_training_pawati.py` (the lesson, end to end) and a split-LR test in `tests/test_v17_phase6.py`.
+
+## v1.7.0 — Phase 7: release readiness
+
+- **Garage Pawati is white** (plain white A4, 4 slips; no coloured stock needed).
+- **Two new reports**: *Garage Pawati Register* (receiving transporter, customer, cartons, bills, amount, freight, receipt state,
+  days open) and *Gate Exception Report* (gatepasses that left with unscanned cases: who, when, why). Both are scoped like the
+  gatepass they belong to and export to CSV / Excel / PDF.
+- **PostgreSQL release gate passed**: the full test suite on PostgreSQL 16, migrations 0 -> 0015, 0015 -> 0009 -> 0015.
+- **End-to-end test** of the whole workflow (case control + receivers + Pawati + LR book + audit trail + report scope).
+- **docs/RELEASE_v1.7.md**: upgrade steps, rollback, depot-by-depot switch-on (Guma first), hardware trial sheet, acceptance
+  checklist and the points still to be confirmed by the owner. Version is now 1.7.0.
+
+## v1.7 (in progress) — Phase 6: receiving transporters, Garage Pawati, LR books
+
+Migration 0015 (applied automatically, additive): `dispatch_allocations`, `garage_pawatis` (+ lines, print log), `lr_books`,
+`lr_numbers`. Roles that could operate dispatch get `pawati.print`, `pawati.receive`, `lr_book.manage`; roles that could void a
+slip get `pawati.cancel` (audited). A depot's training/practice database is upgraded in place.
+
+- **Local-auto trip with several receiving transporters** (builder: Transporter + *Local auto*): each invoice names its receiving
+  transporter, and an invoice may be **split** (some cases to a second transporter). Freight is priced per receiver from its
+  rate card; the allocation (invoice line x receiver) is the unit of freight, LR and Pawati. One gatepass = one local-auto trip;
+  *Direct pickup* + local auto is refused. Regular transporter gatepasses are unchanged.
+- **Garage Pawati** (Dispatch desk): one white slip (printed on plain white A4) per receiving transporter x customer x company (No., Date, Garage, To,
+  Cartons, Bill No., Amount, Freight, signatures), 4 per A4. Numbered per depot; the Administrator sets the starting number
+  (Administration > Pawati Numbering). **The auto cannot go out until every Pawati is printed.** Reprint = reason + permission.
+  Receipt is recorded by hand or automatically when the LR is entered after gate-out; the Pawati stays with the transporter.
+  Voiding the gatepass cancels its Pawatis; a cancelled Pawati is re-issued under a new number.
+- **LR books** (Dispatch desk > LR Books): import a range for a transporter flagged "uses builty book"; CTDMS gives the next LR to
+  each consignment at gatepass creation, staff can change it (logged), an empty book warns and is audited, a void gatepass
+  releases the numbers.
+- Fixed in the builder: the split box shadowed the Cases box when a split was open.
+- Tests: `tests/test_v17_phase6.py` (9) and `tests/e2e_pawati.py` (browser); the full suite passes (383).
+
+## v1.7 (in progress) — Phase 5: the guard scans every case before gate-out
+
+Migration 0014 (applied automatically): roles that could void a gatepass receive `gate.exception` (audited). No table changes.
+
+- **Gate check scan loop** (Dispatch desk › Gate Check): for a gatepass with case control, the guard scans each case label; the
+  cursor stays in the scan box, every scan answers at once - green tick + short beep, or a red STOP with the reason (not a
+  CTDMS code / misread, training label, unknown, void label, belongs to another gatepass, same case twice, gatepass void or
+  already gone out). A running "scanned / total", scanned count per invoice and the list of cases still missing are shown.
+  Scanning a case in the top box opens its gatepass and counts that scan.
+- **Gate-out is blocked until every case is scanned** - in the service, so all four ways of completing a dispatch are covered:
+  the gatepass screen, the one-invoice screen, bulk complete and the API. Gate-out marks the cases DISPATCHED.
+- **Exception**: a person holding `gate.exception` can let a gatepass leave with unscanned cases - a reason is required, the
+  cases are marked MISSING, and it is written to the audit log and shown on the screen.
+- **Every scan is recorded** (`case_scans`: code, result, who, when, station), including misreads and rejected scans.
+  Practice labels are refused on the live gate. Gatepasses without case control are untouched.
+- Tests: `tests/test_v17_phase5.py` (6 checks: every scan rule and the scan log, all four completion paths blocked and then
+  allowed, exception permission / reason / audit, gate screen, old gatepasses unaffected, migration grants).
+
+## v1.7 (in progress) — Phase 4: one barcode per case, case labels
+
+Migration 0013 (applied automatically, additive): `dispatch_cases`, `case_scans`, `label_print_log`,
+`dispatch_slips.case_control` (LEGACY for every existing gatepass) and gate-exception columns, `cfas.case_control_enabled`
+(off everywhere). Roles that could dispatch get `case.print`, roles that could reprint a slip get `case.reprint` (audited).
+
+- **Case control is per depot, switched on when the depot is ready** (Master Settings › Depots › *Case barcode labels and gate
+  scanning*; Guma first). A gatepass from such a depot gets one row per physical carton, each with its own code. Every other
+  depot, and every gatepass made before, behaves exactly as in v1.6.1 (gatepass barcode on the label, count at the gate).
+- **Code**: 9-digit number + check digit, digits only, Code 128 - any keyboard-wedge scanner types it correctly, and a
+  mistyped or misread digit is always caught. The invoice number, company and customer are stored on the case and printed
+  as text; the code never replaces them. Numbers of one gatepass are reserved in one step (consecutive, no write-lock
+  storm). Practice (Training) labels start at 900,000,000, so they can never be mistaken for real ones.
+- **Numbering**: "case k / n" counts inside the consignment (customer + delivery area) across its invoices.
+- **Labels screen** (gatepass › *Print the labels*): preview of exactly what prints, label size from System Settings
+  (`labels.width_mm` / `labels.height_mm`, default 100 x 50), the normal Windows print dialog (any printer model), then
+  *Did all labels print?* - **printed** labels the cases, **failed** is logged and they stay to print. Printing labelled cases
+  again is a **reprint**: same codes, permission `case.reprint`, a reason, audited. Range pickers for a torn label.
+- Voiding a gatepass or cancelling an invoice voids its cases; a re-made gatepass gets new codes. Scanning any case code
+  in Gate Check finds its gatepass. The gatepass page lists the cases, their status and the label prints.
+- Tests: `tests/test_v17_phase4.py` (8 checks: code and check digit, per-depot generation and numbering, labels page and size
+  setting, failed / printed / reprint rules and log, void / cancel / new codes, gate lookup, depot switch and grants, migration).
+  Scanning at the gate and blocking gate-out until every case is scanned is Phase 5.
+
+## v1.7 (in progress) — Phase 3: freight by area, customer delivery areas, eligible transporters, grouping rules
+
+Migrations 0011 and 0012 (applied automatically, additive): `customer_delivery_locations`, `transporter_depots`,
+`transporters.uses_lr_book`, `invoices.customer_location_id`, `transporter_rates.cfa_id / company_id`,
+`dispatch_slip_lines.rate_id / calc_note / consignment_no`, `dispatch_slips.cross_company /
+eligibility_override_reason`. Roles that can dispatch keep what they could do: they receive `dispatch.group_cross_company`,
+roles that approve overrides receive `transporter.override_eligibility` (each written to the audit log).
+
+- **Customer delivery areas.** A customer may list several delivery locations (area = the Location master, label,
+  ship-to code, default). Resolution is the same for file import, API, e-invoice QR and manual entry: ship-to code ->
+  the file's area if it is one of the customer's -> the single / default location -> otherwise the invoice is held as
+  *AREA_AMBIGUOUS* until the operator chooses (recorded on the invoice, audited). A file area that is not one of the
+  customer's was silently used before; `area.mismatch_action` (default ACCEPT = unchanged) can hold such invoices.
+- **Only eligible transporters are offered** - on the new gatepass screen and on the quick dispatch screens: the
+  transporter serves the depot (Transporters › *Depots served*; none ticked = every depot, so nothing changes by
+  default) and has an approved rate for every area (intersection for mixed areas, with a plain explanation when nobody
+  qualifies). The server re-checks every gatepass, so a forged request is refused. Choosing a transporter that does not
+  serve the depot needs `transporter.override_eligibility` and a reason; it is audited and shown on the gatepass.
+- **Rate exceptions.** A transporter rate may be an explicit exception for one depot and / or company; the most specific
+  wins (depot + company > depot > company > general), versions are kept per scope and never end each other. Every existing
+  rate is general, so every existing price is identical (a test prices them all before / after).
+- **Freight breakdown.** Each gatepass line freezes how its freight was found (rate row, rule, area, cases x rate,
+  or the share of a per-trip charge) and its consignment number; the gatepass shows *How freight was calculated*. A
+  per-trip auto is still paid once. Slabs are not part of this version (kept for a later update, as agreed).
+- **Grouping.** Invoices of different companies go on one gatepass only by an explicit tick (*Group across companies*,
+  permission `dispatch.group_cross_company`), recorded on the gatepass and audited; every invoice keeps its own company,
+  number and cases. The screen shows one consignment per customer + area. The Guided Training lessons whose demonstration
+  trips mix two companies have the new step.
+- Tests: `tests/test_v17_phase3.py` (20 checks: area resolution, import / mismatch setting, ambiguous area flow, customer
+  screen, merge, depots served, eligibility and intersection, forged transporter, audited override, exception ranking and
+  scope-wise versions, all existing rates price identically, frozen breakdown, rate-card screen, cross-company rules and
+  permission, consignments, builder controls, quick screen, migrations 0011 / 0012 with role grants); browser test
+  `tests/e2e_gatepass.py` (20 checks).
+
+## v1.7 (in progress) — Phase 2: configurable permissions and operational scope per employee
+
+Migration 0010 (applied automatically, additive): `user_permissions`, `user_scope`, and on users `all_areas`,
+`all_customer_types`, `all_customers` (all default "All", so nobody sees less after the upgrade) and `responsibility`.
+
+- **Roles are editable templates - nothing is hard-locked any more.** The v1.6.1 fixed baseline is removed: the
+  Administrator can tick any permission for any role, rename a role, copy a role into a new one, or reset a system role
+  to its template (audited: ROLE_RENAMED / ROLE_PERMISSIONS_CHANGED / ROLE_CREATED / ROLE_RESET). Defaults are unchanged.
+- **Individual exceptions per user**: *Give* or *Take away* one permission for one person on top of their role (a
+  reason is required, DENY wins). The user screen shows a live **Effective access** preview (permissions, menu, what
+  the exception changes) before anything is saved.
+- **Operational scope per employee**: companies, depots, **delivery areas** (Location master), **customer types** and
+  **customers** - AND between kinds, OR inside a kind; types and customers together show both. Enforced in every list,
+  search, register, report, export, dashboard, API call, dropdown and import: `app/services/scope.py` is the single
+  place (a test fails if any report skips it). A gatepass is visible only if **all** its invoices are in scope (rule B6);
+  transporter bills (which span many customers) are hidden from area / customer-restricted users; customer alerts follow
+  the gatepass. Importing an invoice outside your area or customers is refused.
+- **Guard rails instead of locks**: only holders of Manage users / Manage roles change access; nobody changes their own
+  role, permissions, scope or status; nobody gives (or edits someone holding) more than they hold themselves - also through *Reset to template* -, or a wider
+  company / depot / area / customer scope than their own; at least one active user must always hold both Manage users and
+  Manage roles (checked by effective permissions, not by role name); changing a role or deactivating signs the user out.
+- **User screen**: identity and role, scope pickers (type to search areas / customers, ↑↓ Enter, × to remove - fast
+  typing never picks a stale entry), customer-type list, individual permissions that follow the role, F6 to save.
+- **Upgrade safety found by the tests**: a Guided Training practice copy made by an older version is now brought up to
+  date (missing tables / columns added, rows kept) before it is used; users load their exceptions and scope with them,
+  so error pages and Training Mode work for any user.
+- Tests: `tests/test_v17_phase2.py` (30 checks: effective permissions, scope matrix by page / search / register / export /
+  API / dropdown / forged post, gatepass rule, bills, import, guard rails, last-administrator, audit, role edit / reset /
+  copy, migration 0010 up and down, practice-copy upgrade), the v1.6.1 "fixed baseline" tests rewritten for editable
+  roles, browser test `tests/e2e_access.py` (27 checks). All browser suites pass: sidebar 19/19, role-based 257/257,
+  training 19/19.
+
+## v1.7 (in progress) — Phase 1: sidebar position, scope audit, design checkpoint
+
+- **Sidebar keeps its scroll position.** Cause: every screen is a new page load and the scrollable sidebar restarted at
+  the top. Now restored before first paint from the tab's session storage, saved on scroll / page hide, and the
+  selected entry is revealed only if hidden. Covers click, keyboard, F3, redirecting form posts, Back / Forward, reload.
+  Browser test `tests/e2e_sidebar.py`: 5 of 18 checks passed before the fix, 19 of 19 after.
+- **Scope audit**: every report goes through one of seven scope helpers (tripwire test `tests/test_v17_phase1.py`);
+  the helpers are the extension point for area / customer scope in Phase 2.
+- **Design checkpoint** `docs/ITERATION_v1.7_DESIGN.md`: terms, schema for migrations 0010-0014 (slabs deferred),
+  state machines, services, rollback. No data or behaviour changed apart from the sidebar.
+
+## v1.6.1 — Role-based access: every role sees only its own work (21 Oct 2026)
+
+Migration 0009 (applied automatically): re-aligns the stored roles to the new baseline (every changed role is written
+to the audit log as ROLE_BASELINE_APPLIED), pauses e-mailed reports whose owner lost access, moves a Viewer off the
+Management training path. No business data is touched.
+
+- **Master Settings = Administrator only** (fixed baseline in `app/security/permissions.py`, enforced in `Role.has`, so an
+  edited role list, a wildcard or a role made by the Master cannot widen it): Companies, Depots, Customers, Customer
+  Types, Transporters, Locations, Local Autos, Freight Rates and Transporter Rate Cards, Invoice Recognition Code,
+  ERP Mappings, Initial Master Upload, System Settings, Users, Roles, Integrations, Guided Training administration, audit
+  log. *Using* a master (new permission `master.use`: transporter / customer / depot / location dropdowns and lookups)
+  is separate from *managing* it - operators keep their searchable dropdowns.
+- **Final Reports / Management MIS = Administrator, Accounts, Management only** (new `mis.view`, fixed baseline). Every
+  consolidated, financial, variance or management report - page, Excel / CSV / PDF export, print view, the e-mailed
+  reports, `/mis`, `/api/v1/reports*` - checks it on the server. Operational registers (dispatch, gatepass, delivery,
+  pending, exceptions, a new money-free Invoice Register export) stay on `report.view`; audit and rate-change reports stay
+  Administrator-only. `report.view` no longer opens final reports.
+- **Role baselines** (Administration › Roles shows them, locked where fixed): Management and Accounts lose Master access;
+  Depot Manager loses freight-rate creation and transporter bills; Checker loses dashboard / reports / audit and keeps
+  approvals; Viewer is read-only operational (no reports, no exports) and is no longer on the Management path.
+- **Menus per role** (no empty groups, no inaccessible entries; F3 "go to", Tab order and the F10 key follow the menu):
+  new groups Approvals (+ **Approval History**) and Accounts; Dispatch desk reads "Dispatch Monitoring" for read-only
+  roles; Reports & MIS reads "Operational Reports" for roles without final reports. Esc goes to the role's own home.
+- **Dashboards**: roles with MIS see the financial dashboard (Management / Accounts titles, Accounts also bill counts);
+  everyone else gets a counts-only Dispatch Desk / Depot Operations Dashboard - the financial figures are not even
+  computed for them (page and `/api/v1/dashboard/summary`). The Invoice Register totals and invoice-level billed /
+  variance data (reconciliation card, API `actual_freight`) are shown only to roles with bills or MIS.
+- **Depot restrictions**: a user with several depots switches between them in the top bar (Alt+D, or F3 and type the depot name); the choice narrows
+  every list, search, report, export and API call through `User.cfa_ids`, never widens it. Isolation is tested across
+  lists, details, tracking, bulk actions, exports and APIs.
+- **API**: `/api/v1/masters/*` needs only `master.use` and returns lookup fields; full records (GSTIN, PAN, bank details)
+  need Master access. Reports / dashboard API follow the report rules. 403 pages no longer name the permission; denials
+  are logged.
+- **Permission management**: Roles page shows fixed permissions locked, "what each role sees" and every user with role
+  and depots; a forged form cannot grant fixed permissions (ROLE_PERMISSION_REFUSED is audited); nobody can change their
+  own role / companies / depots, and only an Administrator hands out or edits the Administrator role. The two-person
+  rules (overrides, rates, bills) apply to the Administrator too - tested.
+- **Guided Training**: each role gets its own tutorial (new Read-only Viewer path; Depot Manager's last lesson is now
+  Depot registers and delivery status instead of final reports); the Master can only assign a tutorial that fits the
+  user's role; "Act as" in Training Mode offers only the demonstration checker; practice screens use exactly the live
+  role's permissions (Master Settings and final reports stay closed in Training Mode).
+- Tests: `tests/test_rbac.py` (88 tests: baseline, menus, direct URLs, final reports / exports / print / API per role,
+  dashboards, billed data, approvals, depot isolation and switching, role screen, upgrade of a v1.6.0 database);
+  `tests/e2e_rbac.py` - 257 browser checks (keyboard sign-in, menu, F3, Tab order, F10, depot switch, direct URLs, training) on
+  Chromium. Older tests updated where they relied on the previous, wider roles.
+
 ## v1.6.0 — Guided Training and first-time onboarding (21 Oct 2026)
 
 Migration 0008 (applied automatically): `training_progress` - one row per user in the live database.

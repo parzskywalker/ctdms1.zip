@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 
 from app.models import CFA, Invoice, InvoiceStatus, User, utcnow
 from app.services import audit, recognition
+from app.services import customer_area_service as cas
 from app.services import settings_service as cfg
 from app.services.errors import BusinessError
 from app.services.import_service import company_by_gstin, customer_by_gstin
@@ -243,7 +244,8 @@ def scan(db: Session, user: User, text: str, *, cfa_id: int | None = None, cases
         return ScanResult(existing, False, f"Invoice {existing.invoice_no} already imported", qr)
     if qr.doc_date > local_today():
         raise BusinessError(f"Invoice date {qr.doc_date:%d-%m-%Y} is in the future")
-    if not customer.location_id:
+    area = cas.resolve(db, customer)  # v1.7: several delivery locations -> the invoice waits for the operator's choice
+    if area.location is None:
         raise BusinessError(f"Customer {customer.name} has no delivery area - set it in the customer master")
     boxes = None
     if cases not in (None, ""):
@@ -255,10 +257,11 @@ def scan(db: Session, user: User, text: str, *, cfa_id: int | None = None, cases
             boxes = None
     inv = Invoice(source_erp_id=company.erp_system_id, source_invoice_id=qr.irn or qr.doc_no, company_id=company.id,
                   cfa_id=cfa.id, customer_id=customer.id, customer_code=customer.code,
-                  location_id=customer.location_id, invoice_no=qr.doc_no, invoice_date=qr.doc_date, fiscal_year=fy,
+                  location_id=area.location.id, invoice_no=qr.doc_no, invoice_date=qr.doc_date, fiscal_year=fy,
                   sales_value=qr.value, boxes=boxes, boxes_source="MANUAL" if boxes else "ERP",
                   imported_at=utcnow(), imported_by_id=user.id, status=InvoiceStatus.PENDING, capture_mode="QR_SCAN",
                   irn=qr.irn, item_count=qr.item_count, qr_signature=sig)
+    cas.apply_to_invoice(inv, area, mismatch_holds=False)
     db.add(inv)
     db.flush()
     recognition.assign(db, inv)
