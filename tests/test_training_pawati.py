@@ -14,16 +14,21 @@ from app.training.lessons import LESSONS, PATHS
 from tests.test_training import PW, _make_user, _state, _step, _switch
 
 
-def test_pawati_lesson_is_on_the_dispatch_path_and_passes_with_real_actions(web, db):
-    assert PATHS["DISPATCH"]["lessons"][-1] == "d03-pawati" and LESSONS["d03-pawati"].practical
+import pytest
+
+
+@pytest.mark.parametrize("role,path,username", [("DISPATCH_OPERATOR", "DISPATCH", "trn.pawati"),
+                                                ("CFA_MANAGER", "DEPOT", "trn.pawati.dm")])
+def test_pawati_lesson_is_on_the_dispatch_and_depot_paths_and_passes_with_real_actions(web, db, role, path, username):
+    assert PATHS[path]["lessons"][-1] == "d03-pawati" and LESSONS["d03-pawati"].practical
     _switch(web, True)
     try:
-        uid = _make_user(web, "trn.pawati", "DISPATCH_OPERATOR")
+        uid = _make_user(web, username, role)
         db.expire_all()
         p = db.scalar(select(TrainingProgress).where(TrainingProgress.user_id == uid))
-        p.lessons = {c: {"done": "2026-10-01T00:00:00"} for c in PATHS["DISPATCH"]["lessons"][:-1]}
+        p.lessons = {c: {"done": "2026-10-01T00:00:00"} for c in PATHS[path]["lessons"][:-1]}
         db.commit()
-        w = web("trn.pawati", PW)
+        w = web(username, PW)
         today = local_today().isoformat()
         w.post("/training/start", data={"lesson": "d03-pawati"})
         st = _state(w)

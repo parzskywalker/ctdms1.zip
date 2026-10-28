@@ -771,7 +771,7 @@ PATHS: dict[str, dict] = {
     "DISPATCH": {"name": "Dispatch Operator", "roles": ["DISPATCH_OPERATOR"],
                  "lessons": ["k00-keys", "m07-long", "m08-trip", "m09-box", "d02-gate", "d03-pawati"]},
     "DEPOT": {"name": "Depot Manager", "roles": ["CFA_MANAGER"],
-              "lessons": ["k00-keys", "dm-monitor", "m07-long", "dm-exceptions", "dm-reports"]},
+              "lessons": ["k00-keys", "dm-monitor", "m07-long", "dm-exceptions", "dm-reports", "d03-pawati"]},
     "CHECKER": {"name": "Checker / Approver", "roles": ["CHECKER"],
                 "lessons": ["k00-keys", "c-rates", "c-exceptions", "c-bills"]},
     "ACCOUNTS": {"name": "Accounts", "roles": ["ACCOUNTS"],

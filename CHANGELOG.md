@@ -2,6 +2,7 @@
 
 ## v1.7.0 — Guided Training: Garage Pawati lesson
 
+- The lesson is now also the last lesson of the **Depot Manager** path (after *Depot registers and delivery status*); its test runs for both roles.
 - **New lesson "Local-auto trip to transporters: Garage Pawati"** (Dispatch Operator path, after *Gate check*): invoice 001250
   (Korba, 8 cartons) goes by a local auto to two receiving transporters - 5 cartons to Shree Roadlines, 3 to Vijay Transport Co.
   The trainee splits the invoice in the builder, generates and prints the gatepass, sees the gate refuse the trip until the
