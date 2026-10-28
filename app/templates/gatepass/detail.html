@@ -86,6 +86,18 @@
         {% if slip.remarks %}<dt>Remarks</dt><dd>{{ slip.remarks }}</dd>{% endif %}
       </dl>
     </div>
+    {% if cases %}
+    <div class="card">
+      <h3 style="margin-top:0">Cases <span class="muted small">{{ cases|length }} cartons · each has its own barcode</span></h3>
+      <div class="small">{% for st, n in case_counts.items() if n %}<span class="tag">{{ n }} {{ {'LABEL_PENDING':'not printed','LABELLED':'labelled','SCANNED':'scanned','DISPATCHED':'dispatched','MISSING':'missing','VOID':'void'}[st] }}</span> {% endfor %}</div>
+      <div class="small" style="margin-top:6px"><a href="/gatepass/{{ slip.id }}/labels" target="_blank">Print the labels</a>{% if case_counts.get('LABELLED') or case_counts.get('SCANNED') %} · <a href="/gatepass/{{ slip.id }}/labels?show=all" target="_blank">Reprint</a>{% endif %}</div>
+      <details style="margin-top:6px"><summary class="small">Show the {{ cases|length }} codes</summary>
+        <div class="table-wrap" style="max-height:220px;overflow:auto"><table class="data compact"><thead><tr><th>Code</th><th>Invoice</th><th>Case</th><th>Status</th></tr></thead><tbody>
+        {% for c in cases %}<tr><td class="mono">{{ c.case_code }}</td><td>{{ c.invoice.invoice_no }}</td><td>{{ c.seq_in_consignment }}/{{ c.consignment_total }}</td><td class="small">{{ c.status|replace('_',' ')|lower }}</td></tr>{% endfor %}
+        </tbody></table></div></details>
+      {% if label_log %}<div class="small muted" style="margin-top:6px">Label prints: {% for l in label_log[:5] %}batch {{ l.batch_no }} {{ l.status|lower }}{{ ' (reprint)' if l.is_reprint }} by {{ l.printed_by.full_name if l.printed_by else '' }}{% if not loop.last %}; {% endif %}{% endfor %}</div>{% endif %}
+    </div>
+    {% endif %}
     {% set noted = slip.lines|selectattr('calc_note')|list %}
     {% if noted %}
     <div class="card">

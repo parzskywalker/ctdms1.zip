@@ -27,6 +27,8 @@ PERMISSIONS: dict[str, str] = {
     "dispatch.void_slip": "Void a generated slip (unlock for correction)",
     "dispatch.cancel": "Cancel an open dispatch",
     "dispatch.cancel_dispatched": "Cancel an already completed dispatch",
+    "case.print": "Print case labels (one barcode per case)",
+    "case.reprint": "Reprint case labels (same code, reason required)",
     "dispatch.group_cross_company": "Put invoices of different companies on one gatepass (explicit choice, audited)",
     "transporter.override_eligibility": "Choose a transporter that does not serve the depot / area (reason required, audited)",
     # Overrides
@@ -60,7 +62,7 @@ PERMISSION_GROUPS: list[tuple[str, list[str]]] = [
     ("Invoices", ["invoice.view", "invoice.import", "invoice.recalculate"]),
     ("Dispatch", ["dispatch.view", "dispatch.operate", "dispatch.verify", "dispatch.complete",
                   "dispatch.reprint", "dispatch.void_slip", "dispatch.cancel", "dispatch.cancel_dispatched",
-                  "dispatch.group_cross_company", "transporter.override_eligibility"]),
+                  "dispatch.group_cross_company", "transporter.override_eligibility", "case.print", "case.reprint"]),
     ("Overrides", ["override.request", "override.approve", "override.direct"]),
     ("Freight Rates", ["rate.view", "rate.create", "rate.approve"]),
     ("Masters", ["master.use", "master.view", "master.edit"]),
@@ -101,8 +103,8 @@ DEFAULT_ROLES: dict[str, dict] = {
         "permissions": ["dashboard.view", "report.view", "data.export", "invoice.view", "invoice.import",
                         "invoice.recalculate", "dispatch.view", "dispatch.operate", "dispatch.verify",
                         "dispatch.complete", "dispatch.reprint", "dispatch.void_slip", "dispatch.cancel",
-                        "dispatch.group_cross_company", "transporter.override_eligibility",
-                        "override.request", "override.approve", "master.use"],
+                        "dispatch.group_cross_company", "transporter.override_eligibility", "case.print",
+                        "case.reprint", "override.request", "override.approve", "master.use"],
         "all_scope": False,
     },
     "DISPATCH_OPERATOR": {
@@ -110,8 +112,8 @@ DEFAULT_ROLES: dict[str, dict] = {
         "description": "Pending dispatch, dispatch entry, gatepass / slip printing and the dispatch register of the "
                        "assigned depot. Uses masters in dropdowns only.",
         "permissions": ["dashboard.view", "dispatch.view", "dispatch.operate", "dispatch.verify",
-                        "dispatch.complete", "dispatch.reprint", "dispatch.group_cross_company", "override.request",
-                        "invoice.view", "master.use"],
+                        "dispatch.complete", "dispatch.reprint", "dispatch.group_cross_company", "case.print",
+                        "case.reprint", "override.request", "invoice.view", "master.use"],
         "all_scope": False,
     },
     "CHECKER": {

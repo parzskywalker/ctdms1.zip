@@ -12,10 +12,11 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import (
-    DispatchMode, DispatchSlip, Invoice, InvoiceStatus, Location, OutsideAuto, PickupMode, SlipPrintLog, Transporter,
-    User,
+    DispatchMode, DispatchSlip, Invoice, InvoiceStatus, LabelPrintLog, Location, OutsideAuto, PickupMode, SlipPrintLog,
+    Transporter, User,
 )
 from app.security.auth import csrf_protect, require
+from app.services import case_service as cs
 from app.services import dispatch_service as ds
 from app.services import local_auto_service as las
 from app.services import einvoice_service as einv
@@ -47,6 +48,12 @@ def _find_slip(db: Session, user: User, text: str) -> DispatchSlip | None:
     if not t:
         return None
     stmt = apply_slip_scope(select(DispatchSlip), user)
+    if len(t) == 10 and t.isdigit():  # a case label: its gatepass (before the "last digits" shortcut below)
+        case = cs.find_case(db, t)
+        if case:
+            slip = db.scalar(stmt.where(DispatchSlip.id == case.slip_id))
+            if slip:
+                return slip
     slip = db.scalar(stmt.where(func.upper(DispatchSlip.dispatch_no) == t))
     if slip:
         return slip
@@ -293,7 +300,11 @@ def detail(slip_id: int, request: Request, db: Session = Depends(get_db), user: 
         g["locked"] = next((r for r in (ds.lr_locked_reason(db, inv) for inv, _ in g["invs"]) if r), None)
     from app.models import Notification
     alerts = list(db.scalars(select(Notification).where(Notification.slip_id == slip.id).order_by(Notification.id)))
+    cases = cs.cases_of(db, slip, include_void=True) if slip.case_control == "REQUIRED" else []
     return render(request, "gatepass/detail.html", {
+        "cases": cases, "case_counts": cs.counts(db, slip) if cases else {},
+        "label_log": list({lg.batch_no: lg for lg in db.scalars(select(LabelPrintLog).where(
+            LabelPrintLog.slip_id == slip.id).order_by(LabelPrintLog.id.desc()))}.values()) if cases else [],
         "title": f"Gatepass {slip.dispatch_no}", "slip": slip, "groups": list(groups.values()), "invs": invs,
         "print_events": print_events, "complete_blockers": complete_blockers, "alerts": alerts,
         "slip_size": cfg.get(db, "dispatch.default_slip_size"), "rule": cfg.get(db, "dispatch.complete_requires")})
@@ -307,6 +318,8 @@ def case_labels(slip_id: int, request: Request, db: Session = Depends(get_db),
     slip = _slip(db, user, slip_id)
     if slip.is_void:
         raise BusinessError("This gatepass is void - no labels")
+    if slip.case_control == "REQUIRED":
+        return _case_labels(request, db, user, slip)
     line_by_inv = {ln.invoice_id: ln for ln in slip.lines}
     groups: OrderedDict = OrderedDict()
     for inv in ds.slip_invoices(db, slip):
@@ -323,6 +336,43 @@ def case_labels(slip_id: int, request: Request, db: Session = Depends(get_db),
     return templates.TemplateResponse(request, "gatepass/labels.html", {
         "request": request, "slip": slip, "labels": labels[:2000], "carrier": carrier,
         "org": cfg.get(db, "org.name"), "sheet": request.query_params.get("sheet") == "a4"})
+
+
+def _case_labels(request: Request, db: Session, user: User, slip: DispatchSlip):
+    """v1.7: one label per case, each with its own barcode. Default = the labels not printed yet; ?show=all lists every
+    case (printing labels that were already printed is a reprint: it needs a reason). ?from= / ?to= pick a range."""
+    qp = request.query_params
+    allc = cs.cases_of(db, slip)
+    pending = [c for c in allc if c.status == "LABEL_PENDING"]
+    show = qp.get("show") or ("pending" if pending else "all")
+    chosen = allc if show == "all" else pending
+    lo, hi = safe_int(qp.get("from"), 1, minimum=1), safe_int(qp.get("to"), len(allc) or 1, minimum=1)
+    pos = {c.id: i + 1 for i, c in enumerate(allc)}
+    chosen = [c for c in chosen if lo <= pos[c.id] <= hi]
+    carrier = slip.transporter.name if slip.transporter else (slip.outside_auto.name if slip.outside_auto
+                                                               else "Self pickup")
+    log = list(db.scalars(select(LabelPrintLog).where(LabelPrintLog.slip_id == slip.id).order_by(LabelPrintLog.id.desc())
+                          .limit(50)))
+    return templates.TemplateResponse(request, "gatepass/labels_cases.html", {
+        "request": request, "slip": slip, "rows": cs.label_rows(db, slip, chosen), "show": show, "total": len(allc),
+        "pending": len(pending), "carrier": carrier, "org": cfg.get(db, "org.name"), "pos": pos,
+        "sheet": qp.get("sheet") == "a4", "w": cfg.get(db, "labels.width_mm") or 100,
+        "h": cfg.get(db, "labels.height_mm") or 50, "reprint": show == "all" or any(
+            c.status != "LABEL_PENDING" for c in chosen), "log": log, "csrf": request.session.get("csrf", ""),
+        "can_print": user.can("case.print"), "can_reprint": user.can("case.reprint"), "lo": lo, "hi": hi,
+        "ids": ",".join(str(c.id) for c in chosen)})
+
+
+@router.post("/gatepass/{slip_id:int}/labels/confirm")
+def labels_confirm(slip_id: int, request: Request, form=Depends(get_form), db: Session = Depends(get_db),
+                   user: User = Depends(require("dispatch.view"))):
+    slip = _slip(db, user, slip_id)
+    ids = [i for i in (safe_int(x) for x in (form.get("case_ids") or "").split(",")) if i]
+    batch = cs.record_print(db, user, slip, ids, result=form.get("result") or "", reason=form.get("reason"))
+    db.commit()
+    flash(request, f"Label batch {batch} recorded ({'printed' if form.get('result') == 'PRINTED' else 'FAILED - print again'}).",
+          "success" if form.get("result") == "PRINTED" else "warn")
+    return redirect(f"/gatepass/{slip.id}")
 
 
 def _label(slip: DispatchSlip, log: SlipPrintLog) -> tuple[str, str]:

@@ -105,6 +105,9 @@ class CFA(Base, TimestampMixin):
     contact_person: Mapped[str | None] = mapped_column(String(100))
     contact_phone: Mapped[str | None] = mapped_column(String(30))
     default_erp_id: Mapped[int | None] = mapped_column(ForeignKey("erp_systems.id"))
+    # v1.7: every case of a gatepass from this depot gets its own barcode label and is scanned at the gate (a depot is
+    # switched on when it is ready - one at a time)
+    case_control_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     default_erp: Mapped[ERPSystem | None] = relationship()

@@ -1,0 +1,184 @@
+"""Case identity and labels (v1.7): every physical carton of a gatepass gets its own barcode.
+
+* Code = 9-digit number + 1 check digit, digits only (Code 128). Digits only because keyboard-wedge scanners mis-type
+  letters under some keyboard layouts / Caps Lock. The invoice, company and customer are stored on the case and printed
+  as text - the code never replaces the invoice number.
+* Codes of the live database stay below 900,000,000; a Guided Training practice database starts at 900,000,000, so a
+  practice label can never be mistaken for a real one at the gate.
+* A gatepass reserves all its numbers with ONE counter update (block reservation).
+* Cases exist only for gatepasses of a depot with case control switched on (`case_control = REQUIRED`); every gatepass
+  made before keeps counting-and-confirming at the gate exactly as in v1.6.1.
+* A reprint keeps the code. A voided gatepass / cancelled invoice voids its cases; a regenerated gatepass gets new codes.
+"""
+from __future__ import annotations
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from app.models import CaseStatus, DispatchCase, DispatchSlip, Invoice, LabelPrintLog, User, utcnow
+from app.services import audit
+from app.services.errors import BusinessError
+from app.services.utils import next_sequence_block
+
+MODULE = "CASE"
+TRAINING_BASE = 900_000_000
+LIVE_LIMIT = TRAINING_BASE - 1
+
+
+def check_digit(body: str) -> str:
+    """Luhn (mod 10) check digit of a digit string."""
+    total, double = 0, True
+    for ch in reversed(body):
+        d = int(ch)
+        if double:
+            d *= 2
+            if d > 9:
+                d -= 9
+        total += d
+        double = not double
+    return str((10 - total % 10) % 10)
+
+
+def make_code(n: int, *, training: bool = False) -> str:
+    if n < 1 or n > (TRAINING_BASE // 10 if training else LIVE_LIMIT):
+        raise BusinessError("Case number range exhausted - contact support")
+    body = f"{(TRAINING_BASE + n) if training else n:09d}"
+    return body + check_digit(body)
+
+
+def is_valid(code: str) -> bool:
+    c = (code or "").strip()
+    return len(c) == 10 and c.isdigit() and check_digit(c[:9]) == c[9]
+
+
+def is_training(code: str) -> bool:
+    return is_valid(code) and code.strip().startswith("9")
+
+
+def _training() -> bool:
+    from app.training import runtime
+    return runtime.active() is not None
+
+
+def enabled_for(slip_cfa) -> bool:
+    return bool(slip_cfa is not None and getattr(slip_cfa, "case_control_enabled", False))
+
+
+# ----------------------------------------------------------------------------- generation / voiding
+def generate(db: Session, user: User, slip: DispatchSlip) -> int:
+    """Create the cases of a new gatepass (one per carton), reserving their numbers in one step."""
+    lines = [ln for ln in slip.lines if (ln.cases or 0) > 0]
+    total = sum(ln.cases for ln in lines)
+    if not total:
+        return 0
+    training = _training()
+    first = next_sequence_block(db, "CASE:TRAINING" if training else "CASE:LIVE", total)
+    per_cons: dict[int, int] = {}
+    cons_total: dict[int, int] = {}
+    for ln in lines:
+        cons_total[ln.consignment_no or 0] = cons_total.get(ln.consignment_no or 0, 0) + ln.cases
+    n = first
+    for ln in lines:
+        key = ln.consignment_no or 0
+        for k in range(1, ln.cases + 1):
+            per_cons[key] = per_cons.get(key, 0) + 1
+            db.add(DispatchCase(case_code=make_code(n, training=training), invoice_id=ln.invoice_id, slip_id=slip.id,
+                                line_id=ln.id, seq_in_invoice=k, seq_in_consignment=per_cons[key],
+                                consignment_total=cons_total[key]))
+            n += 1
+    slip.case_control = "REQUIRED"
+    db.flush()
+    audit.log(db, user, "CASES_GENERATED", MODULE, record_type="DispatchSlip", record_id=slip.id, ref=slip.dispatch_no,
+              details={"cases": total, "first": make_code(first, training=training),
+                       "last": make_code(first + total - 1, training=training)})
+    return total
+
+
+def void_for_slip(db: Session, slip: DispatchSlip) -> int:
+    return _void(db, select(DispatchCase).where(DispatchCase.slip_id == slip.id))
+
+
+def void_for_invoice(db: Session, slip_id: int | None, invoice_id: int) -> int:
+    stmt = select(DispatchCase).where(DispatchCase.invoice_id == invoice_id)
+    if slip_id:
+        stmt = stmt.where(DispatchCase.slip_id == slip_id)
+    return _void(db, stmt)
+
+
+def _void(db: Session, stmt) -> int:
+    n = 0
+    for c in db.scalars(stmt.where(DispatchCase.status != CaseStatus.VOID, DispatchCase.status != CaseStatus.DISPATCHED)):
+        c.status = CaseStatus.VOID
+        c.voided_at = utcnow()
+        n += 1
+    return n
+
+
+# ----------------------------------------------------------------------------- lookups
+def find_case(db: Session, code: str) -> DispatchCase | None:
+    c = (code or "").strip()
+    if not is_valid(c):
+        return None
+    return db.scalar(select(DispatchCase).where(DispatchCase.case_code == c))
+
+
+def cases_of(db: Session, slip: DispatchSlip, *, include_void: bool = False) -> list[DispatchCase]:
+    stmt = select(DispatchCase).where(DispatchCase.slip_id == slip.id)
+    if not include_void:
+        stmt = stmt.where(DispatchCase.status != CaseStatus.VOID)
+    return list(db.scalars(stmt.order_by(DispatchCase.id)))
+
+
+def counts(db: Session, slip: DispatchSlip) -> dict[str, int]:
+    out = {s: 0 for s in CaseStatus.LABELS}
+    for st, n in db.execute(select(DispatchCase.status, func.count()).where(DispatchCase.slip_id == slip.id)
+                            .group_by(DispatchCase.status)):
+        out[st] = n
+    return out
+
+
+# ----------------------------------------------------------------------------- printing (printed / failed confirmation)
+def record_print(db: Session, user: User, slip: DispatchSlip, case_ids: list[int], *, result: str,
+                 reason: str | None = None, output: str = "THERMAL") -> int:
+    """The operator confirms what came out of the printer. PRINTED labels the cases; FAILED is logged and the cases stay
+    unlabelled (print them again - same code). Printing cases that were already labelled is a REPRINT: it needs
+    `case.reprint` and a reason, and is audited."""
+    if slip.is_void:
+        raise BusinessError(f"Gatepass {slip.dispatch_no} is void - no labels")
+    if result not in ("PRINTED", "FAILED"):
+        raise BusinessError("Say whether the labels were printed or failed")
+    cases = [c for c in cases_of(db, slip) if c.id in set(case_ids)]
+    if not cases:
+        raise BusinessError("No cases selected")
+    reprint = any(c.status != CaseStatus.LABEL_PENDING for c in cases)
+    if reprint:
+        if not user.can("case.reprint"):
+            raise BusinessError("You are not authorised to reprint case labels")
+        if len((reason or "").strip()) < 5:
+            raise BusinessError("Give a reason (at least 5 characters) for reprinting case labels")
+    elif not user.can("case.print"):
+        raise BusinessError("You are not authorised to print case labels")
+    batch = (db.scalar(select(func.max(LabelPrintLog.batch_no)).where(LabelPrintLog.slip_id == slip.id)) or 0) + 1
+    for c in cases:
+        db.add(LabelPrintLog(slip_id=slip.id, batch_no=batch, case_id=c.id, is_reprint=reprint,
+                             reason=(reason or "").strip() or None, output=output, status=result,
+                             printed_by_id=user.id))
+        if result == "PRINTED" and c.status == CaseStatus.LABEL_PENDING:
+            c.status = CaseStatus.LABELLED
+    audit.log(db, user, "LABELS_REPRINTED" if reprint else ("LABELS_PRINTED" if result == "PRINTED" else "LABELS_FAILED"),
+              MODULE, record_type="DispatchSlip", record_id=slip.id, ref=slip.dispatch_no, reason=reason,
+              details={"batch": batch, "cases": len(cases), "result": result})
+    db.flush()
+    return batch
+
+
+def label_rows(db: Session, slip: DispatchSlip, cases: list[DispatchCase]) -> list[dict]:
+    """Everything printed on one label, from the stored case + gatepass line (never recomputed)."""
+    inv_cache: dict[int, Invoice] = {}
+    rows = []
+    for c in cases:
+        inv = inv_cache.get(c.invoice_id) or db.get(Invoice, c.invoice_id)
+        inv_cache[c.invoice_id] = inv
+        rows.append({"case": c, "invoice": inv, "customer": inv.customer, "location": inv.location,
+                     "company": inv.company})
+    return rows

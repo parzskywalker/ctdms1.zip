@@ -102,7 +102,11 @@ Delete, void, cancel and reject always ask first with **No** pre-selected.
 7. **LR numbers** come later from the transporter: type them on the gatepass page (one per customer) or on
    **LR Pending** in bulk. They can be corrected (with a reason) until the transporter's bill is approved.
 
-8. **Case labels** (gatepass page): one label per case — customer, area, invoices, carrier, "case 3 / 12" and the
+8. **Case labels with a barcode per case** (v1.7, depots with case control switched on): on the gatepass page press
+   *Print the labels*. Every carton has its own code (shown under the barcode) and "case k / n" of its consignment. Print
+   with the normal print dialog, then answer *Did all labels print?* - *No* keeps them in the to-print list. A torn label
+   is reprinted from *Reprint* (same code, a reason is asked). The label size is a setting (System Settings › Case labels).
+   (Older description, depots without case control:) **Case labels** (gatepass page): one label per case — customer, area, invoices, carrier, "case 3 / 12" and the
    gatepass barcode (scanning any case at the gate opens its gatepass). 100 × 50 mm label printer or A4 sheets.
 9. **E-way bill**: on the consignment's *Track* page (link on the gatepass). When System Settings ›
    `gate.eway_required_above` is set (e.g. 50000), gate-out is refused for bigger invoices without a valid e-way bill.

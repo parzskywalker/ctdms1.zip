@@ -1,5 +1,29 @@
 # Changelog
 
+## v1.7 (in progress) — Phase 4: one barcode per case, case labels
+
+Migration 0013 (applied automatically, additive): `dispatch_cases`, `case_scans`, `label_print_log`,
+`dispatch_slips.case_control` (LEGACY for every existing gatepass) and gate-exception columns, `cfas.case_control_enabled`
+(off everywhere). Roles that could dispatch get `case.print`, roles that could reprint a slip get `case.reprint` (audited).
+
+- **Case control is per depot, switched on when the depot is ready** (Master Settings › Depots › *Case barcode labels and gate
+  scanning*; Guma first). A gatepass from such a depot gets one row per physical carton, each with its own code. Every other
+  depot, and every gatepass made before, behaves exactly as in v1.6.1 (gatepass barcode on the label, count at the gate).
+- **Code**: 9-digit number + check digit, digits only, Code 128 - any keyboard-wedge scanner types it correctly, and a
+  mistyped or misread digit is always caught. The invoice number, company and customer are stored on the case and printed
+  as text; the code never replaces them. Numbers of one gatepass are reserved in one step (consecutive, no write-lock
+  storm). Practice (Training) labels start at 900,000,000, so they can never be mistaken for real ones.
+- **Numbering**: "case k / n" counts inside the consignment (customer + delivery area) across its invoices.
+- **Labels screen** (gatepass › *Print the labels*): preview of exactly what prints, label size from System Settings
+  (`labels.width_mm` / `labels.height_mm`, default 100 x 50), the normal Windows print dialog (any printer model), then
+  *Did all labels print?* - **printed** labels the cases, **failed** is logged and they stay to print. Printing labelled cases
+  again is a **reprint**: same codes, permission `case.reprint`, a reason, audited. Range pickers for a torn label.
+- Voiding a gatepass or cancelling an invoice voids its cases; a re-made gatepass gets new codes. Scanning any case code
+  in Gate Check finds its gatepass. The gatepass page lists the cases, their status and the label prints.
+- Tests: `tests/test_v17_phase4.py` (8 checks: code and check digit, per-depot generation and numbering, labels page and size
+  setting, failed / printed / reprint rules and log, void / cancel / new codes, gate lookup, depot switch and grants, migration).
+  Scanning at the gate and blocking gate-out until every case is scanned is Phase 5.
+
 ## v1.7 (in progress) — Phase 3: freight by area, customer delivery areas, eligible transporters, grouping rules
 
 Migrations 0011 and 0012 (applied automatically, additive): `customer_delivery_locations`, `transporter_depots`,

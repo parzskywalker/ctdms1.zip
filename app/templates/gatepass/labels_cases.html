@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Case labels · {{ slip.dispatch_no }}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #000; }
+  .bar { padding: 8px 12px; background: #f1f5f9; font-size: 13px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .bar button { font-size: 13px; padding: 5px 12px; cursor: pointer; }
+  .bar .warn { color: #b45309; font-weight: 700; }
+  .confirm { display: none; background: #fffbeb; border-top: 1px solid #f59e0b; padding: 8px 12px; font-size: 13px; }
+  .confirm.on { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .labels { display: flex; flex-wrap: wrap; }
+  .label { width: {{ w }}mm; height: {{ h }}mm; padding: 2.5mm 3.5mm; border: 1px dashed #999; overflow: hidden; display: flex; flex-direction: column; gap: .8mm; break-inside: avoid; page-break-inside: avoid; }
+  .top { display: flex; justify-content: space-between; font-size: 8pt; }
+  .cust { font-size: 12pt; font-weight: 700; line-height: 1.05; max-height: 2.2em; overflow: hidden; }
+  .area { font-size: 11pt; font-weight: 700; }
+  .meta { font-size: 8pt; }
+  .inv { font-size: 9.5pt; font-weight: 700; }
+  .case { font-size: 15pt; font-weight: 800; white-space: nowrap; }
+  .bc svg { height: 9mm; width: auto; max-width: {{ (w * 0.62)|round|int }}mm; }
+  .code { font: 700 8.5pt "Courier New", monospace; letter-spacing: .5px; }
+  .row { display: flex; justify-content: space-between; align-items: flex-end; margin-top: auto; }
+  {% if sheet %}
+  @page { size: A4; margin: 8mm 5mm; }
+  {% else %}
+  @page { size: {{ w }}mm {{ h }}mm; margin: 0; }
+  .labels { display: block; }
+  .label { border: 0; page-break-after: always; }
+  {% endif %}
+  @media print { .bar, .confirm { display: none !important; } }
+  .trn-wm { border: 2px dashed #b45309; color: #b45309; font-weight: 800; text-align: center; padding: 2px 6px; letter-spacing: .5px; font-size: 9px; }
+  .trn-wm-bg { position: relative; } .trn-wm-bg::after { content: "TRAINING - NOT VALID"; position: absolute; inset: 0; display: grid; place-items: center; font: 800 26px sans-serif; color: rgba(180, 83, 9, .14); transform: rotate(-24deg); pointer-events: none; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <b>{{ rows|length }} label(s)</b> of {{ total }} for gatepass {{ slip.dispatch_no }} · {{ w }} × {{ h }} mm
+  {% if pending and show != 'pending' %}<a href="?show=pending">only the {{ pending }} not printed yet</a>{% endif %}
+  {% if show != 'all' %}<a href="?show=all">all {{ total }} (reprint)</a>{% endif %}
+  <form method="get" style="display:inline"><input type="hidden" name="show" value="{{ show }}">from <input name="from" value="{{ lo }}" size="3"> to <input name="to" value="{{ hi }}" size="3"> <button>Range</button></form>
+  {% if reprint %}<span class="warn">Reprint - same codes{% if not can_reprint %} (you may not reprint){% endif %}</span>{% endif %}
+  {% if rows and ((reprint and can_reprint) or (not reprint and can_print)) %}<button id="print-now" autofocus>Print</button>{% endif %}
+  <a href="/gatepass/{{ slip.id }}">Back to the gatepass</a>
+</div>
+{% if rows %}
+<form class="confirm" id="confirm" method="post" action="/gatepass/{{ slip.id }}/labels/confirm">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="case_ids" value="{{ ids }}">
+  <b>Did all {{ rows|length }} labels print?</b>
+  {% if reprint %}<input name="reason" placeholder="Reason for the reprint (required)" size="34" required minlength="5">{% endif %}
+  <button name="result" value="PRINTED">Yes, all printed</button>
+  <button name="result" value="FAILED" formnovalidate>No - some failed</button>
+</form>
+{% endif %}
+<div class="labels">
+{% set wm = training_watermark() %}
+{% for r in rows %}{% set c = r.case %}
+  <div class="label{{ ' trn-wm-bg' if wm }}">
+    {% if wm %}<div class="trn-wm">TRAINING - NOT VALID</div>{% endif %}
+    <div class="top"><span>{{ org }}</span><span>{{ slip.dispatch_date.strftime('%d-%m-%Y') if slip.dispatch_date else '' }}</span></div>
+    <div class="cust">{{ r.customer.name }}</div>
+    <div class="area">{{ r.location.name }}</div>
+    <div class="inv">Inv {{ r.invoice.invoice_no }} <span class="meta">· {{ r.company.code }}</span></div>
+    <div class="meta">{{ carrier }} · {{ slip.dispatch_no }}</div>
+    <div class="row"><div class="bc">{{ c.case_code|barcode_svg }}<div class="code">{{ c.case_code }}</div></div><div class="case">{{ c.seq_in_consignment }} / {{ c.consignment_total }}</div></div>
+  </div>
+{% else %}<p style="padding:12px">No labels to print here. {% if not pending %}Every label has been printed - <a href="?show=all">show all</a> to reprint.{% endif %}</p>{% endfor %}
+</div>
+<script>
+  (function () {
+    const b = document.getElementById('print-now'), f = document.getElementById('confirm');
+    if (!b) return;
+    b.addEventListener('click', () => { window.print(); });
+    window.addEventListener('afterprint', () => { if (f) { f.classList.add('on'); const y = f.querySelector('button[value=PRINTED]'); if (y) y.focus(); } });
+  })();
+</script>
+</body>
+</html>

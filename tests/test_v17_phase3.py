@@ -560,7 +560,7 @@ def test_migrations_0011_0012_keep_data_and_keep_what_roles_could_do(tmp_path):
     r = _run_prepare(db_path)
     assert r.returncode == 0, r.stdout + r.stderr
     con = sqlite3.connect(db_path)
-    assert con.execute("select version_num from alembic_version").fetchone()[0] == "0012"
+    assert con.execute("select version_num from alembic_version").fetchone()[0] >= "0012"
     perms = {code: set(json.loads(p)) for code, p in con.execute("select code, permissions from roles")}
     for code, p in perms.items():
         if "*" in p:

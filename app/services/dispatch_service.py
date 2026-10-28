@@ -33,6 +33,7 @@ from app.models.recon import BillStatus
 from app.services import audit, notify_service
 from app.services import local_auto_service as las
 from app.services import settings_service as cfg
+from app.services import case_service as cs
 from app.services import eligibility_service as es
 from app.services import transporter_rate_service as trs
 from app.services.errors import BusinessError
@@ -569,6 +570,8 @@ def create_gatepass(db: Session, user: User, invs: list[Invoice], req: GatepassR
                        "auto_method": slip.auto_method, "trip_charge": audit._s(slip.trip_charge),
                        "paid": str(totals["paid"]), "consignments": len(consignments),
                        "cross_company": slip.cross_company})
+    if cs.enabled_for(cfa):  # v1.7 case control: one barcode per carton, scanned at the gate (this depot only)
+        cs.generate(db, user, slip)
     if slip.cross_company:
         audit.log(db, user, "GATEPASS_CROSS_COMPANY", MODULE, record_type="DispatchSlip", record_id=slip.id,
                   ref=dispatch_no, reason="Invoices of different companies grouped on purpose",
@@ -897,6 +900,7 @@ def void_gatepass(db: Session, user: User, slip: DispatchSlip, reason: str) -> i
     slip.voided_at = utcnow()
     slip.voided_by_id = user.id
     slip.void_reason = reason.strip()
+    cs.void_for_slip(db, slip)
     n = 0
     for inv in invs:
         if inv.status not in (S.SLIP_GENERATED, S.SLIP_PRINTED) or inv.dispatch_slip_id not in (None, slip.id):
@@ -952,6 +956,8 @@ def cancel(db: Session, user: User, inv: Invoice, reason: str) -> None:
         slip.voided_at = utcnow()
         slip.voided_by_id = user.id
         slip.void_reason = f"Dispatch cancelled: {reason}"
+    if slip:
+        cs.void_for_invoice(db, slip.id, inv.id)
     old = inv.status
     inv.status = S.CANCELLED
     inv.cancelled_at = utcnow()
