@@ -56,6 +56,8 @@ docker compose --profile https up -d   # + automatic HTTPS for CTDMS_DOMAIN (Cad
 | `cfa.raipur` | `Demo@123` | Depot Manager | Guma depot (Raipur CFA) |
 | `operator.raipur` | `Demo@123` | Dispatch Operator | Raipur CFA |
 | `operator.bilaspur` | `Demo@123` | Dispatch Operator | Bilaspur CFA |
+| `gate.raipur` | `Demo@123` | Dispatch / Gate Staff (scans cases and gatepasses) | Raipur CFA |
+| `gate.bilaspur` | `Demo@123` | Dispatch / Gate Staff | Bilaspur CFA |
 | `operator.durg` | `Demo@123` | Dispatch Operator | Durg CFA |
 | `checker` | `Demo@123` | Checker / Approver | all |
 | `viewer` | `Demo@123` | Read-only Viewer (limited operational screens; no reports, no export) | all |

@@ -13,7 +13,7 @@ from tests.test_rbac import _token_client
 from tests.test_v17_phase2 import PW, audit_actions, save_user
 from tests.test_v17_phase3 import TODAY, _slip_of, world  # noqa: F401
 from tests.test_v17_phase4 import bsp_on, db  # noqa: F401
-from tests.test_v17_phase5 import _codes, _scan
+from tests.test_v17_phase5 import _codes, _gate_out, _scan
 from tests.test_v17_phase6 import _auto, _inv, _pawatis
 
 
@@ -51,26 +51,26 @@ def test_whole_workflow_with_case_control_pawati_and_lr_book(db, world, bsp_on):
     # the book gave the second receiver's consignment its LR number at creation
     t2_alloc = next(i for i, x in allocs.items() if x.receiving_transporter_id == t2)
     assert db.scalar(select(LRNumber.lr_no).where(LRNumber.transporter_id == t2, LRNumber.allocation_id == t2_alloc)) == "P75000"
-    # gate-out stays blocked: gatepass not printed, labels not confirmed, cases unscanned, Pawatis unprinted
+    # the gatepass cannot be printed before the labels (v1.7.1) ...
+    assert "Print the case labels first" in admin.post(f"/gatepass/{sid}/print", data={"size": "A5", "mode": "pdf"}).text
+    admin.post(f"/gatepass/{sid}/labels/confirm", data={"case_ids": ",".join(str(c.id) for c in cases), "result": "PRINTED"})
+    admin.post(f"/gatepass/{sid}/print", data={"size": "A5", "mode": "pdf"})
+    # ... and gone out only comes from the gate scan: cases, then the gatepass
     admin.post(f"/gatepass/{sid}/gate-out")
     db.expire_all()
     assert db.get(DispatchSlip, sid).gate_out_at is None
-    admin.post(f"/gatepass/{sid}/print", data={"size": "A5", "mode": "pdf"})
-    admin.post(f"/gatepass/{sid}/labels/confirm", data={"case_ids": ",".join(str(c.id) for c in cases), "result": "PRINTED"})
-    guard = WebClient("admin")
+    guard = WebClient("gate.bilaspur")
     codes = _codes(db, sid)
     for code in codes[:-1]:
         assert _scan(guard, code, sid)["ok"]
-    admin.post(f"/gatepass/{sid}/gate-out")
-    db.expire_all()
-    assert db.get(DispatchSlip, sid).gate_out_at is None                   # one case still unscanned (and no Pawati printed)
+    early = _gate_out(db, sid)
+    assert not early["ok"] and "not scanned" in early["message"]            # one case still unscanned
     last = _scan(guard, codes[-1], sid)
     assert last["ok"] and last["scanned"] == last["total"] == 6 and not last["cleared"]   # the Pawatis still block
-    admin.post(f"/gatepass/{sid}/gate-out")
-    db.expire_all()
-    assert db.get(DispatchSlip, sid).gate_out_at is None                   # all cases scanned, the Pawatis still unprinted
+    blocked = _gate_out(db, sid)
+    assert not blocked["ok"] and "Garage Pawati not printed" in blocked["message"]
     admin.post("/pawati/print", data={"ids": [str(p.id) for p in ps]})
-    admin.post(f"/gatepass/{sid}/gate-out")
+    assert _gate_out(db, sid)["gone_out"]
     db.expire_all()
     slip = db.get(DispatchSlip, sid)
     assert slip.gate_out_at is not None
@@ -108,10 +108,10 @@ def test_gate_exception_report_lists_who_allowed_it_and_why(db, world, bsp_on): 
     inv = _inv(api, "P3-TOWN", 4, cfa="BSP")
     from tests.test_v17_phase3 import _gatepass
     sid = _slip_of(_gatepass(admin, [inv], mode="SELF"))
-    admin.post(f"/gatepass/{sid}/print", data={"size": "A5", "mode": "pdf"})
     codes = _codes(db, sid)
     admin.post(f"/gatepass/{sid}/labels/confirm", data={"case_ids": ",".join(
         str(i) for i in db.scalars(select(DispatchCase.id).where(DispatchCase.slip_id == sid))), "result": "PRINTED"})
+    admin.post(f"/gatepass/{sid}/print", data={"size": "A5", "mode": "pdf"})
     _scan(WebClient("admin"), codes[0], sid)
     admin.post(f"/gatepass/{sid}/gate-exception", data={"reason": "three cartons damaged, kept for the claim"})
     db.expire_all()

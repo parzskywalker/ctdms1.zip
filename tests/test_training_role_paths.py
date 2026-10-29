@@ -90,7 +90,9 @@ def _gatepass(w, one, today, numbers, **fields):
 
 
 def _long_distance(w, one, today):
-    _gatepass(w, one, today, ["001248", "001249", "PQR/B/0313"], mode="TRANSPORTER",
+    _gatepass(w, one, today, ["001248", "001249", "PQR/B/0313"], mode="TRANSPORTER", pickup_mode="OUTSIDE_AUTO",
+              auto_method="PER_TRIP", trip_charge="500",
+              outside_auto_id=str(one("select id from outside_autos where code='DM-LA1'")),
               transporter_id=str(one("select id from transporters where code='DM-SRL'")))
 
 
@@ -101,6 +103,7 @@ def _slip(one):
 LONG = {
     ("m07-long", "generate"): _long_distance,
     ("m07-long", "print"): lambda w, one, t: w.post(f"/gatepass/{_slip(one)}/print", data={"size": "A5", "mode": "pdf"}),
+    ("m07-long", "pawati-print"): lambda w, one, t: w.post("/pawati/print", data={"ids": _pawati_ids(one)}),
     ("m07-long", "gate-out"): lambda w, one, t: w.post(f"/gatepass/{_slip(one)}/gate-out"),
     ("m07-long", "lr"): lambda w, one, t: w.post(f"/gatepass/{_slip(one)}/lr", data={
         f"lr_{one('select id from customers where code=?', c)}": lr for c, lr in (("DM-C071", "SRL-5501"), ("DM-C080", "SRL-5502"))}
@@ -119,7 +122,7 @@ def _pawati_trip(w, one, t):
 def _pawati_ids(one):
     c = sqlite3.connect(runtime_path[0])
     try:
-        return [str(r[0]) for r in c.execute("select id from garage_pawatis order by pawati_no")]
+        return [str(r[0]) for r in c.execute("select id from garage_pawatis where print_count=0 order by pawati_no")]
     finally:
         c.close()
 
@@ -132,7 +135,7 @@ PAWATI = {
     ("d03-pawati", "pawati-print"): lambda w, one, t: w.post("/pawati/print", data={"ids": _pawati_ids(one)}),
     ("d03-pawati", "out"): lambda w, one, t: w.post(f"/gatepass/{_slip(one)}/gate-out"),
     ("d03-pawati", "receive-hand"): lambda w, one, t: w.post(
-        f"/pawati/{one('select id from garage_pawatis where receiving_transporter_id=?', one('select id from transporters where code=?', 'DM-SRL'))}/receive",
+        f"/pawati/{one('select id from garage_pawatis where receiving_transporter_id=? order by id desc', one('select id from transporters where code=?', 'DM-SRL'))}/receive",
         data={"note": "signed"}),
     ("d03-pawati", "receive-lr"): lambda w, one, t: w.post(f"/gatepass/{_slip(one)}/lr", data={
         f"lr_{one('select customer_id from invoices where invoice_no=?', '001250')}_{one('select id from transporters where code=?', 'DM-VTC')}": "VTC-7001",

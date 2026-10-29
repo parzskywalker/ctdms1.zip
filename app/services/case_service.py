@@ -218,6 +218,17 @@ def progress(db: Session, slip: DispatchSlip) -> dict:
             "complete": bool(cases) and not missing, "exception": bool(slip.gate_exception_reason)}
 
 
+def labels_pending(db: Session, slip: DispatchSlip) -> int:
+    """Cases of a case-control gatepass whose label has not been printed (and confirmed) yet."""
+    if slip.case_control != "REQUIRED":
+        return 0
+    return sum(1 for c in cases_of(db, slip) if c.status == CaseStatus.LABEL_PENDING)
+
+
+GATE_ONLY = ("Gone out for a case-control gatepass is recorded only at the gate - the gate staff scan every case label and "
+             "then the gatepass")
+
+
 def gate_clear(db: Session, slip: DispatchSlip) -> list[str]:
     """What still stops a REQUIRED gatepass from leaving (empty = cleared, or not a case-control gatepass)."""
     if slip.case_control != "REQUIRED":

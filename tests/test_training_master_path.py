@@ -86,8 +86,12 @@ def test_master_path_completes_with_real_actions_and_leaves_live_data_alone(web,
         ("m06-imports", "marg"): lambda: upload_import(scenario.MARG_FILE.name, "MARG"),
         ("m06-imports", "cbo"): lambda: upload_import(scenario.CBO_FILE.name, "CBO"),
         ("m07-long", "generate"): lambda: gatepass(["001248", "001249", "PQR/B/0313"], mode="TRANSPORTER",
+                                                   pickup_mode="OUTSIDE_AUTO", auto_method="PER_TRIP", trip_charge="500",
+                                                   outside_auto_id=str(one("select id from outside_autos where code='DM-LA1'")),
                                                    transporter_id=str(one("select id from transporters where code='DM-SRL'"))),
         ("m07-long", "print"): lambda: w.post(f"/gatepass/{one('select max(id) from dispatch_slips')}/print", data={"size": "A5", "mode": "print"}),
+        ("m07-long", "pawati-print"): lambda: w.post("/pawati/print", data={"ids": [
+            str(r[0]) for r in sqlite3.connect(path).execute("select id from garage_pawatis where print_count=0 order by pawati_no")]}),
         ("m07-long", "gate-out"): lambda: w.post(f"/gatepass/{one('select max(id) from dispatch_slips')}/gate-out"),
         ("m07-long", "lr"): lambda: w.post(f"/gatepass/{one('select max(id) from dispatch_slips')}/lr", data={
             f"lr_{one('select id from customers where code=?', 'DM-C071')}": "SRL-5501",
@@ -141,10 +145,10 @@ def test_master_path_completes_with_real_actions_and_leaves_live_data_alone(web,
         ("d03-pawati", "print"): lambda: w.post(f"/gatepass/{one('select max(id) from dispatch_slips')}/print", data={"size": "A5", "mode": "print"}),
         ("d03-pawati", "blocked"): lambda: w.post(f"/gatepass/{one('select max(id) from dispatch_slips')}/gate-out"),
         ("d03-pawati", "pawati-print"): lambda: w.post("/pawati/print", data={"ids": [
-            str(r[0]) for r in sqlite3.connect(path).execute("select id from garage_pawatis order by pawati_no")]}),
+            str(r[0]) for r in sqlite3.connect(path).execute("select id from garage_pawatis where print_count=0 order by pawati_no")]}),
         ("d03-pawati", "out"): lambda: w.post(f"/gatepass/{one('select max(id) from dispatch_slips')}/gate-out"),
         ("d03-pawati", "receive-hand"): lambda: w.post(
-            f"/pawati/{one('select id from garage_pawatis where receiving_transporter_id=?', one('select id from transporters where code=?', 'DM-SRL'))}/receive",
+            f"/pawati/{one('select id from garage_pawatis where receiving_transporter_id=? order by id desc', one('select id from transporters where code=?', 'DM-SRL'))}/receive",
             data={"note": "garage clerk signed"}),
         ("d03-pawati", "receive-lr"): lambda: w.post(f"/gatepass/{one('select max(id) from dispatch_slips')}/lr", data={
             f"lr_{one('select customer_id from invoices where id=?', inv_id('001250'))}_{one('select id from transporters where code=?', 'DM-VTC')}": "VTC-7001",
@@ -179,7 +183,7 @@ def test_master_path_completes_with_real_actions_and_leaves_live_data_alone(web,
     after = {t: db.execute(text(f"select count(*) from {t}")).scalar() for t in tables}
     assert after == before
     # the Master's practice CTDMS really contains the v1.6 scenario the trainee built
-    assert one("select total_charge from dispatch_slips where auto_method='PER_TRIP'") == 500
+    assert one("select total_charge from dispatch_slips where dispatch_mode='OUTSIDE_AUTO' and auto_method='PER_TRIP'") == 500
     assert one("select total_charge from dispatch_slips where auto_method='PER_CASE'") == 432
     assert one("select status from transporter_bills") == "PAID"
     assert one("select recognition_code from invoices where invoice_no='001245'") == "ABC-RET-C025-GUMA-001245"

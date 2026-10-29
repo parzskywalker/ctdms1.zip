@@ -1,5 +1,27 @@
 # Changelog
 
+## v1.7.1 — transporter trips by local auto only, labels before gatepass, gone out by gate scan only
+
+Migration 0016 (applied automatically): new role **Dispatch / Gate Staff** with the permission `gate.scan`. Nobody else is
+given it automatically - Administrators already hold every permission; give it to the gate staff (Administration › Users).
+
+- **Transporter trip: Local auto only; Direct pickup: Regular only.** On Scan & Gatepass, choosing *Transporter* shows only
+  *Local auto* (Regular is gone); choosing *Direct pickup* shows only *Regular* (no local auto). The server refuses the other
+  combinations on every new gatepass ("A transporter trip goes to the transporter by a local auto..."). Old Regular gatepasses
+  remain readable. The v1.2 one-invoice slip screens and the API still make the old single-transporter slip.
+- **Case labels first, then the gatepass.** On a case-control gatepass the gatepass cannot be printed until its labels are
+  printed (the screen says "1. Print the case labels first ... 2. print the gatepass").
+- **Gone out only by the gate scan.** On a case-control gatepass there is no gone-out button for anybody; the gatepass screen, the
+  one-invoice screen, bulk complete and the API refuse it. The gate staff scan every case, then the gatepass: that marks it gone
+  out (if every case is scanned or an exception is recorded, the gatepass is printed and its Garage Pawatis are printed). The
+  operator's gatepass screen shows the scanned / total count and then "Gone out - confirmed at the gate by ..." (it refreshes
+  itself). An exception (manager, reason) no longer sends the trip out by itself - the gate staff still scan the gatepass.
+- Only users with `gate.scan` can scan at the gate; the demo data has `gate.raipur` and `gate.bilaspur`.
+- Demo and training data follow the rule (local auto on every transporter trip; the long-distance lesson now teaches it, with the
+  Garage Pawati print).
+- Tests: `tests/test_v171_rules.py`, the gate / label-order tests in `tests/test_v17_phase5.py`; older tests were updated to
+  make transporter trips by local auto.
+
 ## v1.7.0 — Guided Training brought up to date for v1.7
 
 - **Garage Pawati lesson is now on every path that dispatches**: Master Administrator (16 lessons, last), Dispatch Operator and

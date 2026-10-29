@@ -19,12 +19,16 @@
   {% elif blockers %}
     <div class="alert alert-error" style="font-size:16px"><b>STOP — not cleared.</b><ul>{% for b in blockers %}<li>{{ b }}</li>{% endfor %}</ul></div>
   {% else %}
-    <div class="alert alert-success" style="font-size:16px"><b>Cleared.</b> Count the cases, then confirm gate-out.</div>
+    {% if prog %}<div class="alert alert-success" style="font-size:16px"><b>All cases scanned{% if prog.exception %} (exception recorded){% endif %}.</b> Now scan the gatepass barcode to mark it gone out.</div>
+    {% else %}<div class="alert alert-success" style="font-size:16px"><b>Cleared.</b> Count the cases, then confirm gate-out.</div>{% endif %}
   {% endif %}
-  {% if prog and not slip.is_void and not slip.gate_out_at %}
-  <div class="card" id="gate-scan" data-slip="{{ slip.id }}" data-no="{{ slip.dispatch_no }}" data-auto="{{ autoscan }}" data-total="{{ prog.total }}">
+  {% if prog and not slip.is_void and not slip.gate_out_at and not can('gate.scan') %}
+  <div class="alert alert-info">Waiting at the gate: <b>{{ prog.scanned }} / {{ prog.total }}</b> cases scanned. Gone out is recorded when the gate staff scan every case and then the gatepass.</div>
+  {% endif %}
+  {% if prog and not slip.is_void and not slip.gate_out_at and can('gate.scan') %}
+  <div class="card" id="gate-scan" data-slip="{{ slip.id }}" data-no="{{ slip.dispatch_no }}" data-auto="{{ autoscan }}" data-finish="{{ autofinish }}" data-total="{{ prog.total }}">
     <div class="row" style="align-items:center;gap:16px;flex-wrap:wrap">
-      <div style="flex:1 1 320px"><label for="case-code"><b>Scan each case</b> <span class="muted small">(the barcode on its label - the cursor stays here)</span></label>
+      <div style="flex:1 1 320px"><label for="case-code"><b>Scan each case</b>, then the gatepass <span class="muted small">(the barcode on each label, and last the one on the gatepass - the cursor stays here)</span></label>
         <input id="case-code" type="text" autocomplete="off" inputmode="numeric" placeholder="scan a case label" data-enter-skip {% if not autoscan %}autofocus{% endif %}></div>
       <div style="text-align:center"><div class="bigfig" id="gs-count" style="font-size:38px">{{ prog.scanned }} / {{ prog.total }}</div><div class="small muted">cases scanned</div></div>
     </div>
@@ -52,10 +56,10 @@
       </table></div>
     </div>
     <div>
-      {% if not slip.is_void and not slip.gate_out_at and not blockers and can('dispatch.complete') %}
+      {% if not slip.is_void and not slip.gate_out_at and not blockers and not prog and can('dispatch.complete') %}
       <form method="post" action="/gatepass/{{ slip.id }}/gate-out" class="card stack">
         <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="back" value="gate">
-        <h3 style="margin:0">{% if prog %}All {{ prog.total }} cases scanned{% if prog.exception %} (exception recorded){% endif %}{% else %}{{ slip.total_cases }} cases counted?{% endif %}</h3>
+        <h3 style="margin:0">{{ slip.total_cases }} cases counted?</h3>
         <button class="btn btn-ok btn-lg" type="submit" data-key="F9">Confirm gate-out</button>
       </form>
       {% endif %}
@@ -87,7 +91,8 @@
   }
   function show(j) {
     msg.hidden = false; msg.className = 'alert alert-' + (j.ok ? 'success' : (j.result === 'DUPLICATE' ? 'warn' : 'error'));
-    msg.innerHTML = (j.ok ? '✔ ' : '✖ STOP · ') + esc(j.message || j.result);
+    msg.innerHTML = (j.ok ? '✔ ' : '✖ STOP · ') + esc(j.message || j.result) +
+      (j.ok && j.cleared && !j.gone_out ? ' - <b>all cases scanned: now scan the gatepass</b>' : '');
     beep(j.ok);
   }
   function paint(j) {
@@ -95,7 +100,7 @@
     (j.per_invoice || []).forEach((r) => { const tr = box.querySelector('tr[data-inv="' + r.invoice + '"] td.num'); if (tr) tr.innerHTML = '<b>' + r.scanned + ' / ' + r.total + '</b>'; });
     document.getElementById('gs-missing-n').textContent = (j.missing || []).length;
     document.getElementById('gs-missing-list').innerHTML = (j.missing || []).map((c) => '<div>' + esc(c.invoice) + ' · ' + c.k + '/' + c.n + ' · ' + esc(c.code) + '</div>').join('');
-    if (j.cleared) setTimeout(() => { location.href = '/gatepass/gate?code=' + encodeURIComponent(box.dataset.no); }, 900);
+    if (j.gone_out) setTimeout(() => { location.href = '/gatepass/gate?code=' + encodeURIComponent(box.dataset.no); }, 1500);
   }
   async function send(code) {
     const body = new FormData(); body.append('code', code); body.append('slip_id', box.dataset.slip); body.append('station', 'gate');
@@ -107,6 +112,7 @@
   }
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); const c = input.value.trim(); if (c) send(c); } });
   if (box.dataset.auto) send(box.dataset.auto);
+  else if (box.dataset.finish) send(box.dataset.no);
 })();
 </script>
 {% endblock %}

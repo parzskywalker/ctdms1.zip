@@ -315,12 +315,13 @@ GP_OPEN = Step("open", "Scan & Gatepass", what="One gatepass per pickup: transpo
                do="Open Scan & Gatepass.", keys="F2 on the Dashboard, or F3 scan Enter", page="/gatepass/new",
                ui={"path": r"^/gatepass/new"})
 
-L07 = Lesson("m07-long", "Regular long-distance dispatch",
-             "Shree Roadlines from Bilaspur: invoices, transporter, rate card, gatepass, print, gate-out, LR.",
+L07 = Lesson("m07-long", "Long-distance dispatch by transporter",
+             "Shree Roadlines from Bilaspur: invoices, local auto to the garage, rate card, gatepass, print, Garage Pawati, gate-out, LR.",
              start="invoices", needs="long_waiting", video=("Step 6 ",), page="/gatepass/new", steps=[
-    Step("unchanged", "Long distance works as before",
-         what="The third-party transporter workflow is unchanged from v1.5: freight = cases × the transporter's rate "
-              "for the area; the transporter bills later (TBB).", do="Next."),
+    Step("unchanged", "How a long-distance trip works",
+         what="Goods for a long-distance transporter are taken to the transporter's garage by a local auto. Freight = "
+              "cases × the transporter's rate for the area (the transporter bills later, TBB); the auto's trip charge is "
+              "separate. The garage gets a Garage Pawati slip for what it receives.", do="Next."),
     GP_OPEN,
     Step("depot", "Choose the depot", do="Depot: type the code BSP and press Enter.",
          keys="The cursor is already in Depot · type BSP · Enter", ui={"value": ["#gp-cfa", "BSP|Bilaspur"]},
@@ -330,6 +331,15 @@ L07 = Lesson("m07-long", "Regular long-distance dispatch",
          keys="type 001248 Enter · ↓ (into the list) · Enter on a row adds it",
          ui={"text": ["#gp-lines tbody", "001248", "001249", "PQR/B/0313"]}, hl="#gp-scan"),
     CROSS,
+    Step("pickup", "Local auto: the only way to a transporter",
+         what="Under Who carries the goods, the mode is Transporter and the goods reach the transporter by Local auto - "
+              "there is no other choice, so it is already selected. A column 'Receiving transporter' appears on each "
+              "invoice (it takes the transporter you choose below unless you change it).",
+         do="Move on to Who carries the goods and look at it.", keys="Enter on the empty scan box",
+         ui={"visible": ".th-recv"}, hl="#gp-who"),
+    Step("auto", "Select Sharma Local Auto", what="The auto that takes the goods to the garage; its usual trip charge "
+         "(₹500) is filled in.", do="Select Sharma Local Auto.", keys="Enter · type LA1 · Enter",
+         ui={"value": ["#gp-auto", "Sharma"]}, hl="#gp-auto-q"),
     Step("transporter", "Select the transporter",
          what="Transporter boxes are searchable by code or name. Only transporters that serve this depot and have a "
               "rate for the area are offered.",
@@ -346,11 +356,15 @@ L07 = Lesson("m07-long", "Regular long-distance dispatch",
     Step("print", "Print", what="Nothing leaves the gate without a printed gatepass. In training it prints "
          "TRAINING - NOT VALID.", do="Print the gatepass.", keys="F8", check="long_printed",
          hl="[data-key=F8]"),
+    Step("pawati-print", "Print the Garage Pawati",
+         what="The garage signs a Garage Pawati for the goods it receives. The auto cannot leave before it is printed.",
+         do="In the Garage Pawati panel press Print.", check="long_pawati_printed"),
     Step("cases", "Depots with case barcodes",
          what="Where the Master has switched on case control for a depot (Guma first), every carton gets its own "
-              "barcode label (gatepass › Print the labels) and the guard scans every carton at Gate Check: gate-out "
-              "is refused until all are scanned, or a manager records an exception with a reason. This practice depot "
-              "works without labels - the next steps are the same.", do="Next."),
+              "barcode label. The labels are printed FIRST (gatepass › Print the labels), then the gatepass. Nobody "
+              "presses 'gone out': the gate staff scan every carton and then the gatepass, and the gatepass shows "
+              "'Gone out' by itself. A manager can let it leave with cartons missing only by recording an exception "
+              "with a reason. This practice depot works without labels - the next steps are the same.", do="Next."),
     Step("gate-out", "Gate-out", do="Record gate-out and answer Yes.", keys="F9 · Enter (Yes)", check="long_gone",
          hl="[data-key=F9]"),
     Step("lr", "LR numbers", what="The transporter gives the LR (bilty) numbers later - one per customer.",
@@ -616,11 +630,12 @@ D02 = Lesson("d02-gate", "Gate check, LR pending and common errors",
     Step("wrong", "A wrong number", do="Type DS/XX/0000 and press Enter.", keys="type · Enter",
          expect="'No gatepass … Do not let the goods out'", ui={"text": [".alert-error", "No gatepass"]}),
     Step("cases", "Case barcodes at the gate",
-         what="For a depot with case control, scan the barcode of every carton in the same box (the cursor stays "
-              "there): a green tick and a beep for each, a red STOP with the reason for a wrong, repeated, void or "
-              "foreign label. 'Scanned / total' and the missing cartons are shown, and gate-out is refused until all "
-              "are scanned. A manager with the exception permission can let it leave with a reason - the missing "
-              "cartons are marked and the exception is reported. This practice gatepass is without labels.",
+         what="For a depot with case control, the gate staff scan the barcode of every carton in the same box (the "
+              "cursor stays there): a green tick and a beep for each, a red STOP with the reason for a wrong, repeated, "
+              "void or foreign label. 'Scanned / total' and the missing cartons are shown. At the end they scan the "
+              "GATEPASS - that, and nothing else, marks the trip gone out, and the operator sees it on the gatepass. "
+              "A manager with the exception permission can let it leave with cartons missing, with a reason. This "
+              "practice gatepass is without labels, so it is confirmed with the button.",
          do="Next."),
     Step("confirm", "Confirm Kishore Mini Truck's gatepass",
          do="Type the Kishore gatepass number (in 'Waiting at the gate'), Enter, check the cases, Confirm gate-out.",
@@ -649,9 +664,9 @@ D03 = Lesson("d03-pawati", "Local-auto trip to transporters: Garage Pawati",
     Step("invoice", "Add invoice 001250", what="District Govt Store Korba - 8 cartons.",
          do="Add 001250.", keys="type 001250 · Enter", ui={"text": ["#gp-lines tbody", "001250"]}, hl="#gp-scan"),
     Step("pickup", "Transporter, reached by Local auto",
-         what="Mode stays Transporter. Under 'Goods reach the transporter by' choose Local auto: a column "
-              "'Receiving transporter' appears for every invoice.",
-         do="Move to Who carries the goods and choose Local auto.", keys="Enter on the empty scan box · → to Local auto",
+         what="Mode stays Transporter and the goods reach the transporter by Local auto - the only choice, already "
+              "selected. A column 'Receiving transporter' appears for every invoice.",
+         do="Move to Who carries the goods and look at it.", keys="Enter on the empty scan box",
          ui={"visible": ".th-recv"}, hl="#gp-who"),
     Step("auto", "Select Sharma Local Auto", do="Select Sharma Local Auto; the usual ₹500 trip charge is filled in.",
          keys="Enter · type LA1 · Enter", ui={"value": ["#gp-auto", "Sharma"]}, hl="#gp-auto-q"),

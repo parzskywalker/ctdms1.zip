@@ -42,7 +42,9 @@ def live_counts():
 
 
 with sync_playwright() as p:
-    br = p.chromium.launch(channel="msedge")
+    import os
+    exe = os.environ.get("CHROMIUM") or ("/opt/pw-browsers/chromium" if Path("/opt/pw-browsers/chromium").exists() else None)
+    br = p.chromium.launch(executable_path=exe) if exe else p.chromium.launch(channel="msedge")
     ctx = br.new_context(viewport={"width": 1440, "height": 860})
     pg = ctx.new_page()
     K = pg.keyboard
@@ -146,7 +148,7 @@ with sync_playwright() as p:
     K.press("Control+Enter")
     pg.wait_for_timeout(600)
     s = state()
-    check(s.get("finished") and s["summary"]["done"] == 1, "lesson 1 complete; progress 1 of 5 saved")
+    check(s.get("finished") and s["summary"]["done"] == 1, "lesson 1 complete; progress 1 of 6 saved")
     shot("t04_lesson_done")
 
     # ---------------------------------------------------------------- lesson: long-distance dispatch
@@ -196,7 +198,7 @@ with sync_playwright() as p:
     pg.click("button:has-text('Sign out')") if pg.locator("button:has-text('Sign out')").count() else None
     settle()
     login(OP, OP_PW)
-    check(pg.url.endswith("/training") and "2 of 5" in pg.content(), "after logging out and in: progress 2 of 5 kept")
+    check(pg.url.endswith("/training") and "2 of 6" in pg.content(), "after logging out and in: progress 2 of 6 kept")
     K.press("Enter"); settle()
     wait_step("idea", "m08-trip")
     check(True, "Continue resumes at the next lesson (local auto per trip)")

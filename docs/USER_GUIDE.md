@@ -99,10 +99,13 @@ Delete, void, cancel and reject always ask first with **No** pre-selected.
    customer with its invoices, cases and charge, the transporter's name/contact/GST/payment mode — no vehicle number.
 6. **Gate check**: the guard scans the gatepass barcode, counts the cases and presses **Confirm gate-out**. All its
    invoices become DISPATCHED. A void, unprinted or already-used gatepass shows a red STOP.
-   **v1.7 – case control.** For a depot with case control the guard scans every case label on *Gate check* (the cursor
-   stays in the scan box). A green tick means counted; a red STOP says why (wrong gatepass, void label, same case twice,
-   training label...). *Confirm gate-out* appears only when every case is scanned. If cartons are genuinely missing, a manager
-   records an *exception* with a reason; the cases are marked missing and it is audited.
+   **v1.7.1 – case control.** For a depot with case control, *the case labels are printed first, then the gatepass*. Nobody
+   has a "gone out" button on such a gatepass. The **gate staff** (role *Dispatch / Gate Staff*, permission `gate.scan`)
+   scan every case label on *Gate check* (the cursor stays in the scan box): a green tick means counted, a red STOP says
+   why (wrong gatepass, void label, same case twice...). **At the end they scan the gatepass itself - that marks the trip
+   gone out**, and the operator sees "Gone out - confirmed at the gate" on the gatepass by itself (the page refreshes).
+   If cartons are genuinely missing, a manager records an *exception* with a reason (cases marked missing, audited); the
+   gate staff then still scan the gatepass to let it leave. Garage Pawatis must be printed before the gatepass scan works.
 7. **LR numbers** come later from the transporter: type them on the gatepass page (one per customer) or on
    **LR Pending** in bulk. They can be corrected (with a reason) until the transporter's bill is approved.
 
@@ -110,7 +113,7 @@ Delete, void, cancel and reject always ask first with **No** pre-selected.
    *Print the labels*. Every carton has its own code (shown under the barcode) and "case k / n" of its consignment. Print
    with the normal print dialog, then answer *Did all labels print?* - *No* keeps them in the to-print list. A torn label
    is reprinted from *Reprint* (same code, a reason is asked). The label size is a setting (System Settings › Case labels).
-   **v1.7 – local auto, several transporters, Garage Pawati.** For a *Transporter + Local auto* trip, choose the receiving transporter on each
+   **v1.7 – local auto, several transporters, Garage Pawati.** A *Transporter* trip always goes to the transporter by *Local auto* (there is no "Regular" choice); a *Direct pickup* is Regular only (no local auto). Choose the receiving transporter on each
    invoice (use *split* to send some cases to another). After the gatepass is made, open *Garage Pawati* on it and print the
    white slips (4 per A4) - the auto cannot be gated out before that. When the garage signs, press *Received* (or just enter the LR
    later; that records it). A reprint needs a reason. *LR Books* (Dispatch desk) holds each transporter's builty numbers; CTDMS gives the next

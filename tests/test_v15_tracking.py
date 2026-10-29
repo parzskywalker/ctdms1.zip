@@ -22,7 +22,7 @@ from app.services import notify_service as ns
 from app.services import subscription_service as subs
 from app.services.errors import BusinessError
 from app.services.utils import local_today
-from tests.helpers import get_inv, make_invoice, new_invoice_no
+from tests.helpers import get_inv, make_invoice, new_invoice_no, local_auto, print_pawatis
 
 
 def _set(**values) -> None:
@@ -46,11 +46,11 @@ def _dispatch(api, db, customers=("C-HRM01", "C-ABC01"), boxes=(3, 5), gate_out=
     adm = _u(db, "admin")
     tr = db.scalar(select(Transporter).where(Transporter.code == "OSHO"))
     rows = [db.get(Invoice, i.id) for i in invs]
-    slip = ds.create_gatepass(db, adm, rows, ds.GatepassRequest(transporter_id=tr.id,
+    slip = ds.create_gatepass(db, adm, rows, ds.GatepassRequest(**local_auto(db), transporter_id=tr.id,
                                                                 cases={i.id: i.boxes for i in rows}))
     ds.print_gatepass(db, adm, slip, "PRINT_A5")
     if gate_out:
-        ds.gate_out(db, adm, slip)
+        (print_pawatis(db, adm, slip), ds.gate_out(db, adm, slip))[1]
     db.commit()
     return slip, rows
 
@@ -161,7 +161,7 @@ def test_eway_bill_required_above_limit_blocks_gate_out(api, web, db):
         db.commit()
         adm = _u(db, "admin")
         with pytest.raises(BusinessError, match="E-way bill number missing for invoice " + big.invoice_no):
-            ds.gate_out(db, adm, db.get(DispatchSlip, slip.id))
+            (print_pawatis(db, adm, db.get(DispatchSlip, slip.id)), ds.gate_out(db, adm, db.get(DispatchSlip, slip.id)))[1]
         db.rollback()
         w = web("operator.raipur")
         r = w.post(f"/track/{big.id}/eway", {f"eway_{big.id}": "1234"})
@@ -171,12 +171,12 @@ def test_eway_bill_required_above_limit_blocks_gate_out(api, web, db):
         assert "E-way bill saved" in r.text and get_inv(big.id).eway_bill_no == "341023456789"
         db.expire_all()
         with pytest.raises(BusinessError, match="expired"):
-            ds.gate_out(db, adm, db.get(DispatchSlip, slip.id))
+            (print_pawatis(db, adm, db.get(DispatchSlip, slip.id)), ds.gate_out(db, adm, db.get(DispatchSlip, slip.id)))[1]
         db.rollback()
         w.post(f"/track/{big.id}/eway", {f"eway_{big.id}": "341023456789",
                                          f"ewayvalid_{big.id}": (local_today() + timedelta(days=1)).isoformat()})
         db.expire_all()
-        assert ds.gate_out(db, adm, db.get(DispatchSlip, slip.id)) == 2
+        assert (print_pawatis(db, adm, db.get(DispatchSlip, slip.id)), ds.gate_out(db, adm, db.get(DispatchSlip, slip.id)))[1] == 2
         db.commit()
         other = _dispatch(api, db, customers=("C-ABC01",), boxes=(1,), gate_out=False)[1][0]
         r = w.post(f"/track/{other.id}/eway", {f"eway_{other.id}": "341023456789"})

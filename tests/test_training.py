@@ -91,7 +91,7 @@ def test_starting_points_rebuild_the_v16_demonstration():
     import sqlite3
     c = sqlite3.connect(scenario.template_path("dispatched"))
     slips = dict(c.execute("select remarks, total_charge from dispatch_slips").fetchall())
-    assert slips["Demonstration - long distance"] == 924
+    assert slips["Demonstration - long distance"] == 1424  # 924 freight + the auto's ₹500 trip
     assert slips["Demonstration - per trip, four invoices"] == 500  # one trip, one amount
     assert slips["Demonstration - per box"] == 432                 # 15 x 20 + 6 x 22
     assert c.execute("select count(*) from invoices").fetchone()[0] == 13

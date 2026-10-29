@@ -43,10 +43,10 @@ def _inv(api, loc, boxes, cust="C-VDP01", co="COA", cfa="RPR"):
     return make_invoice(api, company=co, cfa=cfa, customer=cust, location=loc, boxes=boxes)
 
 
-def test_ordinary_gatepass_gets_allocations_but_no_pawati(db, world):  # noqa: F811
+def test_direct_pickup_gatepass_gets_allocations_but_no_pawati(db, world):  # noqa: F811
     api = _token_client("admin")
     inv = _inv(api, "P3-TOWN", 4)
-    r = WebClient("admin").post("/gatepass/new", data={"ids": [str(inv["id"])], "cases_%d" % inv["id"]: "4", "mode": "TRANSPORTER",
+    r = WebClient("admin").post("/gatepass/new", data={"ids": [str(inv["id"])], "cases_%d" % inv["id"]: "4", "mode": "DIRECT",
                                                        "transporter_id": str(world["tr"].id), "pickup_mode": "REGULAR",
                                                        "dispatch_date": TODAY.isoformat()})
     sid = _slip_of(r)

@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import (
-    DispatchAllocation, DispatchMode, DispatchSlip, Invoice, InvoiceStatus, LabelPrintLog, Location, OutsideAuto, PickupMode, SlipPrintLog,
+    CaseScan, DispatchAllocation, DispatchMode, DispatchSlip, Invoice, InvoiceStatus, LabelPrintLog, Location, OutsideAuto, PickupMode, SlipPrintLog,
     Transporter, User,
 )
 from app.security.auth import csrf_protect, require
@@ -349,6 +349,8 @@ def detail(slip_id: int, request: Request, db: Session = Depends(get_db), user: 
     cases = cs.cases_of(db, slip, include_void=True) if slip.case_control == "REQUIRED" else []
     return render(request, "gatepass/detail.html", {
         "pawatis": pws.active(db, slip) if pws.applies(slip) else [],
+        "labels_pending": cs.labels_pending(db, slip),
+        "gate_prog": cs.progress(db, slip) if slip.case_control == "REQUIRED" else None,
         "cases": cases, "case_counts": cs.counts(db, slip) if cases else {},
         "label_log": list({lg.batch_no: lg for lg in db.scalars(select(LabelPrintLog).where(
             LabelPrintLog.slip_id == slip.id).order_by(LabelPrintLog.id.desc()))}.values()) if cases else [],
@@ -512,6 +514,9 @@ def gate(request: Request, db: Session = Depends(get_db), user: User = Depends(r
     return render(request, "gatepass/gate.html", {"title": "Gate check", "code": code, "slip": slip, "invs": invs,
                                                   "blockers": blockers, "waiting": waiting, "prog": prog,
                                                   "autoscan": code if cs.is_valid(code) and slip else "",
+                                                  "autofinish": bool(slip and prog and user.can("gate.scan")
+                                                                     and code.upper() == slip.dispatch_no.upper()
+                                                                     and not slip.gate_out_at and not slip.is_void),
                                                   "can_exception": user.can("gate.exception"),
                                                   "not_found": bool(code and not slip)})
 
@@ -534,11 +539,18 @@ def _scan_json(db: Session, slip: DispatchSlip, res: dict | None) -> dict:
 
 @router.post("/gatepass/scan-case")
 def scan_case(request: Request, form=Depends(get_form), db: Session = Depends(get_db),
-              user: User = Depends(require("dispatch.complete"))):
-    """The guard's scanner: one case code (optionally inside a gatepass the screen has open). Always recorded."""
+              user: User = Depends(require("gate.scan"))):
+    """The gate staff's scanner: a case code (optionally inside a gatepass the screen has open) - or, after the last
+    case, the gatepass itself, which marks a case-control gatepass gone out. Always recorded."""
     slip = _slip(db, user, safe_int(form.get("slip_id"))) if form.get("slip_id") else None
     code = (form.get("code") or "").strip()
-    res = cs.scan(db, user, code, slip, station=(form.get("station") or None))
+    station = form.get("station") or None
+    if not cs.is_valid(code):
+        gp = db.scalar(apply_slip_scope(select(DispatchSlip), user).where(func.upper(DispatchSlip.dispatch_no) == code.upper())) \
+            if code else None
+        if gp is not None:
+            return JSONResponse(_scan_gatepass(db, user, gp, slip, code, station))
+    res = cs.scan(db, user, code, slip, station=station)
     db.commit()
     target = slip or (_slip(db, user, res["slip_id"]) if res["slip_id"] else None)
     if target is None:
@@ -549,13 +561,34 @@ def scan_case(request: Request, form=Depends(get_form), db: Session = Depends(ge
     return JSONResponse(payload)
 
 
+def _scan_gatepass(db: Session, user: User, gp: DispatchSlip, open_slip: DispatchSlip | None, code: str,
+                   station: str | None) -> dict:
+    """The gatepass barcode scanned at the gate: marks the trip gone out when everything is in order."""
+    if open_slip is not None and open_slip.id != gp.id:
+        res = {"result": "WRONG_GATEPASS", "ok": False,
+               "message": f"This is gatepass {gp.dispatch_no} - the screen is on {open_slip.dispatch_no}"}
+    else:
+        try:
+            n = ds.gate_scan_out(db, user, gp)
+            res = {"result": "GONE_OUT", "ok": True, "gone_out": True,
+                   "message": f"Gatepass {gp.dispatch_no} GONE OUT - {n} invoice(s), every case scanned"}
+        except BusinessError as e:
+            res = {"result": "NOT_CLEARED", "ok": False, "message": e.message}
+    db.add(CaseScan(slip_id=gp.id, case_id=None, scanned_code=code[:60], result=res["result"],
+                    scanned_by_id=user.id, station=station))
+    db.commit()  # also keeps the GATE_OUT_BLOCKED audit entry of a refusal
+    payload = _scan_json(db, gp, res)
+    payload.update(slip_id=gp.id, dispatch_no=gp.dispatch_no, gone_out=bool(res.get("gone_out")))
+    return payload
+
+
 @router.post("/gatepass/{slip_id:int}/gate-exception")
 def gate_exception(slip_id: int, request: Request, form=Depends(get_form), db: Session = Depends(get_db),
-                   user: User = Depends(require("dispatch.complete"))):
+                   user: User = Depends(require("dispatch.view"))):
     slip = _slip(db, user, slip_id)
     n = cs.record_exception(db, user, slip, form.get("reason") or "")
     db.commit()
-    flash(request, f"Exception recorded: {n} case(s) marked missing. The gatepass can now leave.", "warn")
+    flash(request, f"Exception recorded: {n} case(s) marked missing. Now the gate staff scan the gatepass to let it leave.", "warn")
     return redirect(f"/gatepass/gate?code={slip.dispatch_no}")
 
 

@@ -65,3 +65,28 @@ def roles_matrix(db, extra: dict | None = None, drop: set | None = None) -> dict
     for k in drop or ():
         data.pop(k, None)
     return data
+
+
+def local_auto(db=None) -> dict:
+    """v1.7.1: a transporter trip always goes to the transporter by local auto - the fields every such request needs.
+    (Read through a session of its own so the caller's transaction is not touched or locked.)"""
+    from decimal import Decimal
+
+    from app.models import OutsideAuto, PickupMode
+    from tests.conftest import _test_session
+    s = _test_session()
+    try:
+        aid = s.scalar(select(OutsideAuto.id).where(OutsideAuto.is_active.is_(True),
+                                                    OutsideAuto.allowed_methods.in_(["PER_TRIP", "BOTH"])).limit(1))
+    finally:
+        s.close()
+    return dict(pickup_mode=PickupMode.OUTSIDE_AUTO, outside_auto_id=aid, auto_method="PER_TRIP", trip_charge=Decimal("300"))
+
+
+def print_pawatis(db, user, slip) -> None:
+    """The Garage Pawatis of a local-auto trip travel with the auto: they are printed before it can leave."""
+    from app.services import pawati_service as pws
+    rows = pws.active(db, slip)
+    if rows:
+        pws.print_sheet(db, user, rows)
+        db.flush()
