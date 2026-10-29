@@ -356,7 +356,7 @@ def detail(slip_id: int, request: Request, db: Session = Depends(get_db), user: 
             LabelPrintLog.slip_id == slip.id).order_by(LabelPrintLog.id.desc()))}.values()) if cases else [],
         "title": f"Gatepass {slip.dispatch_no}", "slip": slip, "groups": list(groups.values()), "invs": invs,
         "print_events": print_events, "complete_blockers": complete_blockers, "alerts": alerts,
-        "slip_size": cfg.get(db, "dispatch.default_slip_size"), "rule": cfg.get(db, "dispatch.complete_requires")})
+        "slip_size": cfg.get(db, "dispatch.default_slip_size")})
 
 
 @router.get("/gatepass/{slip_id:int}/labels")
@@ -452,19 +452,16 @@ def print_slip(slip_id: int, request: Request, form=Depends(get_form), db: Sessi
     return print_response(request, [(slip.snapshot, *_label(slip, log))], size, mode)
 
 
-@router.post("/gatepass/{slip_id:int}/gate-out")
-def gate_out(slip_id: int, request: Request, form=Depends(get_form), db: Session = Depends(get_db),
-             user: User = Depends(require("dispatch.complete"))):
+@router.post("/gatepass/{slip_id:int}/make-labels")
+def make_labels(slip_id: int, request: Request, db: Session = Depends(get_db),
+                user: User = Depends(require("case.print"))):
+    """An old-style gatepass that is still open gets its case labels (case control is mandatory at every depot)."""
     slip = _slip(db, user, slip_id)
-    try:
-        n = ds.gate_out(db, user, slip)
-    except BusinessError:
-        db.commit()  # keep the GATE_OUT_BLOCKED audit entry
-        raise
+    n = cs.convert_legacy(db, user, slip)
     db.commit()
-    flash(request, f"Gatepass {slip.dispatch_no}: {n} invoice(s) DISPATCHED (gate-out recorded).", "success")
-    back = form.get("back")
-    return redirect("/gatepass/gate" if back == "gate" else f"/gatepass/{slip.id}")
+    flash(request, f"Gatepass {slip.dispatch_no}: {n} case(s) made. Print the labels, then the gatepass; the gate staff scan "
+                   "every case and then the gatepass.", "success")
+    return redirect(f"/gatepass/{slip.id}")
 
 
 @router.post("/gatepass/{slip_id:int}/void")

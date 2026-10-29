@@ -320,11 +320,9 @@ def verify(invoice_id: int, db: Session = Depends(get_db), user: User = Depends(
 
 
 @router.post("/invoices/{invoice_id:int}/generate-slip", tags=["dispatch"], dependencies=[Depends(api_csrf)])
-def generate(invoice_id: int, db: Session = Depends(get_db), user: User = Depends(require("dispatch.operate"))):
-    inv = _get(db, user, invoice_id)
-    slip = ds.generate_slip(db, user, inv)
-    db.commit()
-    return {"dispatch_no": slip.dispatch_no, "invoice": _inv_out(inv, user)}
+def generate(invoice_id: int, user: User = Depends(require("dispatch.operate"))):
+    """Retired in v1.7.2: a gatepass is made on Scan & Gatepass (a transporter trip goes by local auto, with case labels)."""
+    raise BusinessError("Per-invoice slips are retired - make a gatepass on Scan & Gatepass")
 
 
 @router.post("/invoices/{invoice_id:int}/print", tags=["dispatch"], dependencies=[Depends(api_csrf)])
@@ -342,15 +340,9 @@ def print_slip(invoice_id: int, size: str = "A5", reason: str | None = None, db:
 
 
 @router.post("/invoices/{invoice_id:int}/complete", tags=["dispatch"], dependencies=[Depends(api_csrf)])
-def complete(invoice_id: int, db: Session = Depends(get_db), user: User = Depends(require("dispatch.complete"))):
-    inv = _get(db, user, invoice_id)
-    try:
-        ds.complete(db, user, inv)
-    except BusinessError:
-        db.commit()
-        raise
-    db.commit()
-    return _inv_out(inv, user)
+def complete(invoice_id: int, user: User = Depends(require("dispatch.view"))):
+    """Retired in v1.7.2: gone out is recorded only at the gate - the gate staff scan every case, then the gatepass."""
+    raise BusinessError("Gone out is recorded only at the gate - the gate staff scan every case label and then the gatepass")
 
 
 @router.post("/invoices/{invoice_id:int}/cancel", tags=["dispatch"], dependencies=[Depends(api_csrf)])

@@ -83,7 +83,7 @@
       <div class="form-actions">
         <button class="btn" type="submit" data-key="F6">Save draft</button>
         {% if acts.can_verify %}<button class="btn btn-accent" type="submit" formaction="/dispatch/{{ inv.id }}/verify">✓ Verify boxes &amp; freight</button>{% endif %}
-        <button class="btn btn-primary" type="submit" formaction="/dispatch/{{ inv.id }}/generate" data-key="F8">Generate Dispatch Slip</button>
+        <a class="btn btn-primary" href="/gatepass/new?q={{ inv.invoice_no }}" data-key="F8">Make the gatepass (Scan &amp; Gatepass)</a>
       </div>
       {% if acts.slip_blockers %}
         <ul class="blockers">{% for b in acts.slip_blockers %}<li>{{ b }}</li>{% endfor %}</ul>
@@ -114,7 +114,7 @@
           </div>
         </form>
       {% elif st in ['PENDING','VERIFIED','RATE_MISSING','EXCEPTION'] %}
-        <p class="muted">Generate the slip first. Print is enabled once the dispatch number is issued.</p>
+        <p class="muted">Make the gatepass first (Scan &amp; Gatepass). Print is enabled once its number is issued.</p>
       {% elif inv.dispatch_no and st in ['SLIP_GENERATED','SLIP_PRINTED','DISPATCHED'] %}
         <p class="muted">Slip <b class="mono">{{ inv.dispatch_no }}</b> issued{% if inv.print_count %} · printed {{ inv.print_count }}×{% else %} · <b>not printed yet</b>{% endif %}. Printing is done by the dispatch operator.</p>
       {% else %}
@@ -127,19 +127,11 @@
     </div>
 
     <div class="card">
-      <div class="card-head"><h3>Complete dispatch</h3></div>
+      <div class="card-head"><h3>Gone out</h3></div>
       {% if st == 'DISPATCHED' %}
-        <div class="alert alert-success" style="margin:0">Dispatched {{ inv.completed_at|dt }} by {{ inv.completed_by.full_name }}.</div>
-      {% elif acts.can_complete %}
-        <form method="post" action="/dispatch/{{ inv.id }}/complete">
-          <input type="hidden" name="csrf_token" value="{{ csrf }}">
-          <button class="btn {{ 'btn-ok btn-lg' if not acts.complete_blockers else '' }}" type="submit" style="width:100%" data-key="F9" data-confirm="Mark invoice {{ inv.invoice_no }} as DISPATCHED? This cannot be undone.">✔ Complete Dispatch</button>
-        </form>
-        {% if acts.complete_blockers %}<ul class="blockers">{% for b in acts.complete_blockers %}<li>{{ b }}</li>{% endfor %}</ul>{% endif %}
-      {% elif acts.gate_only %}
-        <p class="muted">This gatepass has case labels: it is marked gone out when the gate staff scan every case and then the gatepass - not from here.</p>
+        <div class="alert alert-success" style="margin:0">Gone out {{ inv.completed_at|dt }}{% if inv.completed_by %} · confirmed at the gate by {{ inv.completed_by.full_name }}{% endif %}.</div>
       {% else %}
-        <p class="muted">You are not authorised to complete dispatches.</p>
+        <p class="muted">Gone out is recorded only at the gate: the gate staff scan every case label and then the gatepass. There is no button here.</p>
       {% endif %}
     </div>
 

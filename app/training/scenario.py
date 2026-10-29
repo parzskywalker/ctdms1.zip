@@ -37,8 +37,9 @@ CBO_FILE = DEMO_FILES / "DEMO_v1.6_CBO_invoices_PQR.csv"
 FILES = {f.name: f for f in (WORKBOOK, SAP_FILE, MARG_FILE, CBO_FILE)}
 
 CHECKPOINTS = ["clean", "uploaded", "masters", "sap", "invoices", "dispatched", "billed"]
-SCENARIO_VERSION = "5"
+SCENARIO_VERSION = "6"
 DEMO_USERS = [("demo.master", "Demo Master (training)", "ADMIN"),
+              ("demo.gate", "Demo Gate Staff (training)", "GATE_STAFF"),
               ("demo.checker", "Demo Checker (training)", "CHECKER"),
               ("demo.accounts", "Demo Accounts (training)", "ACCOUNTS"),
               ("demo.operator", "Demo Operator (training)", "DISPATCH_OPERATOR")]
@@ -240,12 +241,13 @@ def _gatepass(db: Session, numbers: list[str], remarks: str, *, transporter=None
         req.trip_charge = Decimal(trip) if trip else None
     slip = ds.create_gatepass(db, master, invs, req)
     db.commit()
-    ds.print_gatepass(db, master, slip, "PRINT_A5")
+    from app.services import case_service as cs
+    from app.services import gate_service as gs
+    cs.record_print(db, master, slip, [c.id for c in cs.cases_of(db, slip)], result="PRINTED")   # labels first ...
+    ds.print_gatepass(db, master, slip, "PRINT_A5")                                               # ... then the gatepass
     if gate_out:
-        from app.services import pawati_service as pws
-        if pws.active(db, slip):
-            pws.print_sheet(db, master, pws.active(db, slip))
-        ds.gate_out(db, master, slip)
+        gs.prepare(db, master, slip)                                                              # (Garage Pawatis too)
+        gs.scan_out(db, _user(db, "demo.gate"), slip)             # the gate staff scan every case, then the gatepass
     db.commit()
     return slip, invs
 

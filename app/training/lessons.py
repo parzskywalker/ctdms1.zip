@@ -315,6 +315,44 @@ GP_OPEN = Step("open", "Scan & Gatepass", what="One gatepass per pickup: transpo
                do="Open Scan & Gatepass.", keys="F2 on the Dashboard, or F3 scan Enter", page="/gatepass/new",
                ui={"path": r"^/gatepass/new"})
 
+def LABELS(prefix: str) -> Step:
+    return Step("labels", "Print the case labels FIRST",
+                what="Every carton has its own barcode label. The labels are printed first; only then can the gatepass be "
+                     "printed (CTDMS refuses it before). In training the labels print marked TRAINING.",
+                do="On the gatepass press Print the labels (Case labels), then answer 'Did all labels print?' - Yes.",
+                keys="click Case labels · print · Yes", check=f"{prefix}_labelled", hl="a[href$='/labels']")
+
+
+def GATE(prefix: str, gone: str, *, blocked: bool = False) -> list:
+    """The gate: the gate staff scan every case, then the gatepass - the only way a trip is marked gone out."""
+    steps = [
+        Step("gate-act", "Now the gate staff take over",
+             what="Nobody has a 'gone out' button. At the gate the gate staff scan every case label and then the gatepass. "
+                  "In training you play the gate staff for a moment.", do="Press 'Act as Demo Gate Staff' in this panel.",
+             acting="demo.gate"),
+        Step("gate-cases", "Scan every case",
+             what="Open Gate Check, type (or scan) the gatepass number to open it, then scan each case code (shown on "
+                  "the labels) and press Enter after each: a green tick for every case.",
+             do="Gate Check: open the gatepass, then scan every case code.", keys="F3 gate check Enter · number · Enter · "
+             "each case code · Enter", page="/gatepass/gate", check=f"{prefix}_scanned", acting="demo.gate"),
+    ]
+    if blocked:
+        steps.append(Step("gate-early", "The gatepass first? Refused",
+                          what="Scanning the gatepass before the Garage Pawatis are printed is refused - the Pawatis "
+                               "travel with the auto.", do="Scan (type) the gatepass number in the same box now.",
+                          keys="gatepass number · Enter", acting="demo.gate",
+                          ui={"text": ["#gs-msg", "Garage Pawati not printed"]}))
+    steps += [
+        Step("gate-out", "Scan the gatepass",
+             what="After the last case the gate staff scan the gatepass itself: the trip is marked gone out, and the "
+                  "operator sees 'Gone out' on the gatepass. Scanning the gatepass before every case is refused.",
+             do="Scan (type) the gatepass number in the same box and press Enter.", keys="gatepass number · Enter",
+             check=gone, acting="demo.gate"),
+        Step("gate-self", "Back to yourself", do="Press 'Act as myself' in this panel.", ui={"self": True}),
+    ]
+    return steps
+
+
 L07 = Lesson("m07-long", "Long-distance dispatch by transporter",
              "Shree Roadlines from Bilaspur: invoices, local auto to the garage, rate card, gatepass, print, Garage Pawati, gate-out, LR.",
              start="invoices", needs="long_waiting", video=("Step 6 ",), page="/gatepass/new", steps=[
@@ -353,20 +391,14 @@ L07 = Lesson("m07-long", "Long-distance dispatch by transporter",
     Step("generate", "Generate the gatepass", do="Generate gatepass.",
          keys="Enter through the fields to Generate gatepass, Enter - or F8 at any time", check="long_generated",
          hl="#gp-submit"),
-    Step("print", "Print", what="Nothing leaves the gate without a printed gatepass. In training it prints "
-         "TRAINING - NOT VALID.", do="Print the gatepass.", keys="F8", check="long_printed",
+    LABELS("long"),
+    Step("print", "Print the gatepass", what="Nothing leaves the gate without a printed gatepass - and the labels come "
+         "first. In training it prints TRAINING - NOT VALID.", do="Print the gatepass.", keys="F8", check="long_printed",
          hl="[data-key=F8]"),
     Step("pawati-print", "Print the Garage Pawati",
          what="The garage signs a Garage Pawati for the goods it receives. The auto cannot leave before it is printed.",
          do="In the Garage Pawati panel press Print.", check="long_pawati_printed"),
-    Step("cases", "Depots with case barcodes",
-         what="Where the Master has switched on case control for a depot (Guma first), every carton gets its own "
-              "barcode label. The labels are printed FIRST (gatepass › Print the labels), then the gatepass. Nobody "
-              "presses 'gone out': the gate staff scan every carton and then the gatepass, and the gatepass shows "
-              "'Gone out' by itself. A manager can let it leave with cartons missing only by recording an exception "
-              "with a reason. This practice depot works without labels - the next steps are the same.", do="Next."),
-    Step("gate-out", "Gate-out", do="Record gate-out and answer Yes.", keys="F9 · Enter (Yes)", check="long_gone",
-         hl="[data-key=F9]"),
+    *GATE("long", "long_gone"),
     Step("lr", "LR numbers", what="The transporter gives the LR (bilty) numbers later - one per customer.",
          do="Enter SRL-5501 for WellCare Pharmacy and SRL-5502 for Bilaspur Super Stockist, then Save LR numbers.",
          keys="Tab to the LR boxes · type · F6", check="long_lr", hl="input[name^=lr_]"),

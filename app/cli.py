@@ -133,6 +133,14 @@ def prepare_demo(args) -> None:
         print("Note: no active administrator account - use 'python -m app.cli create-admin' to add one.")
     print(f"Database ready: {n_active} active users, {n_inv:,} invoices. Existing data kept as it is.")
     if demo_pw:
+        db = SessionLocal()
+        try:  # demonstration database: add demo users introduced by newer versions (never touches existing ones)
+            added = seed.ensure_demo_users(db)
+            db.commit()
+        finally:
+            db.close()
+        if added:
+            print("Added demonstration users: " + ", ".join(added) + "  (password Demo@123)")
         print("Demo login: admin / Admin@123  (change this password before using real data)")
 
 

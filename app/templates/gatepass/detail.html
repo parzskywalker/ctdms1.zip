@@ -80,14 +80,17 @@
         {% if complete_blockers %}<ul class="blockers">{% for b in complete_blockers %}<li>{{ b }}</li>{% endfor %}</ul>{% endif %}
       {% endif %}
     </div>
-    {% elif not slip.is_void and not slip.gate_out_at and can('dispatch.complete') %}
-    <form method="post" action="/gatepass/{{ slip.id }}/gate-out" class="card stack">
-      <input type="hidden" name="csrf_token" value="{{ csrf }}">
-      <h3 style="margin:0">Gate-out</h3>
-      <p class="small muted" style="margin:0">Confirms that the goods physically left with this gatepass. All {{ slip.invoice_count }} invoice(s) become DISPATCHED. Rule: gatepass must be <b>{{ rule }}</b>.</p>
-      {% if complete_blockers %}<ul class="blockers">{% for b in complete_blockers %}<li>{{ b }}</li>{% endfor %}</ul>{% endif %}
-      <button class="btn btn-ok" type="submit" data-key="F9" {% if complete_blockers %}disabled{% endif %} data-confirm="Record gate-out of {{ slip.dispatch_no }} ({{ slip.total_cases }} cases)?">Record gate-out</button>
-    </form>
+    {% elif not slip.is_void and not slip.gate_out_at %}
+    <div class="card" id="gate-status">
+      <h3 style="margin-top:0">At the gate</h3>
+      <div class="alert alert-warn" style="margin:0 0 8px">This gatepass was made before case labels became mandatory. It has no case labels, so it cannot be scanned out yet.</div>
+      {% if can('case.print') %}
+      <form method="post" action="/gatepass/{{ slip.id }}/make-labels">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <button class="btn btn-primary" type="submit" data-confirm="Make the case labels for {{ slip.dispatch_no }} ({{ slip.total_cases }} cases)? Its number, invoices and charges stay the same.">Make the case labels for this gatepass</button>
+      </form>
+      {% else %}<p class="small muted" style="margin:0">Ask the dispatch desk to make the case labels.</p>{% endif %}
+    </div>
     {% endif %}
     <div class="card">
       <h3 style="margin-top:0">Carrier</h3>
