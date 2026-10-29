@@ -20,7 +20,7 @@
     <div class="alert alert-error" style="font-size:16px"><b>STOP — not cleared.</b><ul>{% for b in blockers %}<li>{{ b }}</li>{% endfor %}</ul></div>
   {% else %}
     {% if prog %}<div class="alert alert-success" style="font-size:16px"><b>All cases scanned{% if prog.exception %} (exception recorded){% endif %}.</b> Now scan the gatepass barcode to mark it gone out.</div>
-    {% else %}<div class="alert alert-error" style="font-size:16px"><b>STOP - no case labels.</b> This is an old-style gatepass: the dispatch desk must make its case labels first, then the gate staff scan them.</div>{% endif %}
+    {% else %}<div class="alert alert-success" style="font-size:16px"><b>Cleared.</b> Count the cases, then confirm gate-out.</div>{% endif %}
   {% endif %}
   {% if prog and not slip.is_void and not slip.gate_out_at and not can('gate.scan') %}
   <div class="alert alert-info">Waiting at the gate: <b>{{ prog.scanned }} / {{ prog.total }}</b> cases scanned. Gone out is recorded when the gate staff scan every case and then the gatepass.</div>
@@ -56,6 +56,13 @@
       </table></div>
     </div>
     <div>
+      {% if not slip.is_void and not slip.gate_out_at and not blockers and not prog and can('dispatch.complete') %}
+      <form method="post" action="/gatepass/{{ slip.id }}/gate-out" class="card stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="back" value="gate">
+        <h3 style="margin:0">{{ slip.total_cases }} cases counted?</h3>
+        <button class="btn btn-ok btn-lg" type="submit" data-key="F9">Confirm gate-out</button>
+      </form>
+      {% endif %}
       <div class="card"><dl class="dl tight"><dt>Date</dt><dd>{{ slip.dispatch_date|date }}</dd><dt>Printed</dt><dd>{{ '×%d'|format(slip.print_count) if slip.print_count else 'NO' }}</dd><dt>Invoices</dt><dd>{{ slip.invoice_count }}</dd></dl></div>
     </div>
   </div>

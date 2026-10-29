@@ -127,32 +127,6 @@ def sync_schema(eng) -> None:
                     cx.exec_driver_sql(f"ALTER TABLE {t.name} ADD COLUMN {ddl}")
             except Exception as exc:  # e.g. NOT NULL without a default: new columns must be nullable or have a default
                 logging.getLogger("ctdms").warning("practice database: could not add %s.%s (%s)", t.name, col.name, exc)
-    _ensure_gate_demo(eng)
-
-
-def _ensure_gate_demo(eng) -> None:
-    """v1.7.2: the demonstration gate staff (demo.gate) scan the cases and the gatepass in the lessons. A practice database
-    made by an older version has neither the role nor the user - add them (nothing existing is changed)."""
-    from sqlalchemy import select
-    from sqlalchemy.orm import Session
-
-    from app.models import Role, User
-    from app.security.permissions import DEFAULT_ROLES
-    try:
-        with Session(eng) as db:
-            role = db.scalar(select(Role).where(Role.code == "GATE_STAFF"))
-            if role is None:
-                d = DEFAULT_ROLES["GATE_STAFF"]
-                role = Role(code="GATE_STAFF", name=d["name"], description=d["description"], permissions=d["permissions"],
-                            is_system=True)
-                db.add(role)
-                db.flush()
-            if db.scalar(select(User.id).where(User.username == "demo.gate")) is None:
-                db.add(User(username="demo.gate", full_name="Demo Gate Staff (training)", password_hash="!training-only",
-                            is_active=True, role=role, all_companies=True, all_cfas=True, must_change_password=False))
-            db.commit()
-    except Exception as exc:  # noqa: BLE001 - a practice copy that is not a CTDMS database yet (nothing to add)
-        logging.getLogger("ctdms").warning("practice database: demonstration gate staff not added (%s)", exc)
 
 
 def _factory(uid: int):

@@ -79,6 +79,9 @@ MASTERS: dict[str, MasterDef] = {
         F("default_erp_id", "Source ERP (usual)", "select", options="erp", list=True),
         F("warehouse", "Godown / building"), F("gstin", "GSTIN", upper=True), F("contact_person", "Contact person"),
         F("contact_phone", "Contact number"),
+        F("case_control_enabled", "Case barcode labels and gate scanning", "bool",
+          help="Every case of a gatepass from this depot gets its own barcode label and is scanned before gate-out. "
+               "Switch it on when the depot has its printer and scanner ready."),
         F("is_active", "Active", "bool", list=True),
     ], search=["code", "name", "city", "locality"], scope="cfa"),
     "customer-types": MasterDef("customer-types", CustomerTypeMaster, "Customer Types", "Customer type", [

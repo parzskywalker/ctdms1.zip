@@ -420,7 +420,7 @@ def test_upgrade_from_v11_database_keeps_data(tmp_path):
     r = _run_prepare(db_path)
     assert r.returncode == 0 and "ready" in r.stdout.lower(), r.stdout + r.stderr
     con = sqlite3.connect(db_path)
-    assert con.execute("select version_num from alembic_version").fetchone()[0] == "0017"  # current head
+    assert con.execute("select version_num from alembic_version").fetchone()[0] == "0016"  # current head
     inv_cols = [c[1] for c in con.execute("pragma table_info(invoices)")]
     assert {"taxable_value", "delivery_status", "eway_bill_no", "qr_signature"} <= set(inv_cols)
     assert "tokens_valid_after" in [c[1] for c in con.execute("pragma table_info(users)")]

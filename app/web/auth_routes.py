@@ -15,9 +15,17 @@ from app.web.templating import back_url, flash, home_for, redirect, render, safe
 
 router = APIRouter(dependencies=[Depends(csrf_protect)], include_in_schema=False)
 
-from app.demo_users import login_rows  # noqa: E402
-
-DEMO_USERS = login_rows()
+DEMO_USERS = [
+    ("admin", "Admin@123", "Administrator"),
+    ("management", "Demo@123", "Management"),
+    ("accounts", "Demo@123", "Accounts"),
+    ("cfa.raipur", "Demo@123", "Depot Manager · Raipur"),
+    ("operator.raipur", "Demo@123", "Dispatch Operator · Raipur"),
+    ("operator.bilaspur", "Demo@123", "Dispatch Operator · Bilaspur"),
+    ("operator.durg", "Demo@123", "Dispatch Operator · Durg"),
+    ("checker", "Demo@123", "Checker / Approver"),
+    ("viewer", "Demo@123", "Read-only Viewer"),
+]
 
 
 @router.get("/login")

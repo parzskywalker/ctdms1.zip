@@ -60,9 +60,8 @@ def _training() -> bool:
     return runtime.active() is not None
 
 
-def enabled_for(slip_cfa=None) -> bool:
-    """v1.7.2: case control is mandatory at every depot (the old per-depot switch is gone)."""
-    return True
+def enabled_for(slip_cfa) -> bool:
+    return bool(slip_cfa is not None and getattr(slip_cfa, "case_control_enabled", False))
 
 
 # ----------------------------------------------------------------------------- generation / voiding
@@ -98,23 +97,6 @@ def generate(db: Session, user: User, slip: DispatchSlip) -> int:
               details={"cases": total, "first": make_code(first, training=training),
                        "last": make_code(first + total - 1, training=training)})
     return total
-
-
-def convert_legacy(db: Session, user: User, slip: DispatchSlip) -> int:
-    """A gatepass made before case control was mandatory (still open): give it its cases so it can be labelled,
-    scanned at the gate and marked gone out like every other gatepass. Number, invoices, charges and Pawatis stay."""
-    if not user.can("case.print"):
-        raise BusinessError("You are not authorised to make case labels")
-    if slip.is_void or slip.gate_out_at:
-        raise BusinessError(f"Gatepass {slip.dispatch_no} is closed")
-    if slip.case_control == "REQUIRED":
-        raise BusinessError(f"Gatepass {slip.dispatch_no} already has its case labels")
-    n = generate(db, user, slip)
-    if not n:
-        raise BusinessError("This gatepass has no cases to label")
-    audit.log(db, user, "CASES_CONVERTED", MODULE, record_type="DispatchSlip", record_id=slip.id, ref=slip.dispatch_no,
-              reason="Old-style gatepass given case labels (case control is mandatory)", details={"cases": n})
-    return n
 
 
 def void_for_slip(db: Session, slip: DispatchSlip) -> int:
