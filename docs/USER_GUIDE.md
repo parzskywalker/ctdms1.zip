@@ -55,13 +55,13 @@ all of them.
 | F4 | Search box | | ↓ ↑ | Move in a list; Enter opens the row; ↓ from a search box goes into the list |
 | F6 | Save (Ctrl+S) | | Space | Tick / untick |
 | F7 | Edit | | Esc | Close the list / question, else back one screen (to the same list and row) |
-| F8 | Generate / print the gatepass or slip | | / | Find an invoice, LR or gatepass from anywhere |
-| F9 | Complete dispatch (gate-out) | | | |
+| F8 | Make the gatepass / print it | | / | Find an invoice, LR or gatepass from anywhere |
 | F10 | Reports | | | |
 
 **A dispatch without the mouse:** F2 → type the depot code, Enter → type/scan invoice numbers, Enter (or ↓ into the
 waiting list, Enter) → Enter on the empty box → arrows choose the mode, Enter → type the transporter or local-auto code,
-Enter → Enter through the fields → Enter on *Generate gatepass* → F8 print → F9, Enter (gate-out) → Esc back to the list.
+Enter → Enter through the fields → Enter on *Generate gatepass* → print the case labels → F8 print the gatepass → Esc back to the list.
+The goods go out when the **gate staff** scan every case and then the gatepass (there is no gate-out key).
 Delete, void, cancel and reject always ask first with **No** pre-selected.
 
 
@@ -97,10 +97,11 @@ Delete, void, cancel and reject always ask first with **No** pre-selected.
    ACCEPT (use the file's area, as before) or EXCEPTION (hold the invoice until the area is confirmed).
 5. **Generate gatepass** → one number for the whole pickup. **Print** it (A5/A4/PDF): it carries a barcode, every
    customer with its invoices, cases and charge, the transporter's name/contact/GST/payment mode — no vehicle number.
-6. **Gate check**: the guard scans the gatepass barcode, counts the cases and presses **Confirm gate-out**. All its
-   invoices become DISPATCHED. A void, unprinted or already-used gatepass shows a red STOP.
-   **v1.7.1 – case control.** For a depot with case control, *the case labels are printed first, then the gatepass*. Nobody
-   has a "gone out" button on such a gatepass. The **gate staff** (role *Dispatch / Gate Staff*, permission `gate.scan`)
+6. **Gate check**: A void, unprinted, unlabelled or already-used gatepass shows a red STOP.
+   **Case control (mandatory at every depot since v1.7.2).** *The case labels are printed first, then the gatepass.* Nobody
+   has a "gone out" button on any gatepass - not the operator, not the manager, not the administrator, and there is no API
+   for it. A gatepass made before v1.7 that is still at the depot shows **Make the case labels for this gatepass**: press it
+   (one barcode is made for every carton still to leave), print the labels, then print the gatepass. The **gate staff** (role *Dispatch / Gate Staff*, permission `gate.scan`)
    scan every case label on *Gate check* (the cursor stays in the scan box): a green tick means counted, a red STOP says
    why (wrong gatepass, void label, same case twice...). **At the end they scan the gatepass itself - that marks the trip
    gone out**, and the operator sees "Gone out - confirmed at the gate" on the gatepass by itself (the page refreshes).
@@ -109,7 +110,7 @@ Delete, void, cancel and reject always ask first with **No** pre-selected.
 7. **LR numbers** come later from the transporter: type them on the gatepass page (one per customer) or on
    **LR Pending** in bulk. They can be corrected (with a reason) until the transporter's bill is approved.
 
-8. **Case labels with a barcode per case** (v1.7, depots with case control switched on): on the gatepass page press
+8. **Case labels with a barcode per case** (every depot): on the gatepass page press
    *Print the labels*. Every carton has its own code (shown under the barcode) and "case k / n" of its consignment. Print
    with the normal print dialog, then answer *Did all labels print?* - *No* keeps them in the to-print list. A torn label
    is reprinted from *Reprint* (same code, a reason is asked). The label size is a setting (System Settings › Case labels).
@@ -118,8 +119,10 @@ Delete, void, cancel and reject always ask first with **No** pre-selected.
    white slips (4 per A4) - the auto cannot be gated out before that. When the garage signs, press *Received* (or just enter the LR
    later; that records it). A reprint needs a reason. *LR Books* (Dispatch desk) holds each transporter's builty numbers; CTDMS gives the next
    one to each consignment and you may change it. If one invoice is split between two transporters, each gets its own LR row. Practise it in Guided Training: lesson "Local-auto trip to transporters: Garage Pawati".
-   (Older description, depots without case control:) **Case labels** (gatepass page): one label per case — customer, area, invoices, carrier, "case 3 / 12" and the
-   gatepass barcode (scanning any case at the gate opens its gatepass). 100 × 50 mm label printer or A4 sheets.
+   Each label shows the customer, area, invoices, carrier, "case 3 / 12" and the barcode; scanning any case at the gate opens
+   its gatepass. 100 × 50 mm label printer or A4 sheets.
+   *Exception:* a manager (permission `gate.exception`) can record that cartons are genuinely missing, with a reason; the
+   gate staff still scan the gatepass to let the rest leave - the exception never sends a trip out by itself.
 9. **E-way bill**: on the consignment's *Track* page (link on the gatepass). When System Settings ›
    `gate.eway_required_above` is set (e.g. 50000), gate-out is refused for bigger invoices without a valid e-way bill.
 10. **Delivery (POD)**: when the signed LR / receipt comes back, open **Deliveries Pending**, tick the consignments
@@ -135,7 +138,7 @@ are pre-selected when the gatepass is made. The same duplicate and scope checks 
 Customers: when System Settings › `org.public_url` is set, the WhatsApp / SMS alerts carry a **tracking link**. The
 customer sees the timeline (no prices) and can confirm receipt (received / short / damaged). Staff records always win.
 
-Wrong gatepass before gate-out: a checker **voids** it (reason), the invoices return to the queue, make a new one.
+Wrong gatepass before it goes out: a checker **voids** it (reason), the invoices return to the queue, make a new one.
 Reprints need a reason and are marked "REPRINT #n (DUPLICATE)".
 
 ## CFA manager

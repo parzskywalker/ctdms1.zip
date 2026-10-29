@@ -247,7 +247,7 @@ def test_scope_matrix_pages_search_registers_exports_and_api(name, world):
 def test_forged_posts_cannot_reach_what_is_outside_the_scope(world):
     s = WebClient("p2.s", PW)
     out = world["a_co"]  # another company
-    assert out["invoice_no"] not in s.post("/dispatch/bulk/prepare", data={"ids": [str(out["id"])]}).text
+    assert out["invoice_no"] not in s.post("/gatepass/prepare", data={"ids": [str(out["id"])]}).text
     r = s.post("/gatepass/new", data={"ids": [str(out["id"])], "mode": "SELF", f"cases_{out['id']}": "4"})
     assert "not available" in r.text
     sess = _test_session()

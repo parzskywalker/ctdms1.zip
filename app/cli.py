@@ -122,6 +122,8 @@ def prepare_demo(args) -> None:
         active = list(db.scalars(select(User).join(Role).where(User.is_active.is_(True))))
         admins = [u for u in active if u.can("admin.users")]
         demo_pw = any(u.username == "admin" and verify_password("Admin@123", u.password_hash) for u in admins)
+        added = seed.ensure_demo_users(db) if demo_pw else []  # a demo database gets the logins newer versions brought
+        db.commit()
     finally:
         db.close()
     if n_active == 0:
@@ -132,6 +134,8 @@ def prepare_demo(args) -> None:
     if not admins:
         print("Note: no active administrator account - use 'python -m app.cli create-admin' to add one.")
     print(f"Database ready: {n_active} active users, {n_inv:,} invoices. Existing data kept as it is.")
+    if added:
+        print(f"Demo logins added: {', '.join(added)} (password Demo@123).")
     if demo_pw:
         print("Demo login: admin / Admin@123  (change this password before using real data)")
 

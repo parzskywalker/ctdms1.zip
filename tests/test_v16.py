@@ -427,6 +427,8 @@ def test_local_auto_gatepass_prints_trip_amount(api, web, db):
         cases={i.id: i.boxes for i in invs}))
     db.commit()
     w = web("admin")
+    from tests.helpers import confirm_labels
+    confirm_labels(slip.id)                                  # the case labels are printed before the gatepass
     r = w.post(f"/gatepass/{slip.id}/print", {"size": "A5", "mode": "print"})
     assert r.status_code == 200 and "for the whole trip" in r.text and "550.00" in r.text
     assert invs[0].invoice_no in r.text

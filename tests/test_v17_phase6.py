@@ -9,7 +9,7 @@ from app.models import (
 )
 from app.services import pawati_service as pws
 from tests.conftest import WebClient, _test_session
-from tests.helpers import make_invoice
+from tests.helpers import confirm_labels, make_invoice, scan_cases_web, scan_gatepass_web, web_walk_out
 from tests.test_rbac import _token_client
 from tests.test_v17_phase2 import PW, audit_actions, save_user
 from tests.test_v17_phase3 import TODAY, _admin, _slip_of, world  # noqa: F401
@@ -114,8 +114,11 @@ def test_pawati_must_be_printed_before_the_auto_leaves_and_receipt_rules(db, wor
     admin = WebClient("admin")
     sid = _slip_of(_local(admin, [a, b], {0: str(t1), 1: str(t2)}, db))
     ps = _pawatis(db, sid)
+    confirm_labels(sid)
     admin.post(f"/gatepass/{sid}/print", data={"size": "A5", "mode": "pdf"})
-    admin.post(f"/gatepass/{sid}/gate-out")
+    assert scan_cases_web(sid) == 6                                                    # every case scanned: only the Pawatis block
+    res = scan_gatepass_web(sid)
+    assert not res["ok"] and "Garage Pawati not printed" in res["message"]
     db.expire_all()
     assert db.get(DispatchSlip, sid).gate_out_at is None and "Garage Pawati not printed" in admin.get(f"/gatepass/gate?code={db.get(DispatchSlip, sid).dispatch_no}").text
     # print: the sheet carries the slips of the owner's design
@@ -129,11 +132,11 @@ def test_pawati_must_be_printed_before_the_auto_leaves_and_receipt_rules(db, wor
     assert "not authorised to print" in WebClient("p6.noprint", PW).post("/pawati/print", data={"ids": [str(ps[1].id)]}).text
     # receipt before the trip left is refused
     assert "has not left yet" in admin.post(f"/pawati/{ps[0].id}/receive").text
-    admin.post(f"/gatepass/{sid}/gate-out")
+    assert not scan_gatepass_web(sid)["ok"]
     db.expire_all()
     assert db.get(DispatchSlip, sid).gate_out_at is None                              # second Pawati still unprinted
     admin.post("/pawati/print", data={"ids": [str(ps[1].id)]})
-    admin.post(f"/gatepass/{sid}/gate-out")
+    assert scan_gatepass_web(sid)["gone_out"]
     db.expire_all()
     assert db.get(DispatchSlip, sid).gate_out_at is not None
     admin.post(f"/pawati/{ps[0].id}/receive", data={"note": "signed by the garage clerk"})
@@ -260,9 +263,7 @@ def test_split_invoice_has_an_lr_for_each_receiver_and_each_receipt(db, world): 
     t1, t2 = world["tr"].id, world["tr2"].id
     a = _inv(api, "P3-TOWN", 10, "C-VDP01")
     sid = _slip_of(_local(admin, [a], {0: f"{t1}:6,{t2}:4"}, db))
-    admin.post(f"/gatepass/{sid}/print", data={"size": "A5", "mode": "pdf"})
-    admin.post("/pawati/print", data={"ids": [str(p.id) for p in _pawatis(db, sid)]})
-    admin.post(f"/gatepass/{sid}/gate-out")
+    assert web_walk_out(sid)["gone_out"]
     inv = db.get(Invoice, a["id"])
     page = admin.get(f"/gatepass/{sid}").text
     assert f'name="lr_{inv.customer_id}_{t1}"' in page and f'name="lr_{inv.customer_id}_{t2}"' in page   # one row per receiver

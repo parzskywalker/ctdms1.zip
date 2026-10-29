@@ -162,9 +162,10 @@ def act_as(request: Request, who: str = Form(""), user: User = Depends(current_u
         raise HTTPException(400, "Only in Training Mode")
     who = (who or "").strip()
     if who:
-        # Only the demonstration checker (the second person of the two-person rule) can be acted as. The demonstration
-        # Master / Accounts users are not offered: a trainee must not get another role's screens through practice.
-        ok = who == "demo.checker" and any(u.username == who for u in trn_users.demo_users(db))
+        # Only the demonstration checker (the second person of the two-person rule) and the demonstration gate staff (who
+        # scan the cases and the gatepass) can be acted as. The demonstration Master / Accounts users are not offered: a
+        # trainee must not get another role's screens through practice.
+        ok = who in ("demo.checker", "demo.gate") and any(u.username == who for u in trn_users.demo_users(db))
         if not ok:
             raise HTTPException(400, "Unknown demonstration user")
     t = dict(t)
@@ -207,7 +208,8 @@ def _state(request: Request, live: Session, real: User, user: User, message: dic
                    "expect": s.expect, "page": s.page, "hl": s.hl, "kind": s.kind, "ui": s.ui, "acting": s.acting,
                    "files": [{"name": f, "url": f"/training/files/{f}"} for f in s.files],
                    "passed": prog.passed(p, code, s.id)}
-    out["demo_users"] = ["demo.checker"] if s.acting or code in ("m03-masters", "m12-controls", "m14-bills", "a-pay") else []
+    out["demo_users"] = ([s.acting] if s.acting else ["demo.checker"] if code in ("m03-masters", "m12-controls", "m14-bills", "a-pay")
+                          else [])
     return out
 
 

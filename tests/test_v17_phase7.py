@@ -12,7 +12,7 @@ from tests.conftest import WebClient
 from tests.test_rbac import _token_client
 from tests.test_v17_phase2 import PW, audit_actions, save_user
 from tests.test_v17_phase3 import TODAY, _slip_of, world  # noqa: F401
-from tests.test_v17_phase4 import bsp_on, db  # noqa: F401
+from tests.test_v17_phase4 import db  # noqa: F401
 from tests.test_v17_phase5 import _codes, _gate_out, _scan
 from tests.test_v17_phase6 import _auto, _inv, _pawatis
 
@@ -22,7 +22,7 @@ def _csv(c, code):
     return list(csv.reader(io.StringIO(r.text.lstrip("﻿"))))
 
 
-def test_whole_workflow_with_case_control_pawati_and_lr_book(db, world, bsp_on):  # noqa: F811
+def test_whole_workflow_with_case_control_pawati_and_lr_book(db, world):  # noqa: F811
     api = _token_client("admin")
     admin = WebClient("admin")
     t1, t2 = world["tr"].id, world["tr2"].id
@@ -56,7 +56,7 @@ def test_whole_workflow_with_case_control_pawati_and_lr_book(db, world, bsp_on):
     admin.post(f"/gatepass/{sid}/labels/confirm", data={"case_ids": ",".join(str(c.id) for c in cases), "result": "PRINTED"})
     admin.post(f"/gatepass/{sid}/print", data={"size": "A5", "mode": "pdf"})
     # ... and gone out only comes from the gate scan: cases, then the gatepass
-    admin.post(f"/gatepass/{sid}/gate-out")
+    assert admin.post(f"/gatepass/{sid}/gate-out").status_code in (404, 405)       # the route no longer exists
     db.expire_all()
     assert db.get(DispatchSlip, sid).gate_out_at is None
     guard = WebClient("gate.bilaspur")
@@ -102,7 +102,7 @@ def test_whole_workflow_with_case_control_pawati_and_lr_book(db, world, bsp_on):
     db.commit()
 
 
-def test_gate_exception_report_lists_who_allowed_it_and_why(db, world, bsp_on):  # noqa: F811
+def test_gate_exception_report_lists_who_allowed_it_and_why(db, world):  # noqa: F811
     api = _token_client("admin")
     admin = WebClient("admin")
     inv = _inv(api, "P3-TOWN", 4, cfa="BSP")

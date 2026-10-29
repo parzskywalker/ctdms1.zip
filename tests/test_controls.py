@@ -4,6 +4,7 @@ from __future__ import annotations
 import io
 from decimal import Decimal
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
@@ -163,25 +164,25 @@ def test_login_lockout_after_failures():
     s.close()
 
 
-def test_dispatch_numbers_unique_and_bulk_dispatch(api, web, db):
+def test_dispatch_numbers_are_unique_and_bulk_dispatch_is_gone(api, web, db):
+    from tests.helpers import web_walk_out
     a = api("admin")
     invs = [make_invoice(a, company="COA", cfa="RPR", customer="C-XYZ01", boxes=b) for b in (5, 6, 7)]
-    tr = db.scalar(select(Transporter).where(Transporter.code == "SBT"))
     w = web("operator.raipur")
-    data = {"transporter_id": tr.id, "vehicle_no": "CG07BT2020", "dispatch_date": local_today().isoformat(),
-            "dispatch_time": "16:00"}
-    form = {**data, "ids": [str(i["id"]) for i in invs], "csrf_token": w.token,
-            **{f"lr_{i['id']}": f"BULK-{i['id']}" for i in invs}}
-    r = w.c.post("/dispatch/bulk/apply", data=form)
-    assert r.status_code == 200 and r.text.count("Slip DS/RPR/") == 3
+    sids = []
+    for inv in invs:  # one gatepass per pickup (the old slip per invoice / bulk dispatch screens are retired)
+        r = w.post("/gatepass/new", {"ids": [str(inv["id"])], "dispatch_date": local_today().isoformat(), "mode": "SELF",
+                                     "pickup_mode": "REGULAR", f"cases_{inv['id']}": str(inv["boxes"])})
+        sids.append(int(str(r.url).rsplit("/", 1)[1]))
     nos = [get_inv(i["id"]).dispatch_no for i in invs]
-    assert len(set(nos)) == 3
+    assert len(set(nos)) == 3 and all(n.startswith("DS/RPR/") for n in nos)
     assert db.scalar(select(func.count(DispatchSlip.id))) == db.scalar(select(func.count(func.distinct(DispatchSlip.dispatch_no))))
-    # bulk print (PDF with all slips) then bulk complete
     ids = [str(i["id"]) for i in invs]
-    r = w.c.post("/dispatch/bulk/print", data={"ids": ids, "csrf_token": w.token, "size": "A5", "mode": "pdf"})
-    assert r.headers["content-type"] == "application/pdf"
-    w.c.post("/dispatch/bulk/complete", data={"ids": ids, "csrf_token": w.token})
+    for url in ("/dispatch/bulk/apply", "/dispatch/bulk/print", "/dispatch/bulk/complete", "/dispatch/bulk/prepare"):
+        assert w.c.post(url, data={"ids": ids, "csrf_token": w.token}).status_code in (404, 405), url
+    assert all(get_inv(i["id"]).status == "SLIP_GENERATED" for i in invs)
+    for sid in sids:  # they leave only by the gate staff's scan
+        assert web_walk_out(sid, desk="operator.raipur", gate="gate.raipur")["gone_out"]
     assert all(get_inv(i["id"]).status == "DISPATCHED" for i in invs)
 
 
@@ -206,26 +207,28 @@ def test_audit_trail_captures_ip_and_session(web, db):
     assert entry.ip is not None
 
 
-def test_configurable_completion_rule(api, web, db):
+def test_completion_rule_is_fixed_the_gatepass_must_be_printed(api, web, db):
     from app.models import Setting
-    s = db.get(Setting, "dispatch.complete_requires")
-    s.value = "GENERATED"
-    db.commit()
-    try:
-        inv = make_invoice(api("admin"), company="COA", cfa="RPR", customer="C-XYZ01", boxes=9)
-        tr = db.scalar(select(Transporter).where(Transporter.code == "SBT"))
-        w = web("operator.raipur")
-        form = {"transporter_id": tr.id, "vehicle_no": "CG07BT1010", "lr_no": f"R-{inv['id']}",
-                "dispatch_date": local_today().isoformat(), "dispatch_time": "11:00"}
-        w.post(f"/dispatch/{inv['id']}/verify", form)
-        w.post(f"/dispatch/{inv['id']}/generate", form)
-        w.post(f"/dispatch/{inv['id']}/complete")
-        assert get_inv(inv["id"]).status == InvoiceStatus.DISPATCHED  # allowed without printing under GENERATED
-    finally:
-        s = db.get(Setting, "dispatch.complete_requires")
-        db.refresh(s)
-        s.value = "PRINTED"
-        db.commit()
+    from app.services import settings_service as cfg
+    assert db.get(Setting, "dispatch.complete_requires") is None
+    with pytest.raises(KeyError):
+        cfg.get(db, "dispatch.complete_requires")
+    assert "dispatch.complete_requires" not in web("admin").get("/admin/settings").text
+    inv = make_invoice(api("admin"), company="COA", cfa="RPR", customer="C-XYZ01", boxes=9)
+    w = web("operator.raipur")
+    r = w.post("/gatepass/new", {"ids": [str(inv["id"])], "dispatch_date": local_today().isoformat(), "mode": "SELF",
+                                 "pickup_mode": "REGULAR", f"cases_{inv['id']}": "9"})
+    sid = int(str(r.url).rsplit("/", 1)[1])
+    from app.models import DispatchCase
+    ids = ",".join(str(x) for x in db.scalars(select(DispatchCase.id).where(DispatchCase.slip_id == sid)))
+    w.post(f"/gatepass/{sid}/labels/confirm", {"case_ids": ids, "result": "PRINTED"})   # labels done, gatepass NOT printed
+    g = web("gate.raipur")
+    codes = list(db.scalars(select(DispatchCase.case_code).where(DispatchCase.slip_id == sid)))
+    for c in codes:
+        assert g.post("/gatepass/scan-case", data={"code": c, "slip_id": str(sid)}).json()["ok"]
+    res = g.post("/gatepass/scan-case", data={"code": get_inv(inv["id"]).dispatch_no, "slip_id": str(sid)}).json()
+    assert not res["ok"] and "must be printed" in res["message"]
+    assert get_inv(inv["id"]).status == "SLIP_GENERATED"
 
 
 def test_customer_merge_redirects_future_imports(web, api, db):

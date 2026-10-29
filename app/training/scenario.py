@@ -37,11 +37,12 @@ CBO_FILE = DEMO_FILES / "DEMO_v1.6_CBO_invoices_PQR.csv"
 FILES = {f.name: f for f in (WORKBOOK, SAP_FILE, MARG_FILE, CBO_FILE)}
 
 CHECKPOINTS = ["clean", "uploaded", "masters", "sap", "invoices", "dispatched", "billed"]
-SCENARIO_VERSION = "5"
+SCENARIO_VERSION = "6"
 DEMO_USERS = [("demo.master", "Demo Master (training)", "ADMIN"),
               ("demo.checker", "Demo Checker (training)", "CHECKER"),
               ("demo.accounts", "Demo Accounts (training)", "ACCOUNTS"),
-              ("demo.operator", "Demo Operator (training)", "DISPATCH_OPERATOR")]
+              ("demo.operator", "Demo Operator (training)", "DISPATCH_OPERATOR"),
+              ("demo.gate", "Demo Gate Staff (training)", "GATE_STAFF")]
 
 # the v1.6 video's trips
 LONG = ["001248", "001249", "PQR/B/0313"]                    # Bilaspur -> Shree Roadlines
@@ -224,6 +225,7 @@ def _gatepass(db: Session, numbers: list[str], remarks: str, *, transporter=None
               trip=None, gate_out=True):
     from app.models import DispatchMode, OutsideAuto, PickupMode, Transporter
     from app.services import dispatch_service as ds
+    from app.services import gate_service
     master = _user(db, "demo.master")
     invs = invoices_by_no(db, numbers)
     req = ds.GatepassRequest(cases={i.id: str(i.boxes) for i in invs}, remarks=remarks, group_cross_company=True)
@@ -240,12 +242,9 @@ def _gatepass(db: Session, numbers: list[str], remarks: str, *, transporter=None
         req.trip_charge = Decimal(trip) if trip else None
     slip = ds.create_gatepass(db, master, invs, req)
     db.commit()
-    ds.print_gatepass(db, master, slip, "PRINT_A5")
-    if gate_out:
-        from app.services import pawati_service as pws
-        if pws.active(db, slip):
-            pws.print_sheet(db, master, pws.active(db, slip))
-        ds.gate_out(db, master, slip)
+    gate_service.prepare(db, master, slip)  # the case labels, then the gatepass, then the Garage Pawatis
+    if gate_out:  # the gate staff scan every case and then the gatepass - the only way a trip goes out
+        gate_service.scan_out(db, _user(db, "demo.gate"), slip)
     db.commit()
     return slip, invs
 

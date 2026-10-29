@@ -22,7 +22,9 @@ from app.services import recon_service as rs
 from app.services import transporter_rate_service as trs
 from app.services.errors import BusinessError
 from app.services.utils import local_today
-from tests.helpers import get_inv, make_invoice, new_invoice_no, local_auto, print_pawatis
+from tests.helpers import (
+    confirm_labels, get_inv, local_auto, make_invoice, new_invoice_no, print_pawatis, scan_cases_web, scan_gatepass_web, walk_out,
+)
 
 
 def _u(db, name) -> User:
@@ -103,9 +105,12 @@ def test_gatepass_many_invoices_priced_from_rate_card_print_then_gate_out(api, w
     assert slip.payment_status == "PARTIAL" and slip.amount_paid == 300   # the auto is paid now, the freight is billed later (TBB)
     assert len(slip.snapshot["groups"]) == 2 and slip.snapshot["transporter"]["name"] == osho.name
     assert "vehicle_no" not in slip.snapshot   # vehicle number is not on the gatepass any more
-    # gate-out refused before printing
-    r = w.post(f"/gatepass/{slip.id}/gate-out", {})
-    assert "Gate-out refused" in r.text and get_inv(a.id).status == "SLIP_GENERATED"
+    # the gate scan is refused before printing (and there is no gate-out button any more)
+    res = scan_gatepass_web(slip.id, "gate.raipur")
+    assert not res["ok"] and "must be printed" in res["message"] and get_inv(a.id).status == "SLIP_GENERATED"
+    r = w.post(f"/gatepass/{slip.id}/print", {"size": "A5", "mode": "print"})
+    assert "Print the case labels first" in r.text
+    confirm_labels(slip.id, "operator.raipur")                                          # the labels come first
     r = w.post(f"/gatepass/{slip.id}/print", {"size": "A5", "mode": "print"})
     assert r.status_code == 200 and slip.dispatch_no in r.text and "<svg" in r.text   # barcode for the gate
     r = w.post(f"/gatepass/{slip.id}/print", {"size": "A4", "mode": "pdf", "reason": "Second copy for driver"})
@@ -113,9 +118,10 @@ def test_gatepass_many_invoices_priced_from_rate_card_print_then_gate_out(api, w
     assert get_inv(a.id).status == "SLIP_PRINTED"
     from app.services import pawati_service as pws
     w.post("/pawati/print", {"ids": [str(p.id) for p in pws.active(db, db.get(DispatchSlip, slip.id))]})   # they travel with the auto
+    assert scan_cases_web(slip.id, "gate.raipur") == 10
     page = w.get(f"/gatepass/gate?code={slip.dispatch_no}")
-    assert "Cleared" in page.text
-    w.post(f"/gatepass/{slip.id}/gate-out", {"back": "gate"})
+    assert "All cases scanned" in page.text
+    assert scan_gatepass_web(slip.id, "gate.raipur")["gone_out"]
     assert get_inv(a.id).status == get_inv(b.id).status == "DISPATCHED"
     db.expire_all()
     assert db.get(DispatchSlip, slip.id).gate_out_at is not None
@@ -188,8 +194,7 @@ def test_lr_entered_after_dispatch_conflicts_and_lock(api, web, db):
     adm = _u(db, "admin")
     slip = ds.create_gatepass(db, adm, [db.get(Invoice, a.id)], ds.GatepassRequest(**local_auto(db), 
         transporter_id=_tr(db, "OSHO").id, cases={a.id: 2}))
-    ds.print_gatepass(db, adm, slip, "PRINT_A5")
-    (print_pawatis(db, adm, slip), ds.gate_out(db, adm, slip))[1]
+    walk_out(db, slip)
     db.commit()
     w = web("operator.raipur")
     cid = get_inv(a.id).customer_id
@@ -219,7 +224,7 @@ def test_void_gatepass_and_cancel_rules(api, db):
     assert n == 2 and db.get(Invoice, a.id).status in ("PENDING", "VERIFIED")
     assert db.get(Invoice, a.id).freight_amount is None and db.get(Invoice, a.id).dispatch_no is None
     with pytest.raises(BusinessError, match="VOID"):
-        ds.gate_out(db, adm, slip)
+        ds.gate_scan_out(db, adm, slip)
     db.rollback()
 
 

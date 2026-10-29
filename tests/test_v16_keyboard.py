@@ -30,7 +30,7 @@ def test_one_meaning_per_key_and_browser_keys_left_alone():
     block = js[js.index("const KEYS = ["):js.index("];", js.index("const KEYS = ["))]
     table = dict(re.findall(r"\['(F\d+|Esc)', '([^']+)'", block))
     assert table == {"F1": "Help", "F2": "New", "F3": "Go to", "F4": "Search", "F6": "Save", "F7": "Edit",
-                     "F8": "Slip / Print", "F9": "Complete", "F10": "Reports", "Esc": "Back"}
+                     "F8": "Gatepass / Print", "F10": "Reports", "Esc": "Back"}
     # F5 (refresh), F11 (full screen) and F12 stay with the browser
     rx = re.search(r"/\^F\(\[1-46-9\]\|10\)\$/", js)
     assert rx, "function-key filter changed - F5 / F11 / F12 must not be captured"
@@ -58,7 +58,7 @@ def test_dispatch_entry_and_gatepass_detail_keys(web, api):
     inv = make_invoice(api("admin"), boxes=3)
     w = web("admin")
     html = w.get(f"/dispatch/{inv['id']}").text
-    assert {"F6", "F8", "F9"} <= _keys(html)  # save draft, generate slip, complete dispatch
+    assert {"F8"} <= _keys(html) and "F9" not in _keys(html)  # make the gatepass; nobody has a complete / gate-out key
     assert "Pending Dispatch" in html.split('class="crumbs"')[1][:200]  # Esc goes back to Pending Dispatch
     lst = w.get("/gatepass").text
     assert "F2" in _keys(lst)

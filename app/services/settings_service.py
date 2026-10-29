@@ -13,9 +13,6 @@ from app.models import Setting
 DEFAULTS: dict[str, tuple[str, str, str, str, str | None]] = {
     "org.name": ("Demo Pharma Distributors", "str", "Organisation", "Organisation name printed on slips/reports", None),
     "org.address": ("Ring Road No. 1, Raipur, Chhattisgarh", "str", "Organisation", "Organisation address line", None),
-    "dispatch.complete_requires": ("PRINTED", "choice", "Dispatch controls",
-                                   "Dispatch cannot be COMPLETED unless the slip is: PRINTED / GENERATED / NONE (no control)",
-                                   "PRINTED,GENERATED,NONE"),
     "dispatch.require_verify_before_slip": ("true", "bool", "Dispatch controls",
                                             "Invoice must be Verified before a Dispatch Slip can be generated", None),
     "dispatch.lr_mandatory": ("false", "bool", "Dispatch controls",

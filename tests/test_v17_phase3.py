@@ -589,25 +589,19 @@ def test_migrations_0011_0012_keep_data_and_keep_what_roles_could_do(tmp_path):
     assert (_count(db_path, "invoices"), _count(db_path, "transporter_rates"), _count(db_path, "dispatch_slips")) == (invoices, rates, slips)
 
 
-def test_the_quick_dispatch_screen_offers_only_eligible_transporters_too(db, world):
+def test_the_one_invoice_screen_has_no_transporter_form_and_a_forged_ineligible_transporter_is_refused(db, world):
     api = _token_client("admin")
-    inv = make_invoice(api, company="COA", cfa="RPR", customer="C-VDP01", location="P3-VILLAGE", boxes=4)
-    page = WebClient("operator.raipur").get(f"/dispatch/{inv['id']}").text
-    assert "P3 Transport" in page and "P3 Roadways" not in page        # P3-TR2 has no rate for the village
     town = make_invoice(api, company="COA", cfa="RPR", customer="C-VDP01", location="P3-TOWN", boxes=4)
     page = WebClient("operator.raipur").get(f"/dispatch/{town['id']}").text
-    assert "P3 Transport" in page and "P3 Roadways" in page
-    # a forged save of an ineligible transporter on the quick screen is still refused when the slip is made
+    assert "P3 Transport" not in page and 'name="transporter_id"' not in page      # the quick slip screen is retired (v1.7.2)
+    assert f"/gatepass/new?ids={town['id']}" in page                                # it leads to the gatepass desk instead
+    # a forged request naming a transporter that does not serve the depot is refused when the gatepass is made
     es.set_depots(db, _admin(db), world["tr"], [world["bsp"].id])
     db.commit()
     try:
-        op = WebClient("operator.raipur")
-        data = {"transporter_id": str(world["tr"].id), "dispatch_date": TODAY.isoformat(), "dispatch_time": "10:00"}
-        op.post(f"/dispatch/{town['id']}/save", data=data)
-        op.post(f"/dispatch/{town['id']}/verify", data=data)
-        r = op.post(f"/dispatch/{town['id']}/generate", data=data)
-        import re as _re
-        assert "does not serve" in r.text, _re.findall(r'class="alert[^"]*"[^>]*>(.*?)</div>', r.text, _re.S)
+        r = _gatepass(WebClient("operator.raipur"), [town], mode="DIRECT", transporter_id=str(world["tr"].id),
+                      pickup_mode="REGULAR")
+        assert "does not serve" in r.text and _slip_of(r) is None
     finally:
         es.set_depots(db, _admin(db), world["tr"], [])
         db.commit()

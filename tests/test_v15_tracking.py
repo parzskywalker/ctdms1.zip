@@ -22,7 +22,7 @@ from app.services import notify_service as ns
 from app.services import subscription_service as subs
 from app.services.errors import BusinessError
 from app.services.utils import local_today
-from tests.helpers import get_inv, make_invoice, new_invoice_no, local_auto, print_pawatis
+from tests.helpers import get_inv, local_auto, make_invoice, new_invoice_no, print_pawatis, print_ready, walk_out
 
 
 def _set(**values) -> None:
@@ -48,9 +48,9 @@ def _dispatch(api, db, customers=("C-HRM01", "C-ABC01"), boxes=(3, 5), gate_out=
     rows = [db.get(Invoice, i.id) for i in invs]
     slip = ds.create_gatepass(db, adm, rows, ds.GatepassRequest(**local_auto(db), transporter_id=tr.id,
                                                                 cases={i.id: i.boxes for i in rows}))
-    ds.print_gatepass(db, adm, slip, "PRINT_A5")
+    print_ready(db, slip)
     if gate_out:
-        (print_pawatis(db, adm, slip), ds.gate_out(db, adm, slip))[1]
+        walk_out(db, slip)
     db.commit()
     return slip, rows
 
@@ -161,7 +161,7 @@ def test_eway_bill_required_above_limit_blocks_gate_out(api, web, db):
         db.commit()
         adm = _u(db, "admin")
         with pytest.raises(BusinessError, match="E-way bill number missing for invoice " + big.invoice_no):
-            (print_pawatis(db, adm, db.get(DispatchSlip, slip.id)), ds.gate_out(db, adm, db.get(DispatchSlip, slip.id)))[1]
+            walk_out(db, db.get(DispatchSlip, slip.id))
         db.rollback()
         w = web("operator.raipur")
         r = w.post(f"/track/{big.id}/eway", {f"eway_{big.id}": "1234"})
@@ -171,12 +171,12 @@ def test_eway_bill_required_above_limit_blocks_gate_out(api, web, db):
         assert "E-way bill saved" in r.text and get_inv(big.id).eway_bill_no == "341023456789"
         db.expire_all()
         with pytest.raises(BusinessError, match="expired"):
-            (print_pawatis(db, adm, db.get(DispatchSlip, slip.id)), ds.gate_out(db, adm, db.get(DispatchSlip, slip.id)))[1]
+            walk_out(db, db.get(DispatchSlip, slip.id))
         db.rollback()
         w.post(f"/track/{big.id}/eway", {f"eway_{big.id}": "341023456789",
                                          f"ewayvalid_{big.id}": (local_today() + timedelta(days=1)).isoformat()})
         db.expire_all()
-        assert (print_pawatis(db, adm, db.get(DispatchSlip, slip.id)), ds.gate_out(db, adm, db.get(DispatchSlip, slip.id)))[1] == 2
+        assert walk_out(db, db.get(DispatchSlip, slip.id)) == 2
         db.commit()
         other = _dispatch(api, db, customers=("C-ABC01",), boxes=(1,), gate_out=False)[1][0]
         r = w.post(f"/track/{other.id}/eway", {f"eway_{other.id}": "341023456789"})
@@ -260,7 +260,7 @@ def test_case_labels_one_per_case(api, web, db):
     r = web("operator.raipur").get(f"/gatepass/{slip.id}/labels")
     assert r.status_code == 200 and r.text.count('class="label"') == 5
     assert "1 / 3" in r.text and "3 / 3" in r.text and "2 / 2" in r.text and "<svg" in r.text
-    assert "10 per page" in web("operator.raipur").get(f"/gatepass/{slip.id}/labels?sheet=a4").text
+    assert "size: A4" in web("operator.raipur").get(f"/gatepass/{slip.id}/labels?sheet=a4").text   # the A4 sheet of case labels
 
 
 # ----------------------------------------------------------------------------- reports & API

@@ -6,8 +6,8 @@
 * Codes of the live database stay below 900,000,000; a Guided Training practice database starts at 900,000,000, so a
   practice label can never be mistaken for a real one at the gate.
 * A gatepass reserves all its numbers with ONE counter update (block reservation).
-* Cases exist only for gatepasses of a depot with case control switched on (`case_control = REQUIRED`); every gatepass
-  made before keeps counting-and-confirming at the gate exactly as in v1.6.1.
+* Case control is mandatory (v1.7.2): every new gatepass gets its cases (`case_control = REQUIRED`). A gatepass made
+  before v1.7 (`LEGACY`) that has not gone out yet cannot leave until `convert_legacy` has made its case labels.
 * A reprint keeps the code. A voided gatepass / cancelled invoice voids its cases; a regenerated gatepass gets new codes.
 """
 from __future__ import annotations
@@ -60,14 +60,11 @@ def _training() -> bool:
     return runtime.active() is not None
 
 
-def enabled_for(slip_cfa) -> bool:
-    return bool(slip_cfa is not None and getattr(slip_cfa, "case_control_enabled", False))
-
-
 # ----------------------------------------------------------------------------- generation / voiding
-def generate(db: Session, user: User, slip: DispatchSlip) -> int:
-    """Create the cases of a new gatepass (one per carton), reserving their numbers in one step."""
-    lines = [ln for ln in slip.lines if (ln.cases or 0) > 0]
+def generate(db: Session, user: User, slip: DispatchSlip, *, lines: list | None = None, action: str = "CASES_GENERATED",
+             reason: str | None = None) -> int:
+    """Create the cases of a gatepass (one per carton), reserving their numbers in one step."""
+    lines = [ln for ln in (slip.lines if lines is None else lines) if (ln.cases or 0) > 0]
     total = sum(ln.cases for ln in lines)
     if not total:
         return 0
@@ -93,10 +90,31 @@ def generate(db: Session, user: User, slip: DispatchSlip) -> int:
             n += 1
     slip.case_control = "REQUIRED"
     db.flush()
-    audit.log(db, user, "CASES_GENERATED", MODULE, record_type="DispatchSlip", record_id=slip.id, ref=slip.dispatch_no,
+    audit.log(db, user, action, MODULE, record_type="DispatchSlip", record_id=slip.id, ref=slip.dispatch_no, reason=reason,
               details={"cases": total, "first": make_code(first, training=training),
                        "last": make_code(first + total - 1, training=training)})
     return total
+
+
+def convert_legacy(db: Session, user: User, slip: DispatchSlip) -> int:
+    """A gatepass made before case labels were mandatory (LEGACY) that is still at the depot gets its case labels now:
+    one barcode per carton still to leave. Nothing else about the gatepass changes; its labels are then printed and the
+    gate staff scan them like any other gatepass."""
+    if not user.can("case.print"):
+        raise BusinessError("You are not authorised to make case labels")
+    if slip.is_void:
+        raise BusinessError(f"Gatepass {slip.dispatch_no} is void - no labels")
+    if slip.gate_out_at:
+        raise BusinessError(f"Gatepass {slip.dispatch_no} has already gone out")
+    if slip.case_control == "REQUIRED" or cases_of(db, slip, include_void=True):
+        raise BusinessError(f"Gatepass {slip.dispatch_no} already has its case labels")
+    open_lines = [ln for ln in slip.lines if (ln.cases or 0) > 0 and ln.invoice is not None
+                  and ln.invoice.status not in ("DISPATCHED", "CANCELLED")]
+    n = generate(db, user, slip, lines=open_lines, action="CASES_GENERATED_LEGACY",
+                 reason="Gatepass made before case labels were mandatory")
+    if not n:
+        raise BusinessError(f"Gatepass {slip.dispatch_no} has no cases to label - void it and make it again")
+    return n
 
 
 def void_for_slip(db: Session, slip: DispatchSlip) -> int:
@@ -218,19 +236,27 @@ def progress(db: Session, slip: DispatchSlip) -> dict:
             "complete": bool(cases) and not missing, "exception": bool(slip.gate_exception_reason)}
 
 
+def needs_conversion(slip: DispatchSlip) -> bool:
+    """An open gatepass made before case labels were mandatory: its labels must be made before anything else."""
+    return slip.case_control != "REQUIRED" and not slip.is_void and not slip.gate_out_at
+
+
 def labels_pending(db: Session, slip: DispatchSlip) -> int:
-    """Cases of a case-control gatepass whose label has not been printed (and confirmed) yet."""
+    """Cases whose label has not been printed (and confirmed) yet; an open LEGACY gatepass has none made at all, so all
+    of its cartons count."""
+    if needs_conversion(slip):
+        return sum((ln.cases or 0) for ln in slip.lines if ln.invoice is not None
+                   and ln.invoice.status not in ("DISPATCHED", "CANCELLED")) or (slip.total_cases or 0)
     if slip.case_control != "REQUIRED":
         return 0
     return sum(1 for c in cases_of(db, slip) if c.status == CaseStatus.LABEL_PENDING)
 
 
-GATE_ONLY = ("Gone out for a case-control gatepass is recorded only at the gate - the gate staff scan every case label and "
-             "then the gatepass")
-
-
 def gate_clear(db: Session, slip: DispatchSlip) -> list[str]:
-    """What still stops a REQUIRED gatepass from leaving (empty = cleared, or not a case-control gatepass)."""
+    """What still stops a gatepass from leaving (empty = cleared)."""
+    if needs_conversion(slip):
+        return [f"Gatepass {slip.dispatch_no} has no case labels yet - make them first (gatepass screen > Make the case "
+                "labels for this gatepass)"]
     if slip.case_control != "REQUIRED":
         return []
     p = progress(db, slip)

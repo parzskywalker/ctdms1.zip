@@ -12,6 +12,7 @@ from app.services.utils import local_today
 from app.training import runtime
 from app.training.lessons import LESSONS, PATHS
 from tests.test_training import PW, _make_user, _state, _step, _switch
+from tests.training_gate import trip_steps
 
 
 import pytest
@@ -50,26 +51,20 @@ def test_pawati_lesson_is_on_the_dispatch_and_depot_paths_and_passes_with_real_a
         pids = lambda: [r for r in sqlite3.connect(path).execute("select id from garage_pawatis where print_count=0 order by pawati_no")]  # noqa: E731
         seen = {}
 
-        def blocked():
-            r = w.post(f"/gatepass/{sid()}/gate-out")
-            seen["msg"] = r.text
-            assert "Garage Pawati not printed" in r.text
-
         actions = {
             "generate": lambda: w.post("/gatepass/new", data={
                 "ids": [str(inv)], "dispatch_date": today, "mode": "TRANSPORTER", "pickup_mode": "OUTSIDE_AUTO",
                 "outside_auto_id": str(one("select id from outside_autos where code='DM-LA1'")), "auto_method": "PER_TRIP",
                 "trip_charge": "500", f"cases_{inv}": "8", f"recv_{inv}": f"{srl}:5,{vtc}:3"}),
             "print": lambda: w.post(f"/gatepass/{sid()}/print", data={"size": "A5", "mode": "print"}),
-            "blocked": blocked,
             "pawati-print": lambda: w.post("/pawati/print", data={"ids": [str(i[0]) for i in pids()]}),
-            "out": lambda: w.post(f"/gatepass/{sid()}/gate-out"),
             "receive-hand": lambda: w.post(f"/pawati/{one('select id from garage_pawatis where receiving_transporter_id=? order by id desc', srl)}/receive",
                                            data={"note": "garage clerk signed"}),
             "receive-lr": lambda: seen.update(lr=w.post(f"/gatepass/{sid()}/lr", data={
                 f"lr_{one('select customer_id from invoices where id=?', inv)}_{vtc}": "VTC-7001",
                 f"lrdate_{one('select customer_id from invoices where id=?', inv)}_{vtc}": today}).text),
         }
+        actions.update({k[1]: v for k, v in trip_steps(w, path, "d03-pawati", pawati=True).items()})
         guard = 0
         while _state(w).get("step"):
             guard += 1
@@ -84,7 +79,6 @@ def test_pawati_lesson_is_on_the_dispatch_and_depot_paths_and_passes_with_real_a
             else:
                 _step(w, "next")
         assert _state(w).get("finished")
-        assert 'alert-error' in seen["msg"]
         # the practice data really holds what the lesson taught
         assert one("select count(*) from garage_pawatis where status='PRINTED' and received_at is not null") == 2
         assert one("select received_via from garage_pawatis where receiving_transporter_id=?", vtc) == "LR"

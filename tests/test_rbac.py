@@ -519,8 +519,8 @@ def test_users_only_see_their_own_depot(role, own, depots, api):
         assert token.get(f"/api/v1/invoices?invoice_no={other['invoice_no']}").json()["total"] == 0
         assert token.get(f"/api/v1/dispatch/pending?invoice_no={other['invoice_no']}").json()["total"] == 0
         assert other["invoice_no"] not in c.get("/exceptions").text
-        # a bulk / gatepass request that names another depot's invoice does nothing with it
-        r = c.post("/dispatch/bulk/prepare", data={"ids": [str(other["id"])]})
+        # a gatepass request that names another depot's invoice does nothing with it
+        r = c.post("/gatepass/prepare", data={"ids": [str(other["id"])]})
         assert other["invoice_no"] not in r.text
 
 

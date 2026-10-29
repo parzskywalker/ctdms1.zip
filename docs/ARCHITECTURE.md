@@ -70,8 +70,10 @@ approved version is refused. Maker-checker: the creator cannot approve (configur
  any open state ──cancel (reason)──► CANCELLED ◄──── (administrator only) ─────────────────────────────┘
 ```
 
-* **Mandatory control**: `dispatch.complete_requires` = PRINTED (default) / GENERATED / NONE. Enforced in the
-  service layer; blocked attempts are audited (`COMPLETE_BLOCKED`).
+* **Mandatory control**: the gatepass must be PRINTED - after its case labels - and every case scanned at the gate before
+  the goods can leave (v1.7.2: no setting; the old `dispatch.complete_requires` is gone). Goods are marked gone out ONLY by
+  `dispatch_service.gate_scan_out` (permission `gate.scan`): there is no complete / gate-out function or button. Enforced in
+  the service layer; blocked attempts are audited (`GATE_OUT_BLOCKED`).
 * The slip stores an immutable **snapshot**; reprints render the snapshot and are labelled "REPRINT #n".
   Every print (first and reprints, format, user, IP, reason) is in `slip_print_logs`.
 * Dispatch number: `DS/<CFA>/<FY>/<5-digit sequence>` from a row-locked sequence table (safe under concurrency).

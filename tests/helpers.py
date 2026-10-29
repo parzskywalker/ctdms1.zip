@@ -90,3 +90,98 @@ def print_pawatis(db, user, slip) -> None:
     if rows:
         pws.print_sheet(db, user, rows)
         db.flush()
+
+
+# ----------------------------------------------------------------------------- v1.7.2: the real gate flow
+def _user(db, username: str):
+    from app.models import User
+    return db.scalar(select(User).where(User.username == username))
+
+
+def prepare_trip(db, slip, desk: str = "admin"):
+    """What the dispatch desk does after making a gatepass: the case labels, then the gatepass, then the Garage Pawatis."""
+    from app.services import gate_service
+    return gate_service.prepare(db, _user(db, desk), slip)
+
+
+def print_ready(db, slip, desk: str = "admin"):
+    """The case labels printed, then the gatepass printed (not yet the Pawatis, not yet at the gate)."""
+    from app.services import dispatch_service as ds
+    from app.services import gate_service
+    d = _user(db, desk)
+    gate_service.print_labels(db, d, slip)
+    ds.print_gatepass(db, d, slip, "PRINT_A5")
+    return slip
+
+
+def walk_out(db, slip, *, desk: str = "admin", gate: str = "admin") -> int:
+    """The whole trip like the screens: labels printed, gatepass printed (when it is not yet), Pawatis printed; then the gate
+    staff scan every case and the gatepass. Returns how many invoices became DISPATCHED. Nothing else marks a trip gone out."""
+    from app.services import dispatch_service as ds
+    from app.services import gate_service
+    d = _user(db, desk)
+    gate_service.print_labels(db, d, slip)
+    if not slip.print_count:
+        ds.print_gatepass(db, d, slip, "PRINT_A5")
+    gate_service.print_pawatis(db, d, slip)
+    return gate_service.scan_out(db, _user(db, gate), slip)
+
+
+def _slip_facts(slip_id: int) -> dict:
+    from sqlalchemy import select as _select
+
+    from app.models import DispatchCase, DispatchSlip, GaragePawati
+    from tests.conftest import _test_session
+    s = _test_session()
+    try:
+        slip = s.get(DispatchSlip, slip_id)
+        return {
+            "pending": [str(i) for i in s.scalars(_select(DispatchCase.id).where(DispatchCase.slip_id == slip_id,
+                                                                               DispatchCase.status == "LABEL_PENDING"))],
+            "labelled": [c for c in s.scalars(_select(DispatchCase.case_code).where(
+                DispatchCase.slip_id == slip_id, DispatchCase.status == "LABELLED").order_by(DispatchCase.id))],
+            "pawatis": [str(i) for i in s.scalars(_select(GaragePawati.id).where(
+                GaragePawati.slip_id == slip_id, GaragePawati.print_count == 0, GaragePawati.status != "CANCELLED"))],
+            "printed": slip.print_count, "number": slip.dispatch_no}
+    finally:
+        s.close()
+
+
+def confirm_labels(slip_id: int, desk: str = "admin") -> None:
+    """The case labels are printed (and confirmed 'Yes, all printed') on the screen - the first thing the desk does."""
+    from tests.conftest import WebClient
+    ids = _slip_facts(slip_id)["pending"]
+    if ids:
+        WebClient(desk).post(f"/gatepass/{slip_id}/labels/confirm", data={"case_ids": ",".join(ids), "result": "PRINTED"})
+
+
+def scan_cases_web(slip_id: int, gate: str = "admin") -> int:
+    """The gate staff scan every labelled case that is not scanned yet (through the scan screen's own request)."""
+    from tests.conftest import WebClient
+    g = WebClient(gate)
+    codes = _slip_facts(slip_id)["labelled"]
+    for code in codes:
+        assert g.post("/gatepass/scan-case", data={"code": code, "slip_id": str(slip_id)}).json()["ok"], code
+    return len(codes)
+
+
+def scan_gatepass_web(slip_id: int, gate: str = "admin") -> dict:
+    """The gate staff scan the gatepass itself (after the last case): the JSON the gate screen shows."""
+    from tests.conftest import WebClient
+    return WebClient(gate).post("/gatepass/scan-case", data={"code": _slip_facts(slip_id)["number"],
+                                                              "slip_id": str(slip_id)}).json()
+
+
+def web_walk_out(slip_id: int, desk: str = "admin", gate: str = "admin") -> dict:
+    """The same trip through the screens' own requests: labels printed, gatepass printed (when it is not yet), Garage Pawatis
+    printed, every case scanned, then the gatepass scanned. Returns the JSON of the last scan."""
+    from tests.conftest import WebClient
+    confirm_labels(slip_id, desk)
+    w = WebClient(desk)
+    if not _slip_facts(slip_id)["printed"]:
+        w.post(f"/gatepass/{slip_id}/print", data={"size": "A5", "mode": "pdf"})
+    pawatis = _slip_facts(slip_id)["pawatis"]
+    if pawatis:
+        w.post("/pawati/print", data={"ids": pawatis})
+    scan_cases_web(slip_id, gate)
+    return scan_gatepass_web(slip_id, gate)

@@ -12,10 +12,10 @@ from tests.helpers import make_invoice
 from tests.test_rbac import _token_client
 from tests.test_v17_phase2 import PW, audit_actions, save_user
 from tests.test_v17_phase3 import _gatepass, _slip_of
-from tests.test_v17_phase4 import bsp_on, db  # noqa: F401
+from tests.test_v17_phase4 import db  # noqa: F401
 
 
-def _make(bsp_on, sizes=((3, "C-VDP01"),), mode="SELF"):  # noqa: F811
+def _make(sizes=((3, "C-VDP01"),), mode="SELF"):  # noqa: F811
     api = _token_client("admin")
     invs = [make_invoice(api, company="COA", cfa="BSP", customer=cu, boxes=n) for n, cu in sizes]
     sid = _slip_of(_gatepass(WebClient("admin"), invs, mode=mode))
@@ -47,9 +47,9 @@ def _gate_out(db, sid, who="gate.bilaspur"):
     return _scan(WebClient(who), db.get(DispatchSlip, sid).dispatch_no, sid)
 
 
-def test_scan_rules_and_every_scan_is_recorded(db, bsp_on):
-    sid, _ = _make(bsp_on, sizes=((3, "C-VDP01"), (2, "C-ABC01")))
-    sid_other, _ = _make(bsp_on, sizes=((2, "C-VDP01"),))
+def test_scan_rules_and_every_scan_is_recorded(db):
+    sid, _ = _make(sizes=((3, "C-VDP01"), (2, "C-ABC01")))
+    sid_other, _ = _make(sizes=((2, "C-VDP01"),))
     codes, other = _codes(db, sid), _codes(db, sid_other)
     g = WebClient("gate.bilaspur")
     r = _scan(g, codes[0], sid)
@@ -76,8 +76,8 @@ def test_scan_rules_and_every_scan_is_recorded(db, bsp_on):
     assert r["ok"] and r["dispatch_no"] == db.get(DispatchSlip, sid).dispatch_no and r["scanned"] == 2
 
 
-def test_gone_out_is_recorded_only_by_the_gate_scan_after_every_case(db, bsp_on):
-    sid, (inv,) = _make(bsp_on, sizes=((3, "C-VDP01"),))
+def test_gone_out_is_recorded_only_by_the_gate_scan_after_every_case(db):
+    sid, (inv,) = _make(sizes=((3, "C-VDP01"),))
     _print_all(db, sid)
     admin, api = WebClient("admin"), _token_client("admin")
     iid = inv["id"]
@@ -86,15 +86,15 @@ def test_gone_out_is_recorded_only_by_the_gate_scan_after_every_case(db, bsp_on)
         db.expire_all()
         return db.get(Invoice, iid).status, db.get(DispatchSlip, sid).gate_out_at
 
-    # no button, for anybody: the gatepass screen, the one-invoice screen, bulk and the API all refuse
+    # no button, for anybody: the routes of the gatepass screen, the one-invoice screen and bulk no longer exist, the API refuses
     for r in (admin.post(f"/gatepass/{sid}/gate-out"), admin.post(f"/dispatch/{iid}/complete"),
               admin.post("/dispatch/bulk/complete", data={"ids": [str(iid)]})):
-        assert "only at the gate" in r.text
+        assert r.status_code in (404, 405)
     r = api.post(f"/api/v1/invoices/{iid}/complete")
-    assert r.status_code == 400 and "only at the gate" in r.text
+    assert r.status_code == 400 and "gate staff scan" in r.text
     assert status()[0] != "DISPATCHED" and status()[1] is None
     page = admin.get(f"/gatepass/{sid}").text
-    assert f'action="/gatepass/{sid}/gate-out"' not in page and "scan every case label and then the gatepass" in page
+    assert "/gate-out" not in page and "scan every case label and then the gatepass" in page
     codes = _codes(db, sid)
     g = WebClient("gate.bilaspur")
     for c in codes[:2]:
@@ -117,8 +117,8 @@ def test_gone_out_is_recorded_only_by_the_gate_scan_after_every_case(db, bsp_on)
     assert "GATE_OUT" in audit_actions(db, db.get(DispatchSlip, sid).dispatch_no)
 
 
-def test_only_gate_staff_scan_and_the_operator_cannot(db, bsp_on):
-    sid, _ = _make(bsp_on, sizes=((2, "C-VDP01"),))
+def test_only_gate_staff_scan_and_the_operator_cannot(db):
+    sid, _ = _make(sizes=((2, "C-VDP01"),))
     _print_all(db, sid)
     code = _codes(db, sid)[0]
     op = WebClient("operator.bilaspur")
@@ -130,8 +130,8 @@ def test_only_gate_staff_scan_and_the_operator_cannot(db, bsp_on):
     assert WebClient("gate.raipur").post("/gatepass/scan-case", data={"code": code, "slip_id": str(sid)}).status_code == 404
 
 
-def test_the_case_labels_come_before_the_gatepass(db, bsp_on):
-    sid, _ = _make(bsp_on, sizes=((2, "C-VDP01"),))
+def test_the_case_labels_come_before_the_gatepass(db):
+    sid, _ = _make(sizes=((2, "C-VDP01"),))
     admin = WebClient("admin")
     r = admin.post(f"/gatepass/{sid}/print", data={"size": "A5", "mode": "pdf"})
     assert "Print the case labels first" in r.text
@@ -144,17 +144,20 @@ def test_the_case_labels_come_before_the_gatepass(db, bsp_on):
     admin.post(f"/gatepass/{sid}/print", data={"size": "A5", "mode": "pdf"})
     db.expire_all()
     assert db.get(DispatchSlip, sid).print_count == 1
-    # a depot without case control is not affected
+    # every depot is the same since v1.7.2: Raipur (case control used to be off there) also prints the labels first
     api = _token_client("admin")
     inv = make_invoice(api, company="COA", cfa="RPR", customer="C-VDP01", boxes=2)
     sid2 = _slip_of(_gatepass(admin, [inv], mode="SELF"))
+    assert "Print the case labels first" in admin.post(f"/gatepass/{sid2}/print", data={"size": "A5", "mode": "pdf"}).text
+    admin.post(f"/gatepass/{sid2}/labels/confirm", data={"case_ids": ",".join(
+        str(i) for i in db.scalars(select(DispatchCase.id).where(DispatchCase.slip_id == sid2))), "result": "PRINTED"})
     admin.post(f"/gatepass/{sid2}/print", data={"size": "A5", "mode": "pdf"})
     db.expire_all()
     assert db.get(DispatchSlip, sid2).print_count == 1
 
 
-def test_exception_needs_permission_reason_and_leaves_a_trail(db, bsp_on):
-    sid, _ = _make(bsp_on, sizes=((4, "C-VDP01"),))
+def test_exception_needs_permission_reason_and_leaves_a_trail(db):
+    sid, _ = _make(sizes=((4, "C-VDP01"),))
     _print_all(db, sid)
     codes = _codes(db, sid)
     g = WebClient("gate.bilaspur")
@@ -179,13 +182,13 @@ def test_exception_needs_permission_reason_and_leaves_a_trail(db, bsp_on):
     db.expire_all()
     assert db.get(DispatchSlip, sid).gate_out_at is not None
     # nothing missing -> nothing to except
-    sid2, _ = _make(bsp_on, sizes=((1, "C-VDP01"),))
+    sid2, _ = _make(sizes=((1, "C-VDP01"),))
     _scan(g, _codes(db, sid2)[0], sid2)
     assert "no exception needed" in admin.post(f"/gatepass/{sid2}/gate-exception", data={"reason": "not needed at all"}).text
 
 
-def test_gate_screen_has_the_scan_loop_and_a_case_code_opens_it(db, bsp_on):
-    sid, _ = _make(bsp_on, sizes=((2, "C-VDP01"),))
+def test_gate_screen_has_the_scan_loop_and_a_case_code_opens_it(db):
+    sid, _ = _make(sizes=((2, "C-VDP01"),))
     slip = db.get(DispatchSlip, sid)
     code = _codes(db, sid)[0]
     page = WebClient("gate.bilaspur").get(f"/gatepass/gate?code={code}").text
@@ -193,16 +196,6 @@ def test_gate_screen_has_the_scan_loop_and_a_case_code_opens_it(db, bsp_on):
     assert "STOP" in page and "0 / 2" in page                                    # not cleared until scanned
     # the confirm button is not offered while cases are unscanned
     assert 'name="back" value="gate"' not in page
-
-
-def test_old_gatepasses_and_other_depots_still_leave_without_scanning(db):
-    api = _token_client("admin")
-    inv = make_invoice(api, company="COA", cfa="RPR", customer="C-VDP01", boxes=2)
-    sid = _slip_of(_gatepass(WebClient("admin"), [inv], mode="SELF"))
-    WebClient("admin").post(f"/gatepass/{sid}/print", data={"size": "A5", "mode": "pdf"})
-    WebClient("admin").post(f"/gatepass/{sid}/gate-out")                          # the button is still there for them
-    db.expire_all()
-    assert db.get(DispatchSlip, sid).gate_out_at is not None and db.get(DispatchSlip, sid).case_control == "LEGACY"
 
 
 def test_migration_0014_gives_gate_exception_to_roles_that_could_void(db):

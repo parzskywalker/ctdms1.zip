@@ -353,17 +353,17 @@ def test_ux_roles_without_invoice_view_see_no_dead_invoice_links(web, db):
     assert "CAN_OPEN_INVOICE = true" in web("management").get("/mis").text
 
 
-def test_ux_irreversible_actions_ask_for_confirmation(web, api):
+def test_ux_irreversible_actions_ask_for_confirmation(web, api, db):
     inv = make_invoice(api("admin"), boxes=5)
-    html = web("operator.raipur").get(f"/dispatch/{inv['id']}").text
-    assert "data-confirm=" in html
-    assert "data-confirm=" in web("operator.raipur").get("/dispatch/pending").text
+    assert "data-confirm=" in web("admin").get(f"/dispatch/{inv['id']}").text            # cancel dispatch asks first
+    open_slip = db.scalar(select(Invoice.dispatch_slip_id).where(Invoice.status == InvoiceStatus.SLIP_GENERATED))
+    assert "data-confirm=" in web("admin").get(f"/gatepass/{open_slip}").text            # so does voiding a gatepass
 
 
 def test_ux_read_only_role_sees_slip_number(web, db):
     inv = db.scalar(select(Invoice).where(Invoice.status == InvoiceStatus.SLIP_GENERATED))
     html = web("checker").get(f"/dispatch/{inv.id}").text
-    assert "No active slip" not in html and inv.dispatch_no in html and "Read-only for your role" in html
+    assert "No active slip" not in html and inv.dispatch_no in html and f"/gatepass/{inv.dispatch_slip_id}" in html
 
 
 def test_ux_import_flags_implausible_box_count(web):

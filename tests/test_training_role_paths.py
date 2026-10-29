@@ -15,6 +15,7 @@ from app.services.utils import local_today
 from app.training import runtime
 from app.training.lessons import PATHS
 from tests.conftest import _test_session
+from tests.training_gate import trip_steps
 
 PW = "Path@2026xy"
 
@@ -49,6 +50,12 @@ def _run_path(web, uid, username, path, actions):
 
     def state():
         return w.get("/training/state").json()
+
+    gate = {}
+    for lesson, kw in (("m07-long", {}), ("d03-pawati", {"pawati": True})):    # labels, act as the gate staff, scan
+        for key, fn in trip_steps(w, db_file, lesson, **kw).items():
+            gate[key] = (lambda f: (lambda w_, one_, t_: f()))(fn)
+    actions = {**actions, **gate}
 
     for code in PATHS[path]["lessons"]:
         w.post("/training/start", data={})
@@ -104,7 +111,6 @@ LONG = {
     ("m07-long", "generate"): _long_distance,
     ("m07-long", "print"): lambda w, one, t: w.post(f"/gatepass/{_slip(one)}/print", data={"size": "A5", "mode": "pdf"}),
     ("m07-long", "pawati-print"): lambda w, one, t: w.post("/pawati/print", data={"ids": _pawati_ids(one)}),
-    ("m07-long", "gate-out"): lambda w, one, t: w.post(f"/gatepass/{_slip(one)}/gate-out"),
     ("m07-long", "lr"): lambda w, one, t: w.post(f"/gatepass/{_slip(one)}/lr", data={
         f"lr_{one('select id from customers where code=?', c)}": lr for c, lr in (("DM-C071", "SRL-5501"), ("DM-C080", "SRL-5502"))}
         | {f"lrdate_{one('select id from customers where code=?', c)}": t for c in ("DM-C071", "DM-C080")}),
@@ -131,9 +137,7 @@ runtime_path: list = [None]
 PAWATI = {
     ("d03-pawati", "generate"): _pawati_trip,
     ("d03-pawati", "print"): lambda w, one, t: w.post(f"/gatepass/{_slip(one)}/print", data={"size": "A5", "mode": "pdf"}),
-    ("d03-pawati", "blocked"): lambda w, one, t: w.post(f"/gatepass/{_slip(one)}/gate-out"),
     ("d03-pawati", "pawati-print"): lambda w, one, t: w.post("/pawati/print", data={"ids": _pawati_ids(one)}),
-    ("d03-pawati", "out"): lambda w, one, t: w.post(f"/gatepass/{_slip(one)}/gate-out"),
     ("d03-pawati", "receive-hand"): lambda w, one, t: w.post(
         f"/pawati/{one('select id from garage_pawatis where receiving_transporter_id=? order by id desc', one('select id from transporters where code=?', 'DM-SRL'))}/receive",
         data={"note": "signed"}),

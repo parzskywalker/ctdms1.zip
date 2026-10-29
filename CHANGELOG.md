@@ -1,5 +1,50 @@
 # Changelog
 
+## v1.7.2 — case control mandatory everywhere; gone out ONLY by the gate staff's scan
+
+Migration 0017 (applied automatically). **Create your gate staff (role *Dispatch / Gate Staff*) before using this version for real
+work: after it, only they - and administrators, who hold every permission - can send a trip out.**
+
+Why: at Guma the gatepass DS/RPR/2627/00201 showed neither the "labels first" rule nor the gate scan, because case control was
+off at every depot (the depot switch) and the gatepass was an old (`LEGACY`) one; operators still had a gone-out button; the
+one-invoice slip and bulk dispatch still made single-transporter slips. All of that is closed:
+
+- **Case control is mandatory at every depot.** The depot switch is gone (screen field, setting, `enabled_for`); migration 0017
+  sets `cfas.case_control_enabled` to true (the column stays, nothing reads it). Every new gatepass gets its cases.
+- **Old gatepasses still at the depot get their labels:** the gatepass screen shows *Make the case labels for this gatepass*
+  (permission `case.print`, audited `CASES_GENERATED_LEGACY`). One barcode per carton still to leave (cartons of invoices
+  already gone out are not labelled); then the labels are printed, then the gatepass (a reprint is allowed with a reason), then
+  the gate scan clears it. Until then it cannot be printed or scanned out ("... has no case labels yet ...").
+  Gatepasses that already went out stay as history.
+- **Gone out ONLY by the gate staff's scan** (`dispatch_service.gate_scan_out`, permission `gate.scan`): every case, then the
+  gatepass. Removed: `/gatepass/{id}/gate-out`, `/dispatch/{id}/complete`, `/dispatch/bulk/*`, `ds.complete`, `ds.gate_out`,
+  the Gate Check "Confirm gate-out" form, the F9 key. The API `POST /invoices/{id}/complete` and `.../generate-slip` answer
+  400 with a clear message. The manager exception still exists (cartons can be recorded as missing, with a reason); the gatepass
+  is still scanned afterwards.
+- **Permission `dispatch.complete` removed completely** (catalogue, role templates, every check). Migration 0017 takes it off every
+  role and every user's own grants / denials and writes an audit row for each. Downgrade gives it back to Depot Managers and
+  Dispatch Operators.
+- **No back door to single-transporter slips:** `generate_slip`, the `legacy=True` exemption of `plan_gatepass`, the one-invoice
+  Generate / Print / Complete buttons and bulk dispatch are retired. The invoice screen (`/dispatch/{id}`) now shows the status, the
+  gatepass it is on and a *Make a gatepass with this invoice* link. Pending Dispatch posts only to *Make one gatepass*.
+- The completion rule is fixed (gatepass PRINTED); the setting `dispatch.complete_requires` is removed.
+- **Demo logins:** one list (`app/demo_users.py`) feeds the seed, the login page and `start_demo`. New: `gate.durg`; the login page
+  now lists all gate users. `start_demo` on an existing **demo** database (administrator still has the demo password) adds the
+  missing demo users (`seed.ensure_demo_users`, audited); it never changes an existing user or password and never runs on a
+  production database.
+- **Demo data and Guided Training go through the real flow** (`app/services/gate_service.py`: labels printed, gatepass printed,
+  Pawatis printed; gate staff scan every case, then the gatepass). A fresh demo seed takes longer (about 63 s against 41 s on the
+  development PC). Training: new demonstration user `demo.gate` ("Act as Demo Gate Staff"), shared lesson blocks (print the
+  labels, act as gate staff, scan the cases - with a *Practice scanner* button on Gate Check in training only -, scan the
+  gatepass) in the lessons Long distance, Local auto per trip / per box, Gate check and Garage Pawati; the Garage Pawati lesson
+  teaches that scanning the gatepass before the Pawatis are printed is refused. Practice databases of older versions get the
+  gate role and `demo.gate` automatically; checkpoints are rebuilt.
+- Docs: USER_GUIDE, RELEASE_v1.7 (create the gate staff before go-live), README (demo users), ARCHITECTURE.
+- Tests: updated to walk every trip through labels, print and the gate scan (`tests/helpers.walk_out`); new tests for
+  `convert_legacy`, "no gone-out path anywhere", demo-user ensure on an existing database and the login list.
+- Not part of the suite: `tests/e2e_training.py` / `tests/e2e_keyboard_dispatch.py` are manual browser scripts and still describe
+  the old buttons; `e2e_training.py` already failed in the keyboard-basics lesson (step `combo`) before this change.
+
 ## v1.7.1 — transporter trips by local auto only, labels before gatepass, gone out by gate scan only
 
 Migration 0016 (applied automatically): new role **Dispatch / Gate Staff** with the permission `gate.scan`. Nobody else is

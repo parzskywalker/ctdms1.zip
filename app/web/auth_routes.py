@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy.orm import Session
 
+from app import demo_users
 from app.config import get_settings
 from app.db import get_db
 from app.models import User, utcnow
@@ -15,17 +16,7 @@ from app.web.templating import back_url, flash, home_for, redirect, render, safe
 
 router = APIRouter(dependencies=[Depends(csrf_protect)], include_in_schema=False)
 
-DEMO_USERS = [
-    ("admin", "Admin@123", "Administrator"),
-    ("management", "Demo@123", "Management"),
-    ("accounts", "Demo@123", "Accounts"),
-    ("cfa.raipur", "Demo@123", "Depot Manager · Raipur"),
-    ("operator.raipur", "Demo@123", "Dispatch Operator · Raipur"),
-    ("operator.bilaspur", "Demo@123", "Dispatch Operator · Bilaspur"),
-    ("operator.durg", "Demo@123", "Dispatch Operator · Durg"),
-    ("checker", "Demo@123", "Checker / Approver"),
-    ("viewer", "Demo@123", "Read-only Viewer"),
-]
+DEMO_USERS = demo_users.login_rows()  # one list for the seed, this page and prepare-demo
 
 
 @router.get("/login")

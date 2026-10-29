@@ -18,6 +18,7 @@ from app.models import (
     RateStatus, Setting, TransporterBill, TransporterRate, User,
 )
 from app.models.pawati import GaragePawati
+from app.services import case_service as cs
 
 
 @dataclass
@@ -263,15 +264,60 @@ def _dispatch_check(db, ctx, numbers, *, gone=False, printed=False, transporter=
     if total is not None and Decimal(slip.total_charge) != Decimal(total):
         return False, f"{slip.dispatch_no} totals ₹{slip.total_charge}, expected ₹{total}."
     if printed and not slip.print_count:
-        return False, f"{slip.dispatch_no} is not printed yet - press F8 on the gatepass."
+        return False, f"{slip.dispatch_no} is not printed yet - print the case labels first, then press F8 on the gatepass."
     if gone and not slip.gate_out_at:
-        return False, f"{slip.dispatch_no} has not gone out yet - press F9 (Record gate-out), then Enter."
+        return False, (f"{slip.dispatch_no} has not gone out yet - at the gate, scan every case and then the gatepass "
+                       "(Act as Demo Gate Staff).")
     if lr:
         invs = list(db.scalars(select(Invoice).where(Invoice.dispatch_slip_id == slip.id)))
         missing = sorted({i.customer.name for i in invs if not i.lr_no})
         if missing:
             return False, "LR number still missing for: " + ", ".join(missing)
     return True, f"Gatepass {slip.dispatch_no}: {slip.invoice_count} invoice(s), {slip.total_cases} cases, ₹{slip.total_charge:,.2f}."
+
+
+def _labels_done(db, slip):
+    total = len(cs.cases_of(db, slip))
+    left = cs.labels_pending(db, slip)
+    if not total or left:
+        return False, (f"{left or total} of {slip.total_cases} case labels are not printed yet - gatepass screen > Print the "
+                       "labels, press Print, then 'Yes, all printed'.")
+    return True, f"{slip.dispatch_no}: all {total} case labels are printed - now the gatepass can be printed."
+
+
+def _scans_done(db, slip):
+    p = cs.progress(db, slip)
+    if not p["total"] or p["missing"]:
+        return False, (f"{p['scanned']} of {p['total']} cases scanned at the gate - Act as Demo Gate Staff, open Gate Check, "
+                       "and scan the rest (Practice scanner).")
+    return True, f"Every case of {slip.dispatch_no} is scanned ({p['scanned']} of {p['total']}) - now scan the gatepass itself."
+
+
+def flow_checks(prefix: str, numbers: list[str]) -> None:
+    """The shared label / gate checks of a lesson's trip: <prefix>_labelled (the labels are printed, before the gatepass)
+    and <prefix>_scanned (every case scanned at the gate by the gate staff)."""
+    def labelled(db, ctx):
+        slip = _slip_with(db, ctx, numbers)
+        if not slip:
+            return False, f"No gatepass with {', '.join(numbers)} has been generated in this lesson yet."
+        return _labels_done(db, slip)
+
+    def scanned(db, ctx):
+        slip = _slip_with(db, ctx, numbers)
+        if not slip:
+            return False, f"No gatepass with {', '.join(numbers)} has been generated in this lesson yet."
+        return _scans_done(db, slip)
+
+    CHECKS[f"{prefix}_labelled"] = labelled
+    CHECKS[f"{prefix}_scanned"] = scanned
+
+
+LONG_INVS = ["001248", "001249", "PQR/B/0313"]
+TRIP_INVS = ["001245", "001246", "001247", "XY/G/2601"]
+BOX_INVS = ["XY/K/2603", "PQR/K/0311"]
+PAWATI_INVS = ["001250"]
+for _prefix, _numbers in (("long", LONG_INVS), ("trip", TRIP_INVS), ("box", BOX_INVS), ("pawati", PAWATI_INVS)):
+    flow_checks(_prefix, _numbers)
 
 
 @check
@@ -305,12 +351,14 @@ def long_lr(db, ctx):
     return _dispatch_check(db, ctx, ["001248", "001249", "PQR/B/0313"], transporter="DM-SRL", gone=True, lr=True)
 
 
-TRIP_INVS = ["001245", "001246", "001247", "XY/G/2601"]
-
-
 @check
 def trip_generated(db, ctx):
     return _dispatch_check(db, ctx, TRIP_INVS, auto="DM-LA1", method="PER_TRIP", trip="500", total="500")
+
+
+@check
+def trip_printed(db, ctx):
+    return _dispatch_check(db, ctx, TRIP_INVS, auto="DM-LA1", method="PER_TRIP", trip="500", printed=True)
 
 
 @check
@@ -331,15 +379,17 @@ def trip_allocation(db, ctx):
     return True, f"{parts} - together ₹{shares:,.2f}, exactly the one trip charge."
 
 
-BOX_INVS = ["XY/K/2603", "PQR/K/0311"]
-
-
 @check
 def box_generated(db, ctx):
     ok, msg = _dispatch_check(db, ctx, BOX_INVS, auto="DM-LA2", method="PER_CASE", total="432")
     if ok and _inv(db, "XY/K/2604").dispatch_slip_id:
         return False, "XY/K/2604 (Durg) should not be on Ravi Tempo's trip - there is no per-box rate for Durg."
     return ok, msg
+
+
+@check
+def box_printed(db, ctx):
+    return _dispatch_check(db, ctx, BOX_INVS, auto="DM-LA2", method="PER_CASE", total="432", printed=True)
 
 
 @check
@@ -500,26 +550,36 @@ def has_override(db, ctx):
     return o is not None, "no box-change request is waiting"
 
 
+def _kishore_slip(db):
+    inv = _inv(db, "XY/G/2602")
+    return db.get(DispatchSlip, inv.dispatch_slip_id) if inv and inv.dispatch_slip_id else None
+
+
 @needs
 def kishore_waiting_at_gate(db, ctx):
-    inv = _inv(db, "XY/G/2602")
-    slip = db.get(DispatchSlip, inv.dispatch_slip_id) if inv and inv.dispatch_slip_id else None
-    return bool(slip and slip.print_count and not slip.gate_out_at), "no printed gatepass is waiting at the gate"
+    slip = _kishore_slip(db)
+    return bool(slip and slip.print_count and not slip.gate_out_at and slip.case_control == "REQUIRED"
+                and not cs.labels_pending(db, slip)), "no printed gatepass with its case labels is waiting at the gate"
+
+
+@check
+def kishore_scanned(db, ctx):
+    slip = _kishore_slip(db)
+    if not slip:
+        return False, "The Kishore Mini Truck gatepass was not found."
+    return _scans_done(db, slip)
 
 
 @check
 def kishore_gone(db, ctx):
-    inv = _inv(db, "XY/G/2602")
-    slip = db.get(DispatchSlip, inv.dispatch_slip_id) if inv and inv.dispatch_slip_id else None
+    slip = _kishore_slip(db)
     if not slip or not slip.gate_out_at or slip.gate_out_at < ctx.since:
-        return False, "The Kishore Mini Truck gatepass has not been confirmed at the gate yet (Gate check, F9)."
-    return True, f"{slip.dispatch_no} confirmed at the gate: {slip.total_cases} cases counted, invoices DISPATCHED."
+        return False, ("The Kishore Mini Truck gatepass has not gone out yet - scan every case and then the gatepass at "
+                       "Gate Check (Act as Demo Gate Staff).")
+    return True, f"{slip.dispatch_no} scanned out at the gate: {slip.total_cases} cases, invoices DISPATCHED."
 
 
 # ============================================================================ Garage Pawati (local-auto trip, two receivers)
-PAWATI_INVS = ["001250"]
-
-
 def _pawatis(db: Session, slip: DispatchSlip) -> list[GaragePawati]:
     return list(db.scalars(select(GaragePawati).where(GaragePawati.slip_id == slip.id, GaragePawati.status != "CANCELLED")
                            .order_by(GaragePawati.pawati_no)))
@@ -557,7 +617,7 @@ def pawati_gatepass_printed(db, ctx):
     if not slip:
         return False, msg
     return (True, f"{slip.dispatch_no} is printed.") if slip.print_count else (
-        False, f"{slip.dispatch_no} is not printed yet - press F8 on the gatepass.")
+        False, f"{slip.dispatch_no} is not printed yet - print the case labels first, then press F8 on the gatepass.")
 
 
 @check
@@ -577,7 +637,8 @@ def pawati_gone(db, ctx):
     if not slip:
         return False, msg
     if not slip.gate_out_at:
-        return False, f"{slip.dispatch_no} has not gone out yet - press F9 (Record gate-out), then Enter."
+        return False, (f"{slip.dispatch_no} has not gone out yet - at the gate (Act as Demo Gate Staff), scan the gatepass "
+                       "again now that the Pawatis are printed.")
     return True, f"{slip.dispatch_no} left the gate with its Garage Pawatis."
 
 

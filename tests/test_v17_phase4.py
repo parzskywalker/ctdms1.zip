@@ -26,25 +26,12 @@ def db():
         s.close()
 
 
-@pytest.fixture()
-def bsp_on():
-    """Case control switched on for the Bilaspur depot for the length of a test."""
-    s = _test_session()
-    d = s.scalar(select(CFA).where(CFA.code == "BSP"))
-    d.case_control_enabled = True
-    s.commit()
-    yield d
-    d.case_control_enabled = False
-    s.commit()
-    s.close()
-
-
 def _cases(db, slip_id):
     db.expire_all()
     return list(db.scalars(select(DispatchCase).where(DispatchCase.slip_id == slip_id).order_by(DispatchCase.id)))
 
 
-def _make(db, bsp_on, *, sizes=((3, "C-VDP01"), (4, "C-VDP01"), (2, "C-ABC01")), mode="SELF"):
+def _make(db, *, sizes=((3, "C-VDP01"), (4, "C-VDP01"), (2, "C-ABC01")), mode="SELF"):
     api = _token_client("admin")
     invs = [make_invoice(api, company="COA", cfa="BSP", customer=cu, boxes=n) for n, cu in sizes]
     r = _gatepass(WebClient("admin"), invs, mode=mode)
@@ -68,8 +55,8 @@ def test_code_format_check_digit_and_training_range():
             assert not cs.is_valid(bad)
 
 
-def test_cases_exist_only_for_a_depot_with_case_control(db, bsp_on):
-    sid, invs = _make(db, bsp_on)
+def test_cases_exist_for_every_gatepass_at_every_depot(db):
+    sid, invs = _make(db)
     slip = db.get(DispatchSlip, sid)
     cases = _cases(db, sid)
     assert slip.case_control == "REQUIRED" and len(cases) == 9 == slip.total_cases
@@ -87,15 +74,15 @@ def test_cases_exist_only_for_a_depot_with_case_control(db, bsp_on):
     # consecutive numbers were reserved as one block
     nums = sorted(int(c.case_code[:9]) for c in cases)
     assert nums == list(range(nums[0], nums[0] + 9))
-    # a depot without case control makes no cases and stays as before
+    # case control is mandatory (v1.7.2): a gatepass of another depot gets its cases too
     api = _token_client("admin")
     inv = make_invoice(api, company="COA", cfa="RPR", customer="C-VDP01", boxes=3)
     sid2 = _slip_of(_gatepass(WebClient("admin"), [inv], mode="SELF"))
-    assert db.get(DispatchSlip, sid2).case_control == "LEGACY" and not _cases(db, sid2)
+    assert db.get(DispatchSlip, sid2).case_control == "REQUIRED" and len(_cases(db, sid2)) == 3
 
 
-def test_labels_page_one_barcode_per_case_and_size_setting(db, bsp_on):
-    sid, invs = _make(db, bsp_on)
+def test_labels_page_one_barcode_per_case_and_size_setting(db):
+    sid, invs = _make(db)
     admin = WebClient("admin")
     page = admin.get(f"/gatepass/{sid}/labels").text
     cases = _cases(db, sid)
@@ -122,8 +109,8 @@ def test_labels_page_one_barcode_per_case_and_size_setting(db, bsp_on):
     assert "each has its own barcode" in d and cases[0].case_code in d
 
 
-def test_print_failed_reprint_keep_the_code_and_are_logged(db, bsp_on):
-    sid, _ = _make(db, bsp_on)
+def test_print_failed_reprint_keep_the_code_and_are_logged(db):
+    sid, _ = _make(db)
     admin = WebClient("admin")
     ids = ",".join(str(c.id) for c in _cases(db, sid))
     codes = [c.case_code for c in _cases(db, sid)]
@@ -147,7 +134,7 @@ def test_print_failed_reprint_keep_the_code_and_are_logged(db, bsp_on):
     assert {"LABELS_FAILED", "LABELS_PRINTED", "LABELS_REPRINTED"} <= audit_actions(db, db.get(DispatchSlip, sid).dispatch_no)
     # no print permission: refused
     save_user(admin, db, "p4.noprint", "DISPATCH_OPERATOR", cfas=["BSP"], deny=["case.print"], reason="test", companies=None)
-    sid2, _ = _make(db, bsp_on, sizes=((2, "C-VDP01"),))
+    sid2, _ = _make(db, sizes=((2, "C-VDP01"),))
     ids2 = ",".join(str(c.id) for c in _cases(db, sid2))
     assert "not authorised to print" in WebClient("p4.noprint", PW).post(f"/gatepass/{sid2}/labels/confirm", data={
         "case_ids": ids2, "result": "PRINTED"}).text
@@ -155,8 +142,8 @@ def test_print_failed_reprint_keep_the_code_and_are_logged(db, bsp_on):
     assert 'id="print-now"' not in WebClient("p4.noprint", PW).get(f"/gatepass/{sid2}/labels").text
 
 
-def test_void_and_cancel_void_the_cases_and_a_new_gatepass_gets_new_codes(db, bsp_on):
-    sid, invs = _make(db, bsp_on, sizes=((3, "C-VDP01"), (2, "C-VDP01")))
+def test_void_and_cancel_void_the_cases_and_a_new_gatepass_gets_new_codes(db):
+    sid, invs = _make(db, sizes=((3, "C-VDP01"), (2, "C-VDP01")))
     old = {c.case_code for c in _cases(db, sid)}
     admin = WebClient("admin")
     admin.post(f"/gatepass/{sid}/void", data={"reason": "wrong invoices picked"})
@@ -173,8 +160,8 @@ def test_void_and_cancel_void_the_cases_and_a_new_gatepass_gets_new_codes(db, bs
     assert {c.status for c in _cases(db, sid3)} == {CaseStatus.VOID}
 
 
-def test_scanning_any_case_finds_its_gatepass_at_gate_check(db, bsp_on):
-    sid, _ = _make(db, bsp_on)
+def test_scanning_any_case_finds_its_gatepass_at_gate_check(db):
+    sid, _ = _make(db)
     code = _cases(db, sid)[4].case_code
     slip = db.get(DispatchSlip, sid)
     page = WebClient("admin").get(f"/gatepass/gate?code={code}").text
@@ -183,16 +170,16 @@ def test_scanning_any_case_finds_its_gatepass_at_gate_check(db, bsp_on):
     assert slip.dispatch_no not in WebClient("operator.raipur").get(f"/gatepass/gate?code={code}").text
 
 
-def test_depot_master_has_the_switch_and_roles_were_granted(db):
+def test_depot_master_has_no_switch_and_roles_were_granted(db):
     admin = WebClient("admin")
     d = db.scalar(select(CFA).where(CFA.code == "BSP"))
-    assert 'name="case_control_enabled"' in admin.get(f"/masters/depots/{d.id}").text
+    assert 'name="case_control_enabled"' not in admin.get(f"/masters/depots/{d.id}").text
     perms = {r.code: set(r.permissions) for r in db.scalars(select(Role))}
     assert "case.print" in perms["DISPATCH_OPERATOR"] and "case.reprint" in perms["CFA_MANAGER"]
     assert "case.print" not in perms["VIEWER"]
 
 
-def test_migration_0013_upgrade_keeps_every_gatepass_legacy(tmp_path):
+def test_migration_0013_upgrade_keeps_every_old_gatepass_legacy_and_0017_turns_every_depot_on(tmp_path):
     import json, os, sqlite3, subprocess, sys
     from tests.test_v12_fixes import ROOT, _count, _run_prepare
     p = tmp_path / "ctdms.db"
@@ -214,7 +201,7 @@ def test_migration_0013_upgrade_keeps_every_gatepass_legacy(tmp_path):
     assert con.execute("select version_num from alembic_version").fetchone()[0] >= "0013"
     assert con.execute("select count(*) from dispatch_slips where case_control = 'LEGACY'").fetchone()[0] == slips
     assert con.execute("select count(*) from dispatch_cases").fetchone()[0] == 0
-    assert con.execute("select count(*) from cfas where case_control_enabled = 1").fetchone()[0] == 0
+    assert con.execute("select count(*) from cfas where case_control_enabled = 0").fetchone()[0] == 0   # 0017: on everywhere
     perms = {c: set(json.loads(x)) for c, x in con.execute("select code, permissions from roles")}
     assert "case.print" in perms["DISPATCH_OPERATOR"] and "case.reprint" in perms["CFA_MANAGER"]
     con.close()

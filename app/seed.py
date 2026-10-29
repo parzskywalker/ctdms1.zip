@@ -20,6 +20,7 @@ from openpyxl import Workbook
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import demo_users
 from app.config import BASE_DIR, get_settings
 from app.models import (
     CFA, Company, Customer, DispatchMode, DispatchSlip, ERPCodeMapping, ERPSystem, ImportTemplate, Invoice,
@@ -29,6 +30,7 @@ from app.models.base import set_fake_now
 from app.security.auth import hash_password
 from app.security.permissions import DEFAULT_ROLES
 from app.services import dispatch_service as ds
+from app.services import gate_service as gate
 from app.services import import_service as imp
 from app.services import invoice_service, rate_service, recon_service
 from app.services import settings_service as cfg
@@ -220,19 +222,7 @@ RATES = [
 # NOTE: deliberately NO rate for Company C -> Korba (demonstrates RATE MISSING) and no OWN/Raigarh
 # (covered by the explicit OWN company default rate).
 
-USERS = [  # username, full name, role, cfas (None = all)
-    ("admin", "System Administrator", "ADMIN", None, "Admin@123"),
-    ("management", "Arvind Kumar", "MANAGEMENT", None, "Demo@123"),
-    ("accounts", "Kavita Joshi", "ACCOUNTS", None, "Demo@123"),
-    ("cfa.raipur", "Rohit Mishra", "CFA_MANAGER", ["RPR"], "Demo@123"),
-    ("operator.raipur", "Sunil Dewangan", "DISPATCH_OPERATOR", ["RPR"], "Demo@123"),
-    ("operator.bilaspur", "Ajay Kaushik", "DISPATCH_OPERATOR", ["BSP"], "Demo@123"),
-    ("operator.durg", "Tarun Sinha", "DISPATCH_OPERATOR", ["DRG"], "Demo@123"),
-    ("gate.raipur", "Mohan Sahu", "GATE_STAFF", ["RPR"], "Demo@123"),
-    ("gate.bilaspur", "Ravi Tandon", "GATE_STAFF", ["BSP"], "Demo@123"),
-    ("checker", "Meena Gupta", "CHECKER", None, "Demo@123"),
-    ("viewer", "Audit Viewer", "VIEWER", None, "Demo@123"),
-]
+USERS = demo_users.seed_rows()  # username, full name, role, cfas (None = all), password - app/demo_users.py
 
 
 @dataclass
@@ -247,6 +237,35 @@ class Ctx:
     locations: dict
     customers: dict
     transporters: dict
+
+
+def ensure_demo_users(db: Session) -> list[str]:
+    """prepare-demo on a DEMO database that already has data: add the demo logins a newer version brought (v1.7.2: the gate
+    staff). Does nothing unless this is a demo database (the administrator still has the demo password); never touches an
+    existing user or password, never runs on a production database. Returns the usernames it added."""
+    from app.security.auth import verify_password
+    from app.services import audit
+    admin = db.scalar(select(User).where(User.username == "admin"))
+    if admin is None or not verify_password("Admin@123", admin.password_hash):
+        return []
+    have = {u for (u,) in db.execute(select(User.username))}
+    roles = {r.code: r for r in db.scalars(select(Role))}
+    cfas = {c.code: c for c in db.scalars(select(CFA))}
+    added = []
+    for uname, full, role, cfa_codes, pwd in demo_users.seed_rows():
+        if uname in have or role not in roles or (cfa_codes and any(c not in cfas for c in cfa_codes)):
+            continue
+        u = User(username=uname, full_name=full, role=roles[role], password_hash=hash_password(pwd), all_companies=True,
+                 all_cfas=cfa_codes is None, email=f"{uname.replace('.', '_')}@example.com")
+        if cfa_codes:
+            u.cfas = [cfas[c] for c in cfa_codes]
+        db.add(u)
+        db.flush()
+        audit.log(db, None, "USER_CREATED", "SECURITY", record_type="User", record_id=u.id, ref=uname,
+                  reason="Demonstration login added by this version (prepare-demo, demo database)",
+                  details={"role": role, "depots": cfa_codes or "all"})
+        added.append(uname)
+    return added
 
 
 def reset_database() -> None:
@@ -647,6 +666,11 @@ def _operator(c: Ctx, inv: Invoice) -> User:
             "DRG": c.users["operator.durg"]}[inv.cfa.code]
 
 
+def _gate_user(c: Ctx, inv: Invoice) -> User:
+    """The gate staff of the depot (they scan the cases and the gatepass: nobody else can send a trip out)."""
+    return c.users[{"RPR": "gate.raipur", "BSP": "gate.bilaspur", "DRG": "gate.durg"}[inv.cfa.code]]
+
+
 def _transporter(c: Ctx, inv: Invoice) -> Transporter:
     code = TRANSPORTER_BY_LOCATION[inv.location.code]
     if code in ("AUTO", "SELF"):
@@ -702,8 +726,10 @@ def make_gatepass(c: Ctx, invs: list[Invoice], carrier: str, d: date, stage: str
         return None  # e.g. an invoice with a box change awaiting approval stays in the queue
     if stage == "GENERATED":
         return slip
+    clock(d, hh, min(mm + 3, 59))
+    gate.print_labels(db, op, slip)  # the case labels come first ...
     clock(d, hh, min(mm + 4, 59))
-    ds.print_gatepass(db, op, slip, RND.choice(["PRINT_A5", "PRINT_A5", "PRINT_A4", "PDF_A5"]))
+    ds.print_gatepass(db, op, slip, RND.choice(["PRINT_A5", "PRINT_A5", "PRINT_A4", "PDF_A5"]))  # ... then the gatepass
     if reprint:
         clock(d, min(hh + 1, 21), 5)
         ds.print_gatepass(db, op, slip, "PRINT_A5", RND.choice(["Printer jam - first copy torn",
@@ -712,8 +738,8 @@ def make_gatepass(c: Ctx, invs: list[Invoice], carrier: str, d: date, stage: str
     if stage == "PRINTED":
         return slip
     clock(d, min(hh + 1, 22), 20)
-    _pawatis_printed(db, op, slip)
-    ds.gate_out(db, op, slip)
+    gate.print_pawatis(db, op, slip)
+    gate.scan_out(db, _gate_user(c, invs[0]), slip)  # the gate staff scan every case, then the gatepass
     return slip
 
 
@@ -764,60 +790,7 @@ def assign_lrs(c: Ctx, slips: list[DispatchSlip], leave_open: float = 0.0) -> No
             ds.set_lr(db, _operator(c, group[0]), group, lr, slip.dispatch_date)
 
 
-def dispatch_invoice(c: Ctx, inv: Invoice, stop_at: str = "DISPATCHED", reprint: bool = False) -> None:
-    """Run the real workflow with a simulated clock. stop_at: PENDING_DETAILS/VERIFIED/SLIP_GENERATED/SLIP_PRINTED/DISPATCHED"""
-    db = c.db
-    if inv.status not in (InvoiceStatus.PENDING, InvoiceStatus.VERIFIED):
-        return
-    op = _operator(c, inv)
-    same_day = RND.random() < 0.7 or inv.invoice_date >= c.today
-    d = inv.invoice_date if same_day else inv.invoice_date + timedelta(days=1)
-    if d.weekday() == 6:  # no Sunday dispatch
-        d += timedelta(days=1)
-    if d > c.today:
-        d = c.today
-    tr = _transporter(c, inv)
-    veh_pool = next(x[6] for x in TRANSPORTERS if x[0] == tr.code)
-    VEH_IDX[tr.code] = VEH_IDX.get(tr.code, 0) + 1
-    veh = veh_pool[VEH_IDX[tr.code] % len(veh_pool)]
-    LR_SEQ[tr.code] = LR_SEQ.get(tr.code, 5000) + RND.randint(1, 4)
-    lr = f"{tr.code}{LR_SEQ[tr.code]}"
-    hh = RND.randint(13, 18) if d == inv.invoice_date else RND.randint(9, 16)
-    mm = RND.choice([0, 10, 15, 25, 30, 40, 45, 50])
-    clock(d, hh, mm)
-    ds.save_details(db, op, inv, transporter_id=tr.id, vehicle_no=veh, lr_no=lr, dispatch_date=d,
-                    dispatch_time=time(hh, mm), remarks=None)
-    if stop_at == "PENDING_DETAILS":
-        return
-    clock(d, hh, mm + 2 if mm < 55 else mm)
-    ds.verify(db, op if RND.random() < 0.8 else c.users["checker"], inv)
-    if stop_at == "VERIFIED":
-        return
-    clock(d, hh, min(mm + 4, 59))
-    ds.generate_slip(db, op, inv)
-    if stop_at == "SLIP_GENERATED":
-        return
-    ds.record_print(db, op, inv, RND.choice(["PRINT_A5", "PRINT_A5", "PRINT_A4", "PDF_A5"]))
-    if reprint:
-        clock(d, min(hh + 1, 22), 5)
-        ds.record_print(db, op, inv, "PRINT_A5", RND.choice(["Printer jam - first copy torn",
-                                                             "Transporter lost the copy",
-                                                             "Customer requested duplicate for gate pass"]))
-    if stop_at == "SLIP_PRINTED":
-        return
-    clock(d, min(hh + 1, 22), 20)
-    ds.complete(db, op, inv)
-
-
 # ----------------------------------------------------------------------------- main seed
-def _pawatis_printed(db, user, slip):
-    """Garage Pawatis travel with the auto: print them before the trip leaves."""
-    from app.services import pawati_service as pws
-    rows = pws.active(db, slip)
-    if rows:
-        pws.print_sheet(db, user, rows)
-
-
 def run(reset: bool = True, quiet: bool = False) -> dict:
     from app.db import SessionLocal
     if reset:

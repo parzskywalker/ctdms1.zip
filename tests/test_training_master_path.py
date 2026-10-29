@@ -13,6 +13,7 @@ from app.models import TrainingProgress, User
 from app.services.utils import local_today
 from app.training import runtime, scenario
 from app.training.lessons import PATHS
+from tests.training_gate import trip_steps
 
 
 def test_master_path_completes_with_real_actions_and_leaves_live_data_alone(web, db):
@@ -61,9 +62,8 @@ def test_master_path_completes_with_real_actions_and_leaves_live_data_alone(web,
         sid = int(re.search(r"/gatepass/(\d+)$", str(r.url)).group(1))
         return sid
 
-    def print_and_out(sid):
+    def print_gatepass(sid):
         assert "NOT VALID FOR BUSINESS USE" in w.post(f"/gatepass/{sid}/print", data={"size": "A5", "mode": "print"}).text
-        w.post(f"/gatepass/{sid}/gate-out")
 
     def act_as(who):
         assert w.post("/training/act-as", data={"who": who}).status_code == 200
@@ -92,7 +92,6 @@ def test_master_path_completes_with_real_actions_and_leaves_live_data_alone(web,
         ("m07-long", "print"): lambda: w.post(f"/gatepass/{one('select max(id) from dispatch_slips')}/print", data={"size": "A5", "mode": "print"}),
         ("m07-long", "pawati-print"): lambda: w.post("/pawati/print", data={"ids": [
             str(r[0]) for r in sqlite3.connect(path).execute("select id from garage_pawatis where print_count=0 order by pawati_no")]}),
-        ("m07-long", "gate-out"): lambda: w.post(f"/gatepass/{one('select max(id) from dispatch_slips')}/gate-out"),
         ("m07-long", "lr"): lambda: w.post(f"/gatepass/{one('select max(id) from dispatch_slips')}/lr", data={
             f"lr_{one('select id from customers where code=?', 'DM-C071')}": "SRL-5501",
             f"lr_{one('select id from customers where code=?', 'DM-C080')}": "SRL-5502",
@@ -101,11 +100,11 @@ def test_master_path_completes_with_real_actions_and_leaves_live_data_alone(web,
         ("m08-trip", "generate"): lambda: gatepass(["001245", "001246", "001247", "XY/G/2601"], mode="OUTSIDE_AUTO",
                                                    outside_auto_id=str(one("select id from outside_autos where code='DM-LA1'")),
                                                    auto_method="PER_TRIP", trip_charge="500"),
-        ("m08-trip", "out"): lambda: print_and_out(one("select max(id) from dispatch_slips")),
+        ("m08-trip", "print"): lambda: print_gatepass(one("select max(id) from dispatch_slips")),
         ("m09-box", "total"): lambda: gatepass(["XY/K/2603", "PQR/K/0311"], mode="OUTSIDE_AUTO",
                                                outside_auto_id=str(one("select id from outside_autos where code='DM-LA2'")),
                                                auto_method="PER_CASE"),
-        ("m09-box", "out"): lambda: print_and_out(one("select max(id) from dispatch_slips")),
+        ("m09-box", "print"): lambda: print_gatepass(one("select max(id) from dispatch_slips")),
         ("m10-reports", "export"): lambda: w.get("/reports/invoice-freight/export?fmt=xlsx&date_from=2026-01-01"),
         ("m11-users", "create"): lambda: w.post("/admin/users/save", data={
             "username": "guma.op", "full_name": "Guma Operator", "is_active": "1", "password": "Guma@2026x",
@@ -143,10 +142,8 @@ def test_master_path_completes_with_real_actions_and_leaves_live_data_alone(web,
             f"recv_{inv_id('001250')}": f"{one('select id from transporters where code=?', 'DM-SRL')}:5,"
                                          f"{one('select id from transporters where code=?', 'DM-VTC')}:3"}),
         ("d03-pawati", "print"): lambda: w.post(f"/gatepass/{one('select max(id) from dispatch_slips')}/print", data={"size": "A5", "mode": "print"}),
-        ("d03-pawati", "blocked"): lambda: w.post(f"/gatepass/{one('select max(id) from dispatch_slips')}/gate-out"),
         ("d03-pawati", "pawati-print"): lambda: w.post("/pawati/print", data={"ids": [
             str(r[0]) for r in sqlite3.connect(path).execute("select id from garage_pawatis where print_count=0 order by pawati_no")]}),
-        ("d03-pawati", "out"): lambda: w.post(f"/gatepass/{one('select max(id) from dispatch_slips')}/gate-out"),
         ("d03-pawati", "receive-hand"): lambda: w.post(
             f"/pawati/{one('select id from garage_pawatis where receiving_transporter_id=? order by id desc', one('select id from transporters where code=?', 'DM-SRL'))}/receive",
             data={"note": "garage clerk signed"}),
@@ -155,6 +152,9 @@ def test_master_path_completes_with_real_actions_and_leaves_live_data_alone(web,
             f"lrdate_{one('select customer_id from invoices where id=?', inv_id('001250'))}_{one('select id from transporters where code=?', 'DM-VTC')}": today}),
         ("m15-audit", "export"): lambda: w.get("/reports/audit/export?fmt=csv&date_from=2026-01-01"),
     }
+
+    for lesson, kw in (("m07-long", {}), ("m08-trip", {}), ("m09-box", {}), ("d03-pawati", {"pawati": True})):
+        actions.update(trip_steps(w, path, lesson, **kw))       # labels, act as the gate staff, scan the cases, scan the gatepass
 
     for code in PATHS["MASTER"]["lessons"]:
         w.post("/training/start", data={})

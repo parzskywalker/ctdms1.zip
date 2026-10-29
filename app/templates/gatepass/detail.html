@@ -14,9 +14,12 @@
       <button class="btn {{ 'btn-primary' if not slip.print_count else '' }}" type="submit" name="mode" value="print" data-key="F8" {% if (slip.print_count and not can('dispatch.reprint')) or labels_pending %}disabled{% endif %}{% if labels_pending %} title="Print the case labels first"{% endif %}>{{ 'Print gatepass' if not slip.print_count else 'Reprint' }}</button>
       <button class="btn" type="submit" name="mode" value="pdf" {% if (slip.print_count and not can('dispatch.reprint')) or labels_pending %}disabled{% endif %}>PDF</button>
     </form>
-    {% if labels_pending and not slip.print_count %}<div class="alert alert-warn" style="margin:6px 0 0"><b>1. Print the case labels first</b> ({{ labels_pending }} of {{ slip.total_cases }} not printed) - <a href="/gatepass/{{ slip.id }}/labels" target="_blank">Print the labels</a> - then <b>2. print the gatepass</b>.</div>{% endif %}
+    {% if needs_conversion %}<div class="alert alert-warn" style="margin:6px 0 0"><b>1. Make the case labels</b> for this gatepass (it was made before they were mandatory) - then <b>2. print the labels</b> - then <b>3. print the gatepass</b>.</div>
+    {% elif labels_pending %}<div class="alert alert-warn" style="margin:6px 0 0"><b>1. Print the case labels first</b> ({{ labels_pending }} of {{ slip.total_cases }} not printed) - <a href="/gatepass/{{ slip.id }}/labels" target="_blank">Print the labels</a> - then <b>2. print the gatepass</b>.</div>{% endif %}
+    {% if not needs_conversion %}
     <a class="btn" href="/gatepass/{{ slip.id }}/labels" target="_blank" title="One label per case, 100 × 50 mm">Case labels</a>
     <a class="btn" href="/gatepass/{{ slip.id }}/labels?sheet=a4" target="_blank" title="10 labels per A4 sheet">Labels (A4)</a>
+    {% endif %}
     {% endif %}
     {% if can('dispatch.operate') %}<a class="btn" href="/gatepass/new" data-key="F2">New gatepass</a>{% endif %}
   </div>
@@ -32,7 +35,7 @@
   <div class="kpi"><div class="lbl">Freight</div><div class="val">{{ slip.freight_total|money }}</div><div class="hint">{% if slip.pickup_charge %}+ pickup {{ slip.pickup_charge|money }}{% endif %}{% if slip.auto_charge %} + auto {{ slip.auto_charge|money }}{% endif %}</div></div>
   <div class="kpi"><div class="lbl">Total charged</div><div class="val">{{ slip.total_charge|money }}</div></div>
   <div class="kpi {% if slip.balance > 0 %}warn{% else %}good{% endif %}"><div class="lbl">Paid at dispatch</div><div class="val">{{ slip.amount_paid|money }}</div><div class="hint">{% if slip.balance > 0 %}{{ slip.balance|money }} to be billed{% else %}nothing to bill{% endif %}</div></div>
-  <div class="kpi {% if slip.gate_out_at %}good{% endif %}"><div class="lbl">Gate-out</div><div class="val" style="font-size:16px">{{ slip.gate_out_at|dt if slip.gate_out_at else 'Not yet' }}</div><div class="hint">{{ slip.gate_out_by.full_name if slip.gate_out_by else ('printed ×%d'|format(slip.print_count) if slip.print_count else 'not printed') }}</div></div>
+  <div class="kpi {% if slip.gate_out_at %}good{% endif %}"><div class="lbl">Gone out</div><div class="val" style="font-size:16px">{{ slip.gate_out_at|dt if slip.gate_out_at else 'Not yet' }}</div><div class="hint">{{ slip.gate_out_by.full_name if slip.gate_out_by else ('printed ×%d'|format(slip.print_count) if slip.print_count else 'not printed') }}</div></div>
 </div>
 
 <div class="grid g-side">
@@ -68,7 +71,19 @@
   </form>
 
   <div>
-    {% if slip.case_control == 'REQUIRED' and not slip.is_void %}
+    {% if needs_conversion %}
+    <div class="card" id="legacy-labels">
+      <h3 style="margin-top:0">Case labels needed</h3>
+      <p class="small" style="margin:0 0 8px">This gatepass was made before case labels were mandatory. Every carton needs its own barcode label: the goods leave only when the gate staff scan every case and then the gatepass.</p>
+      {% if can('case.print') %}
+      <form method="post" action="/gatepass/{{ slip.id }}/make-labels" class="stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <button class="btn btn-primary" type="submit" data-confirm="Make the case labels for {{ slip.dispatch_no }}? One barcode is made for every carton still to leave.">Make the case labels for this gatepass</button>
+      </form>
+      {% else %}<p class="small muted" style="margin:0">Ask the dispatch desk (case.print) to make them.</p>{% endif %}
+      {% if complete_blockers %}<ul class="blockers">{% for b in complete_blockers %}<li>{{ b }}</li>{% endfor %}</ul>{% endif %}
+    </div>
+    {% elif slip.case_control == 'REQUIRED' and not slip.is_void %}
     <div class="card" id="gate-status">
       <h3 style="margin-top:0">At the gate</h3>
       {% if slip.gate_out_at %}
@@ -80,14 +95,6 @@
         {% if complete_blockers %}<ul class="blockers">{% for b in complete_blockers %}<li>{{ b }}</li>{% endfor %}</ul>{% endif %}
       {% endif %}
     </div>
-    {% elif not slip.is_void and not slip.gate_out_at and can('dispatch.complete') %}
-    <form method="post" action="/gatepass/{{ slip.id }}/gate-out" class="card stack">
-      <input type="hidden" name="csrf_token" value="{{ csrf }}">
-      <h3 style="margin:0">Gate-out</h3>
-      <p class="small muted" style="margin:0">Confirms that the goods physically left with this gatepass. All {{ slip.invoice_count }} invoice(s) become DISPATCHED. Rule: gatepass must be <b>{{ rule }}</b>.</p>
-      {% if complete_blockers %}<ul class="blockers">{% for b in complete_blockers %}<li>{{ b }}</li>{% endfor %}</ul>{% endif %}
-      <button class="btn btn-ok" type="submit" data-key="F9" {% if complete_blockers %}disabled{% endif %} data-confirm="Record gate-out of {{ slip.dispatch_no }} ({{ slip.total_cases }} cases)?">Record gate-out</button>
-    </form>
     {% endif %}
     <div class="card">
       <h3 style="margin-top:0">Carrier</h3>

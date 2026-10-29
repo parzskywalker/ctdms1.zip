@@ -356,7 +356,7 @@ def detail(slip_id: int, request: Request, db: Session = Depends(get_db), user: 
             LabelPrintLog.slip_id == slip.id).order_by(LabelPrintLog.id.desc()))}.values()) if cases else [],
         "title": f"Gatepass {slip.dispatch_no}", "slip": slip, "groups": list(groups.values()), "invs": invs,
         "print_events": print_events, "complete_blockers": complete_blockers, "alerts": alerts,
-        "slip_size": cfg.get(db, "dispatch.default_slip_size"), "rule": cfg.get(db, "dispatch.complete_requires")})
+        "needs_conversion": cs.needs_conversion(slip), "slip_size": cfg.get(db, "dispatch.default_slip_size")})
 
 
 @router.get("/gatepass/{slip_id:int}/labels")
@@ -369,6 +369,9 @@ def case_labels(slip_id: int, request: Request, db: Session = Depends(get_db),
         raise BusinessError("This gatepass is void - no labels")
     if slip.case_control == "REQUIRED":
         return _case_labels(request, db, user, slip)
+    if cs.needs_conversion(slip):
+        raise BusinessError(f"Gatepass {slip.dispatch_no} has no case labels yet - choose Make the case labels for this "
+                            "gatepass on the gatepass screen")
     line_by_inv = {ln.invoice_id: ln for ln in slip.lines}
     groups: OrderedDict = OrderedDict()
     for inv in ds.slip_invoices(db, slip):
@@ -452,19 +455,15 @@ def print_slip(slip_id: int, request: Request, form=Depends(get_form), db: Sessi
     return print_response(request, [(slip.snapshot, *_label(slip, log))], size, mode)
 
 
-@router.post("/gatepass/{slip_id:int}/gate-out")
-def gate_out(slip_id: int, request: Request, form=Depends(get_form), db: Session = Depends(get_db),
-             user: User = Depends(require("dispatch.complete"))):
+@router.post("/gatepass/{slip_id:int}/make-labels")
+def make_labels(slip_id: int, request: Request, db: Session = Depends(get_db), user: User = Depends(require("case.print"))):
+    """A gatepass made before case labels were mandatory gets its case labels (one barcode per carton still to leave)."""
     slip = _slip(db, user, slip_id)
-    try:
-        n = ds.gate_out(db, user, slip)
-    except BusinessError:
-        db.commit()  # keep the GATE_OUT_BLOCKED audit entry
-        raise
+    n = cs.convert_legacy(db, user, slip)
     db.commit()
-    flash(request, f"Gatepass {slip.dispatch_no}: {n} invoice(s) DISPATCHED (gate-out recorded).", "success")
-    back = form.get("back")
-    return redirect("/gatepass/gate" if back == "gate" else f"/gatepass/{slip.id}")
+    flash(request, f"{n} case label(s) made for gatepass {slip.dispatch_no}. Print the labels, then print the gatepass.",
+          "success")
+    return redirect(f"/gatepass/{slip.id}")
 
 
 @router.post("/gatepass/{slip_id:int}/void")

@@ -26,7 +26,6 @@ from app.security.auth import (
 from app.services import audit
 from app.services import dispatch_service as ds
 from app.services.dashboard import dashboard_data, ops_dashboard_data
-from app.services.errors import BusinessError
 from app.services.freight_engine import calc_freight, find_rate
 from app.services.import_service import Resolver, ingest_records
 from app.services.pdf_service import dispatch_slips_pdf
@@ -321,10 +320,10 @@ def verify(invoice_id: int, db: Session = Depends(get_db), user: User = Depends(
 
 @router.post("/invoices/{invoice_id:int}/generate-slip", tags=["dispatch"], dependencies=[Depends(api_csrf)])
 def generate(invoice_id: int, db: Session = Depends(get_db), user: User = Depends(require("dispatch.operate"))):
-    inv = _get(db, user, invoice_id)
-    slip = ds.generate_slip(db, user, inv)
-    db.commit()
-    return {"dispatch_no": slip.dispatch_no, "invoice": _inv_out(inv, user)}
+    """Retired (v1.7.2): goods leave on a gatepass - Scan & Gatepass on the dispatch desk."""
+    _get(db, user, invoice_id)
+    raise HTTPException(400, "A slip per invoice is retired. Make a gatepass on the dispatch desk (Scan & Gatepass); its "
+                             "case labels are printed first, then the gatepass.")
 
 
 @router.post("/invoices/{invoice_id:int}/print", tags=["dispatch"], dependencies=[Depends(api_csrf)])
@@ -342,15 +341,11 @@ def print_slip(invoice_id: int, size: str = "A5", reason: str | None = None, db:
 
 
 @router.post("/invoices/{invoice_id:int}/complete", tags=["dispatch"], dependencies=[Depends(api_csrf)])
-def complete(invoice_id: int, db: Session = Depends(get_db), user: User = Depends(require("dispatch.complete"))):
-    inv = _get(db, user, invoice_id)
-    try:
-        ds.complete(db, user, inv)
-    except BusinessError:
-        db.commit()
-        raise
-    db.commit()
-    return _inv_out(inv, user)
+def complete(invoice_id: int, db: Session = Depends(get_db), user: User = Depends(require("dispatch.view"))):
+    """Retired (v1.7.2): goods are marked gone out only by the gate staff's scan of every case label and then the gatepass."""
+    _get(db, user, invoice_id)
+    raise HTTPException(400, "Gone out cannot be recorded through the API. The gate staff scan every case label and then "
+                             "the gatepass.")
 
 
 @router.post("/invoices/{invoice_id:int}/cancel", tags=["dispatch"], dependencies=[Depends(api_csrf)])

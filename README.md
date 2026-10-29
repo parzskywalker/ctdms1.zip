@@ -59,10 +59,14 @@ docker compose --profile https up -d   # + automatic HTTPS for CTDMS_DOMAIN (Cad
 | `gate.raipur` | `Demo@123` | Dispatch / Gate Staff (scans cases and gatepasses) | Raipur CFA |
 | `gate.bilaspur` | `Demo@123` | Dispatch / Gate Staff | Bilaspur CFA |
 | `operator.durg` | `Demo@123` | Dispatch Operator | Durg CFA |
+| `gate.durg` | `Demo@123` | Dispatch / Gate Staff | Durg CFA |
 | `checker` | `Demo@123` | Checker / Approver | all |
 | `viewer` | `Demo@123` | Read-only Viewer (limited operational screens; no reports, no export) | all |
 
-The login page lists them (click to fill) while `CTDMS_SHOW_DEMO_LOGINS=true`. **Change or remove them before go-live.**
+The login page lists them (click to fill) while `CTDMS_SHOW_DEMO_LOGINS=true`. One list (`app/demo_users.py`) feeds the seed, the
+login page and `start_demo`: when you keep your `data/` folder, `start_demo` adds the demo logins a newer version brought (for
+example the gate staff) to a **demo** database - it never touches an existing user or password, and does nothing on a database
+whose administrator no longer has the demo password. **Change or remove them before go-live.**
 
 ### Who sees what (v1.6.1)
 

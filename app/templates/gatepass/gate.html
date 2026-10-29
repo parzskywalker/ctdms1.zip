@@ -2,7 +2,7 @@
 {% from "_macros.html" import badge with context %}
 {% block content %}
 <div class="page-head">
-  <div><h1>Gate check</h1><div class="sub">Scan the barcode on the printed gatepass (or type its number). Goods leave only on a printed, valid gatepass.</div></div>
+  <div><h1>Gate check</h1><div class="sub">Scan every case label, then the barcode on the printed gatepass (or type its number). Goods leave only on a printed, valid gatepass whose cases are all scanned.</div></div>
 </div>
 <form method="get" class="card row" style="align-items:flex-end">
   <div style="flex:1 1 300px"><label for="gate-code">Gatepass number</label><input id="gate-code" type="text" name="code" value="{{ code }}" autofocus autocomplete="off" placeholder="DS/RPR/2627/00012 or the last digits"></div>
@@ -20,7 +20,7 @@
     <div class="alert alert-error" style="font-size:16px"><b>STOP — not cleared.</b><ul>{% for b in blockers %}<li>{{ b }}</li>{% endfor %}</ul></div>
   {% else %}
     {% if prog %}<div class="alert alert-success" style="font-size:16px"><b>All cases scanned{% if prog.exception %} (exception recorded){% endif %}.</b> Now scan the gatepass barcode to mark it gone out.</div>
-    {% else %}<div class="alert alert-success" style="font-size:16px"><b>Cleared.</b> Count the cases, then confirm gate-out.</div>{% endif %}
+    {% else %}<div class="alert alert-error" style="font-size:16px"><b>STOP — no case labels.</b> This gatepass cannot go out until its case labels are made and printed (dispatch desk).</div>{% endif %}
   {% endif %}
   {% if prog and not slip.is_void and not slip.gate_out_at and not can('gate.scan') %}
   <div class="alert alert-info">Waiting at the gate: <b>{{ prog.scanned }} / {{ prog.total }}</b> cases scanned. Gone out is recorded when the gate staff scan every case and then the gatepass.</div>
@@ -29,14 +29,15 @@
   <div class="card" id="gate-scan" data-slip="{{ slip.id }}" data-no="{{ slip.dispatch_no }}" data-auto="{{ autoscan }}" data-finish="{{ autofinish }}" data-total="{{ prog.total }}">
     <div class="row" style="align-items:center;gap:16px;flex-wrap:wrap">
       <div style="flex:1 1 320px"><label for="case-code"><b>Scan each case</b>, then the gatepass <span class="muted small">(the barcode on each label, and last the one on the gatepass - the cursor stays here)</span></label>
-        <input id="case-code" type="text" autocomplete="off" inputmode="numeric" placeholder="scan a case label" data-enter-skip {% if not autoscan %}autofocus{% endif %}></div>
+        <input id="case-code" type="text" autocomplete="off" inputmode="numeric" placeholder="scan a case label - and last, the gatepass" data-enter-skip {% if not autoscan %}autofocus{% endif %}></div>
       <div style="text-align:center"><div class="bigfig" id="gs-count" style="font-size:38px">{{ prog.scanned }} / {{ prog.total }}</div><div class="small muted">cases scanned</div></div>
     </div>
     <div id="gs-msg" class="alert" role="status" aria-live="assertive" style="margin:10px 0 0;font-size:17px" hidden></div>
+    {% if training %}<div class="small" style="margin-top:8px"><button type="button" class="btn btn-sm" id="gs-practice">Practice scanner: scan all the cases</button> <span class="muted">training only - at the real gate the scanner types each code; the gatepass number is then typed (or scanned) in the box above</span></div>{% endif %}
     <div class="table-wrap" style="margin-top:10px"><table class="data compact" id="gs-inv"><thead><tr><th>Invoice</th><th class="num">Scanned</th></tr></thead>
       <tbody>{% for r in prog.per_invoice %}<tr data-inv="{{ r.invoice.invoice_no }}"><td>{{ r.invoice.invoice_no }} <span class="muted small">{{ r.invoice.customer.name }}</span></td><td class="num"><b>{{ r.scanned }} / {{ r.total }}</b></td></tr>{% endfor %}</tbody></table></div>
     <details id="gs-missing" {% if prog.missing and prog.scanned %}open{% endif %} style="margin-top:8px"><summary class="small"><b id="gs-missing-n">{{ prog.missing|length }}</b> case(s) not scanned yet</summary>
-      <div class="small mono" id="gs-missing-list" style="max-height:140px;overflow:auto">{% for c in prog.missing %}<div>{{ c.invoice.invoice_no }} · {{ c.seq_in_consignment }}/{{ c.consignment_total }} · {{ c.case_code }}</div>{% endfor %}</div></details>
+      <div class="small mono" id="gs-missing-list" style="max-height:140px;overflow:auto">{% for c in prog.missing %}<div data-code="{{ c.case_code }}">{{ c.invoice.invoice_no }} · {{ c.seq_in_consignment }}/{{ c.consignment_total }} · {{ c.case_code }}</div>{% endfor %}</div></details>
     {% if prog.exception %}<div class="alert alert-warn" style="margin-top:8px">Exception recorded by {{ slip.gate_exception_by.full_name if slip.gate_exception_by else '' }}: {{ slip.gate_exception_reason }}</div>
     {% elif can_exception and prog.missing %}
     <form method="post" action="/gatepass/{{ slip.id }}/gate-exception" class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap">
@@ -56,13 +57,6 @@
       </table></div>
     </div>
     <div>
-      {% if not slip.is_void and not slip.gate_out_at and not blockers and not prog and can('dispatch.complete') %}
-      <form method="post" action="/gatepass/{{ slip.id }}/gate-out" class="card stack">
-        <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="back" value="gate">
-        <h3 style="margin:0">{{ slip.total_cases }} cases counted?</h3>
-        <button class="btn btn-ok btn-lg" type="submit" data-key="F9">Confirm gate-out</button>
-      </form>
-      {% endif %}
       <div class="card"><dl class="dl tight"><dt>Date</dt><dd>{{ slip.dispatch_date|date }}</dd><dt>Printed</dt><dd>{{ '×%d'|format(slip.print_count) if slip.print_count else 'NO' }}</dd><dt>Invoices</dt><dd>{{ slip.invoice_count }}</dd></dl></div>
     </div>
   </div>
@@ -99,7 +93,7 @@
     if (j.total != null) document.getElementById('gs-count').textContent = j.scanned + ' / ' + j.total;
     (j.per_invoice || []).forEach((r) => { const tr = box.querySelector('tr[data-inv="' + r.invoice + '"] td.num'); if (tr) tr.innerHTML = '<b>' + r.scanned + ' / ' + r.total + '</b>'; });
     document.getElementById('gs-missing-n').textContent = (j.missing || []).length;
-    document.getElementById('gs-missing-list').innerHTML = (j.missing || []).map((c) => '<div>' + esc(c.invoice) + ' · ' + c.k + '/' + c.n + ' · ' + esc(c.code) + '</div>').join('');
+    document.getElementById('gs-missing-list').innerHTML = (j.missing || []).map((c) => '<div data-code="' + esc(c.code) + '">' + esc(c.invoice) + ' · ' + c.k + '/' + c.n + ' · ' + esc(c.code) + '</div>').join('');
     if (j.gone_out) setTimeout(() => { location.href = '/gatepass/gate?code=' + encodeURIComponent(box.dataset.no); }, 1500);
   }
   async function send(code) {
@@ -111,6 +105,13 @@
     input.value = ''; input.focus();
   }
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); const c = input.value.trim(); if (c) send(c); } });
+  const practice = document.getElementById('gs-practice');  // Guided Training only: stands in for the hand scanner
+  if (practice) practice.addEventListener('click', async () => {
+    practice.disabled = true;
+    const codes = Array.from(document.querySelectorAll('#gs-missing-list [data-code]')).map((d) => d.dataset.code);
+    for (const c of codes) { await send(c); await new Promise((r) => setTimeout(r, 120)); }
+    practice.disabled = false;
+  });
   if (box.dataset.auto) send(box.dataset.auto);
   else if (box.dataset.finish) send(box.dataset.no);
 })();

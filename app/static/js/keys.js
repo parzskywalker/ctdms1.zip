@@ -1,8 +1,8 @@
 // CTDMS keyboard-first layer (v1.6). Every daily screen can be worked from the keyboard; the mouse is optional.
 //
 // One key = one meaning on every screen:
-//   F1 help · F2 new · F3 go to screen · F4 search · F6 save · F7 edit · F8 generate / print slip
-//   F9 complete dispatch · F10 reports · Esc close / back · Enter next field · arrows move in lists · Space ticks
+//   F1 help · F2 new · F3 go to screen · F4 search · F6 save · F7 edit · F8 make the gatepass / print
+//   F10 reports · Esc close / back · Enter next field · arrows move in lists · Space ticks
 // F5 (refresh), F11 (full screen) and F12 are left to the browser.
 //
 // Screens say which button a key presses with data-key="F6" (a hint "F6" is added to the button).
@@ -23,8 +23,7 @@
     ['F4', 'Search', 'Put the cursor in the search box of this screen'],
     ['F6', 'Save', 'Save the form you are working in (also Ctrl+S)'],
     ['F7', 'Edit', 'Edit the record on screen'],
-    ['F8', 'Slip / Print', 'Generate the gatepass / dispatch slip, or print it'],
-    ['F9', 'Complete', 'Complete the dispatch (record gate-out)'],
+    ['F8', 'Gatepass / Print', 'Make the gatepass, or print it'],
     ['F10', 'Reports', 'Open the reports'],
     ['Esc', 'Back', 'Close a list, message or dialog; otherwise back one screen'],
   ];

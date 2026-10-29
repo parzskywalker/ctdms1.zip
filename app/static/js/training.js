@@ -52,6 +52,7 @@
       else if (k === 'text') { const e = el(v[0]); ok = !!e && v.slice(1).every((t) => new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\|/g, '|'), 'i').test(e.innerText)); }
       else if (k === 'notext') { const e = el(v[0]); ok = !e || !new RegExp(v[1], 'i').test(e.innerText); }
       else if (k === 'self') ok = !st.acting;
+      else if (k === 'acting') ok = st.acting === v;
       else if (k === 'key') ok = !!keySeen[v];
       if (!ok) return false;
     }
@@ -136,7 +137,7 @@
     h += line('What it does', S.what) + line('Why it matters', S.why) + line('Do this', S.do, 'do') + line('Keys', S.keys, 'keys') + line('You should see', S.expect);
     if (S.files && S.files.length) h += `<div class="trn-files">${S.files.map((f) => `<a class="btn btn-sm" href="${esc(f.url)}" download>⬇ ${esc(f.name)}</a>`).join(' ')}</div>`;
     if (!onPage && S.page) h += `<div class="trn-go">Screen: <a href="${esc(S.page)}" data-go>open ${esc(S.page)}</a></div>`;
-    if (S.acting && st.acting !== S.acting) h += `<div class="trn-actions"><button type="button" class="btn" data-a="as" data-who="${esc(S.acting)}">Act as Demo Checker</button></div>`;
+    if (S.acting && st.acting !== S.acting) h += `<div class="trn-actions"><button type="button" class="btn" data-a="as" data-who="${esc(S.acting)}">Act as ${S.acting === 'demo.gate' ? 'Demo Gate Staff' : 'Demo Checker'}</button></div>`;
     else if ((st.demo_users || []).length && !st.acting && /checker/i.test(S.do || '')) h += `<div class="trn-actions"><button type="button" class="btn" data-a="as" data-who="demo.checker">Act as Demo Checker</button></div>`;
     if (msg && msg.text) h += `<div class="trn-msg ${msg.ok === true ? 'ok' : msg.ok === false ? 'err' : 'hint'}" role="status">${msg.ok === true ? '✓ ' : msg.ok === false ? '✗ ' : ''}${esc(msg.text)}</div>`;
     const prim = S.kind === 'check' ? 'Check' : S.kind === 'ui' ? 'Check' : 'Next';

@@ -89,45 +89,50 @@ def test_10_pending_dispatch_queue(api, web):
 
 
 # 11-16 ----------------------------------------------------------------------------------------------
-def test_11_16_dispatch_workflow_with_mandatory_slip(api, web, db):
+def test_11_16_dispatch_workflow_with_mandatory_labels_print_and_gate_scan(api, web, db):
+    from tests.helpers import local_auto, web_walk_out
     inv = make_invoice(api("admin"), company="COB", cfa="RPR", customer="C-XYZ01", boxes=20)  # 20 x 7 = 140
     w = web("operator.raipur")
     iid = inv["id"]
     tr = db.scalar(select(Transporter).where(Transporter.code == "SBT"))
     today = local_today().isoformat()
-    form = {"transporter_id": tr.id, "vehicle_no": "cg07 bt 1010", "lr_no": "sbt-t-1", "dispatch_date": today,
-            "dispatch_time": "15:30", "remarks": "test"}
-    # 11/12 transporter, vehicle, LR saved (normalised) + verify
-    r = w.post(f"/dispatch/{iid}/verify", form)
-    assert r.status_code == 200
-    i = get_inv(iid)
-    assert i.status == "VERIFIED" and i.vehicle_no == "CG07BT1010" and i.lr_no == "SBT-T-1"
-    assert i.transporter_id == tr.id
-    # 15 completion blocked before slip exists / before printing
-    w.post(f"/dispatch/{iid}/complete")
+    # 12 verify (boxes and freight)
+    assert w.post(f"/dispatch/{iid}/verify").status_code == 200
     assert get_inv(iid).status == "VERIFIED"
-    # 13 slip generation -> unique dispatch number
-    w.post(f"/dispatch/{iid}/generate", form)
+    # 13 the goods leave on a gatepass (no slip per invoice any more) -> unique dispatch number
+    la = local_auto()
+    r = w.post("/gatepass/new", {"ids": [str(iid)], "dispatch_date": today, "mode": "TRANSPORTER", "transporter_id": str(tr.id),
+                                "pickup_mode": "OUTSIDE_AUTO", "outside_auto_id": str(la["outside_auto_id"]),
+                                "auto_method": "PER_TRIP", "trip_charge": "300", f"cases_{iid}": "20"})
+    sid = int(str(r.url).rsplit("/", 1)[1])
     i = get_inv(iid)
     assert i.status == "SLIP_GENERATED" and i.dispatch_no.startswith("DS/RPR/")
-    r = w.post(f"/dispatch/{iid}/complete")
-    assert "must be generated AND printed" in r.text
+    # 15 nobody can send it out yet: the gate staff scan the gatepass - refused (not printed, cases not scanned), audited
+    g = web("gate.raipur")
+    res = g.post("/gatepass/scan-case", data={"code": i.dispatch_no, "slip_id": str(sid)}).json()
+    assert not res["ok"] and "must be printed" in res["message"]
     assert get_inv(iid).status == "SLIP_GENERATED"
-    blocked = db.scalar(select(func.count(AuditLog.id)).where(AuditLog.action == "COMPLETE_BLOCKED",
-                                                              AuditLog.record_id == str(iid)))
+    blocked = db.scalar(select(func.count(AuditLog.id)).where(AuditLog.action == "GATE_OUT_BLOCKED",
+                                                              AuditLog.ref == i.dispatch_no))
     assert blocked >= 1
-    # 14 print (HTML) and PDF
-    r = w.post(f"/dispatch/{iid}/print", {"size": "A5", "mode": "print"})
+    # 14 the case labels come first, then the gatepass (HTML and PDF); a reprint needs a reason
+    r = w.post(f"/gatepass/{sid}/print", {"size": "A5", "mode": "print"})
+    assert "Print the case labels first" in r.text and get_inv(iid).status == "SLIP_GENERATED"
+    from app.models import DispatchCase
+    ids = ",".join(str(x) for x in db.scalars(select(DispatchCase.id).where(DispatchCase.slip_id == sid)))
+    w.post(f"/gatepass/{sid}/labels/confirm", {"case_ids": ids, "result": "PRINTED"})
+    r = w.post(f"/gatepass/{sid}/print", {"size": "A5", "mode": "print"})
     assert r.status_code == 200 and i.dispatch_no in r.text and "ORIGINAL" in r.text
     assert get_inv(iid).status == "SLIP_PRINTED"
-    r = w.post(f"/dispatch/{iid}/print", {"size": "A4", "mode": "pdf"})  # reprint without reason -> refused
+    r = w.post(f"/gatepass/{sid}/print", {"size": "A4", "mode": "pdf"})  # reprint without reason -> refused
     assert "Reason is mandatory" in r.text
-    r = w.post(f"/dispatch/{iid}/print", {"size": "A4", "mode": "pdf", "reason": "Transporter copy lost"})
+    r = w.post(f"/gatepass/{sid}/print", {"size": "A4", "mode": "pdf", "reason": "Transporter copy lost"})
     assert r.headers["content-type"] == "application/pdf" and r.content[:4] == b"%PDF"
     logs = db.scalars(select(SlipPrintLog).where(SlipPrintLog.invoice_id == iid).order_by(SlipPrintLog.id)).all()
     assert [lg.is_reprint for lg in logs] == [False, True] and logs[1].reason == "Transporter copy lost"
-    # 16 completion
-    w.post(f"/dispatch/{iid}/complete")
+    # 16 completion: only the gate staff's scan of every case and then the gatepass
+    res = web_walk_out(sid, desk="operator.raipur", gate="gate.raipur")
+    assert res["ok"] and res["gone_out"]
     i = get_inv(iid)
     assert i.status == "DISPATCHED" and i.completed_by_id is not None and i.erp_sync_status == "PENDING"
 

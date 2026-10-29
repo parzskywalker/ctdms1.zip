@@ -14,7 +14,7 @@
 </div>
 
 <div class="stepper">
-  {% for s, lbl in [('PENDING','Pending'),('VERIFIED','Verified'),('SLIP_GENERATED','Slip generated'),('SLIP_PRINTED','Slip printed'),('DISPATCHED','Dispatched')] %}
+  {% for s, lbl in [('PENDING','Pending'),('VERIFIED','Verified'),('SLIP_GENERATED','On a gatepass'),('SLIP_PRINTED','Gatepass printed'),('DISPATCHED','Gone out')] %}
     {% set i = loop.index0 %}
     <div class="st {% if st in ['RATE_MISSING','EXCEPTION'] and i == 0 %}bad{% elif st == 'CANCELLED' %}{% elif i < idx or (st == 'DISPATCHED') %}done{% elif i == idx %}now{% endif %}">
       <b>{{ loop.index }}. {{ lbl }}</b>
@@ -62,84 +62,52 @@
       {% endif %}
     </div>
 
-    <form method="post" action="/dispatch/{{ inv.id }}/save" class="card" id="dispatch-form">
-      <input type="hidden" name="csrf_token" value="{{ csrf }}">
-      <div class="card-head"><h3>Dispatch details</h3>{% if not acts.can_edit and st not in ['DISPATCHED','CANCELLED'] %}{% if can('dispatch.operate') %}<span class="badge b-SLIP_GENERATED">Locked after slip generation</span>{% else %}<span class="badge">Read-only for your role</span>{% endif %}{% endif %}</div>
-      {% set ro = not acts.can_edit %}
-      <div class="form-grid">
-        <div class="w2"><label>Transporter <span class="req">*</span></label>
-          <select name="transporter_id" {% if ro %}disabled{% endif %} autofocus>
-            <option value="">— select transporter —</option>
-            {% for t in transporters %}<option value="{{ t.id }}" data-code="{{ t.code }}" {% if inv.transporter_id == t.id %}selected{% endif %}>{{ t.name }}{% if t.service_area %} · {{ t.service_area }}{% endif %}</option>{% endfor %}
-            {% if inv.transporter and not inv.transporter.is_active %}<option selected value="{{ inv.transporter_id }}">{{ inv.transporter.name }} (inactive)</option>{% endif %}
-          </select></div>
-        <div><label>Vehicle No <span class="req">*</span></label><input type="text" name="vehicle_no" value="{{ inv.vehicle_no or '' }}" placeholder="CG04AB1234" data-upper {% if ro %}readonly{% endif %}></div>
-        <div><label>LR / Docket No <span class="req">*</span></label><input type="text" name="lr_no" value="{{ inv.lr_no or '' }}" data-upper {% if ro %}readonly{% endif %}></div>
-        <div><label>Dispatch date <span class="req">*</span></label><input type="date" name="dispatch_date" value="{{ (inv.dispatch_date or default_date).isoformat() }}" {% if ro %}readonly{% endif %}></div>
-        <div><label>Dispatch time <span class="req">*</span></label><input type="time" name="dispatch_time" value="{{ (inv.dispatch_time or default_time).strftime('%H:%M') }}" {% if ro %}readonly{% endif %}></div>
-        <div class="w2"><label>Remarks</label><input type="text" name="remarks" value="{{ inv.remarks or '' }}" {% if ro %}readonly{% endif %}></div>
-      </div>
-      {% if acts.can_edit %}
-      <div class="form-actions">
-        <button class="btn" type="submit" data-key="F6">Save draft</button>
-        {% if acts.can_verify %}<button class="btn btn-accent" type="submit" formaction="/dispatch/{{ inv.id }}/verify">✓ Verify boxes &amp; freight</button>{% endif %}
-        <button class="btn btn-primary" type="submit" formaction="/dispatch/{{ inv.id }}/generate" data-key="F8">Generate Dispatch Slip</button>
-      </div>
-      {% if acts.slip_blockers %}
-        <ul class="blockers">{% for b in acts.slip_blockers %}<li>{{ b }}</li>{% endfor %}</ul>
+    <div class="card" id="dispatch-form">
+      <div class="card-head"><h3>How it goes out</h3>{% if slip %}<a class="mono strong" href="/gatepass/{{ slip.id }}">{{ slip.dispatch_no }}</a>{% endif %}</div>
+      {% if slip %}
+        <dl class="dl tight">
+          <dt>Gatepass</dt><dd><a href="/gatepass/{{ slip.id }}">{{ slip.dispatch_no }}</a> · {{ slip.mode_label }} · {{ slip.dispatch_date|date }}</dd>
+          {% if slip.transporter %}<dt>Transporter</dt><dd>{{ slip.transporter.name }}</dd>{% endif %}
+          {% if slip.outside_auto %}<dt>Local auto</dt><dd>{{ slip.outside_auto.name }}{% if slip.vehicle_no %} · {{ slip.vehicle_no }}{% endif %}</dd>{% endif %}
+          {% if inv.lr_no %}<dt>LR</dt><dd class="mono">{{ inv.lr_no }}</dd>{% endif %}
+        </dl>
+        <p class="small muted" style="margin-bottom:0">Case labels first, then the gatepass; the goods are marked gone out when the gate staff scan every case and then the gatepass.</p>
+      {% elif st in ['CANCELLED'] %}
+        <p class="muted" style="margin:0">This invoice is cancelled.</p>
+      {% else %}
+        <p style="margin-top:0">Not on a gatepass yet. Goods leave only on a gatepass: the local auto takes them to the transporter, or the customer collects.</p>
+        <div class="form-actions">
+          {% if can('dispatch.operate') and acts.can_edit %}<a class="btn btn-primary" href="/gatepass/new?ids={{ inv.id }}" data-key="F8">Make a gatepass with this invoice</a>{% endif %}
+          {% if acts.can_verify %}<form method="post" action="/dispatch/{{ inv.id }}/verify" style="display:inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn btn-accent" type="submit">✓ Verify boxes &amp; freight</button></form>{% endif %}
+        </div>
+        {% if data_warnings %}
+          <ul class="blockers soft">{% for w in data_warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+        {% endif %}
       {% endif %}
-      {% if data_warnings %}
-        <ul class="blockers soft">{% for w in data_warnings %}<li>{{ w }}</li>{% endfor %}</ul>
-      {% endif %}
-      {% endif %}
-    </form>
+    </div>
   </div>
 
   <div>
     <div class="card">
-      <div class="card-head"><h3>Dispatch slip</h3>{% if inv.dispatch_no %}<span class="mono strong">{{ inv.dispatch_no }}</span>{% endif %}</div>
-      {% if acts.can_print or acts.can_reprint %}
-        <form method="post" action="/dispatch/{{ inv.id }}/print" target="_blank" data-refresh-after class="stack">
-          <input type="hidden" name="csrf_token" value="{{ csrf }}">
-          <div class="row">
-            <label class="check"><input type="radio" name="size" value="A5" {% if slip_size == 'A5' %}checked{% endif %}>A5</label>
-            <label class="check"><input type="radio" name="size" value="A4" {% if slip_size == 'A4' %}checked{% endif %}>A4</label>
-          </div>
-          {% if inv.print_count > 0 %}
-            <div><label>Reprint reason <span class="req">*</span></label><input type="text" name="reason" id="reprint-reason" placeholder="e.g. Printer jam / transporter copy lost"><div class="field-hint">Printed {{ inv.print_count }}× already. Every reprint is logged.</div></div>
-          {% endif %}
-          <div class="action-bar">
-            <button class="btn {{ 'btn-primary btn-lg' if inv.print_count == 0 else '' }}" type="submit" name="mode" value="print" data-key="F8" {% if inv.print_count > 0 %}data-require-reason="#reprint-reason"{% endif %}>🖨 {{ 'Print Slip' if inv.print_count == 0 else 'Reprint' }}</button>
-            <button class="btn" type="submit" name="mode" value="pdf" {% if inv.print_count > 0 %}data-require-reason="#reprint-reason"{% endif %}>PDF</button>
-          </div>
-        </form>
-      {% elif st in ['PENDING','VERIFIED','RATE_MISSING','EXCEPTION'] %}
-        <p class="muted">Generate the slip first. Print is enabled once the dispatch number is issued.</p>
-      {% elif inv.dispatch_no and st in ['SLIP_GENERATED','SLIP_PRINTED','DISPATCHED'] %}
-        <p class="muted">Slip <b class="mono">{{ inv.dispatch_no }}</b> issued{% if inv.print_count %} · printed {{ inv.print_count }}×{% else %} · <b>not printed yet</b>{% endif %}. Printing is done by the dispatch operator.</p>
-      {% else %}
-        <p class="muted">No active slip.</p>
-      {% endif %}
+      <div class="card-head"><h3>Gatepass print log</h3></div>
       {% if prints %}
-        <hr><div class="small muted">Print log</div>
         <ul class="timeline">{% for p in prints %}<li><b>#{{ p.print_no }}</b> {{ 'reprint' if p.is_reprint else 'first print' }} · {{ p.output }} · {{ p.printed_by.full_name if p.printed_by else '' }}<br><span class="muted">{{ p.printed_at|dt }}{% if p.reason %} · {{ p.reason }}{% endif %}</span></li>{% endfor %}</ul>
+      {% elif slip %}
+        <p class="muted" style="margin:0">Gatepass <b class="mono">{{ slip.dispatch_no }}</b> is <b>not printed yet</b>. Print the case labels first, then the gatepass (gatepass screen).</p>
+      {% else %}
+        <p class="muted" style="margin:0">No gatepass yet.</p>
       {% endif %}
     </div>
 
     <div class="card">
-      <div class="card-head"><h3>Complete dispatch</h3></div>
+      <div class="card-head"><h3>At the gate</h3></div>
       {% if st == 'DISPATCHED' %}
-        <div class="alert alert-success" style="margin:0">Dispatched {{ inv.completed_at|dt }} by {{ inv.completed_by.full_name }}.</div>
-      {% elif acts.can_complete %}
-        <form method="post" action="/dispatch/{{ inv.id }}/complete">
-          <input type="hidden" name="csrf_token" value="{{ csrf }}">
-          <button class="btn {{ 'btn-ok btn-lg' if not acts.complete_blockers else '' }}" type="submit" style="width:100%" data-key="F9" data-confirm="Mark invoice {{ inv.invoice_no }} as DISPATCHED? This cannot be undone.">✔ Complete Dispatch</button>
-        </form>
-        {% if acts.complete_blockers %}<ul class="blockers">{% for b in acts.complete_blockers %}<li>{{ b }}</li>{% endfor %}</ul>{% endif %}
-      {% elif acts.gate_only %}
-        <p class="muted">This gatepass has case labels: it is marked gone out when the gate staff scan every case and then the gatepass - not from here.</p>
+        <div class="alert alert-success" style="margin:0">Gone out {{ inv.completed_at|dt }}{% if inv.completed_by %} · gate scan by {{ inv.completed_by.full_name }}{% endif %}.</div>
+      {% elif st == 'CANCELLED' %}
+        <p class="muted" style="margin:0">Cancelled.</p>
       {% else %}
-        <p class="muted">You are not authorised to complete dispatches.</p>
+        <p class="small muted" style="margin-top:0">Gone out is recorded only when the gate staff scan every case label and then the gatepass - not from this screen.</p>
+        {% if acts.complete_blockers %}<ul class="blockers">{% for b in acts.complete_blockers %}<li>{{ b }}</li>{% endfor %}</ul>{% endif %}
       {% endif %}
     </div>
 
