@@ -510,12 +510,19 @@ def gate(request: Request, db: Session = Depends(get_db), user: User = Depends(r
     waiting = list(db.scalars(apply_slip_scope(select(DispatchSlip), user).where(
         DispatchSlip.is_void.is_(False), DispatchSlip.gate_out_at.is_(None)).order_by(DispatchSlip.id.desc()).limit(30)))
     prog = cs.progress(db, slip) if slip and slip.case_control == "REQUIRED" else None
+    # cases still to scan is the only thing in the way: that is progress, not a stop (the counter shows how far they are)
+    case_block = cs.gate_clear(db, slip) if prog and not slip.gate_out_at and not slip.is_void else []
+    scanning = bool(case_block) and blockers == case_block
+    # the gatepass barcode scanned into this screen marks the trip out - but only when every case is already scanned, and never
+    # when the screen is merely opened from the list (?open=1) or after an exception was recorded
+    finish = bool(slip and prog and user.can("gate.scan") and code.upper() == slip.dispatch_no.upper()
+                  and not slip.gate_out_at and not slip.is_void and not case_block
+                  and request.query_params.get("open") != "1")
     return render(request, "gatepass/gate.html", {"title": "Gate check", "code": code, "slip": slip, "invs": invs,
                                                   "blockers": blockers, "waiting": waiting, "prog": prog,
+                                                  "scanning": scanning,
                                                   "autoscan": code if cs.is_valid(code) and slip else "",
-                                                  "autofinish": bool(slip and prog and user.can("gate.scan")
-                                                                     and code.upper() == slip.dispatch_no.upper()
-                                                                     and not slip.gate_out_at and not slip.is_void),
+                                                  "autofinish": finish,
                                                   "can_exception": user.can("gate.exception"),
                                                   "not_found": bool(code and not slip)})
 
@@ -588,7 +595,7 @@ def gate_exception(slip_id: int, request: Request, form=Depends(get_form), db: S
     n = cs.record_exception(db, user, slip, form.get("reason") or "")
     db.commit()
     flash(request, f"Exception recorded: {n} case(s) marked missing. Now the gate staff scan the gatepass to let it leave.", "warn")
-    return redirect(f"/gatepass/gate?code={slip.dispatch_no}")
+    return redirect(f"/gatepass/gate?code={slip.dispatch_no}&open=1")
 
 
 @router.get("/gatepass/lr-pending")

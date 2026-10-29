@@ -231,23 +231,14 @@ def test_lr_books_import_auto_assign_change_and_exhaustion(db, world):  # noqa: 
 
 
 def test_cases_of_a_split_invoice_follow_their_receivers(db, world):  # noqa: F811
-    bsp = _test_session()
-    d = bsp.scalar(select(CFA).where(CFA.code == "BSP"))
-    d.case_control_enabled = True
-    bsp.commit()
-    try:
-        api = _token_client("admin")
-        a = _inv(api, "P3-TOWN", 5, "C-VDP01", cfa="BSP")
-        t1, t2 = world["tr"].id, world["tr2"].id
-        sid = _slip_of(_local(WebClient("admin"), [a], {0: f"{t1}:3,{t2}:2"}, db))
-        db.expire_all()
-        cases = list(db.scalars(select(DispatchCase).where(DispatchCase.slip_id == sid).order_by(DispatchCase.id)))
-        owners = [db.get(DispatchAllocation, c.allocation_id).receiving_transporter_id for c in cases]
-        assert owners == [t1, t1, t1, t2, t2]
-    finally:
-        d.case_control_enabled = False
-        bsp.commit()
-        bsp.close()
+    api = _token_client("admin")
+    a = _inv(api, "P3-TOWN", 5, "C-VDP01", cfa="BSP")
+    t1, t2 = world["tr"].id, world["tr2"].id
+    sid = _slip_of(_local(WebClient("admin"), [a], {0: f"{t1}:3,{t2}:2"}, db))
+    db.expire_all()
+    cases = list(db.scalars(select(DispatchCase).where(DispatchCase.slip_id == sid).order_by(DispatchCase.id)))
+    owners = [db.get(DispatchAllocation, c.allocation_id).receiving_transporter_id for c in cases]
+    assert owners == [t1, t1, t1, t2, t2]
 
 
 def test_migration_0015_grants_and_tables(db):

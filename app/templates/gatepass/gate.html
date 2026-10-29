@@ -2,10 +2,11 @@
 {% from "_macros.html" import badge with context %}
 {% block content %}
 <div class="page-head">
-  <div><h1>Gate check</h1><div class="sub">Scan every case label, then the barcode on the printed gatepass (or type its number). Goods leave only on a printed, valid gatepass whose cases are all scanned.</div></div>
+  <div><h1>Gate check</h1><div class="sub">Scan every case label, then the barcode on the printed gatepass. If a scan does not work, type the number instead: the 10 digits printed under a case barcode, or the gatepass number. Goods leave only on a printed, valid gatepass whose cases are all scanned.</div></div>
 </div>
 <form method="get" class="card row" style="align-items:flex-end">
-  <div style="flex:1 1 300px"><label for="gate-code">Gatepass number</label><input id="gate-code" type="text" name="code" value="{{ code }}" autofocus autocomplete="off" placeholder="DS/RPR/2627/00012 or the last digits"></div>
+  <div style="flex:1 1 300px"><label for="gate-code">Scan a case label or the gatepass</label><input id="gate-code" type="text" name="code" value="{{ code }}" autofocus autocomplete="off" placeholder="scan, or type the case digits / gatepass number (DS/RPR/2627/00012 or its last digits)">
+    <div class="field-hint">A case label opens its gatepass and counts that case. Cartons first, then the gatepass.</div></div>
   <button class="btn btn-primary btn-lg" type="submit">Check</button>
 </form>
 
@@ -16,6 +17,8 @@
     <div class="alert alert-error" style="font-size:16px"><b>STOP — gatepass {{ slip.dispatch_no }} is VOID.</b> {{ slip.void_reason }}</div>
   {% elif slip.gate_out_at %}
     <div class="alert alert-warn" style="font-size:16px"><b>Already went out</b> on {{ slip.gate_out_at|dt }} ({{ slip.gate_out_by.full_name if slip.gate_out_by else '' }}). A second vehicle with this gatepass must be stopped.</div>
+  {% elif scanning %}
+    <div class="alert alert-info" style="font-size:16px"><b>Waiting for the gate scan.</b> Scan every case label, then the gatepass - the counter below shows how far you are.</div>
   {% elif blockers %}
     <div class="alert alert-error" style="font-size:16px"><b>STOP — not cleared.</b><ul>{% for b in blockers %}<li>{{ b }}</li>{% endfor %}</ul></div>
   {% else %}
@@ -26,7 +29,7 @@
   <div class="alert alert-info">Waiting at the gate: <b>{{ prog.scanned }} / {{ prog.total }}</b> cases scanned. Gone out is recorded when the gate staff scan every case and then the gatepass.</div>
   {% endif %}
   {% if prog and not slip.is_void and not slip.gate_out_at and can('gate.scan') %}
-  <div class="card" id="gate-scan" data-slip="{{ slip.id }}" data-no="{{ slip.dispatch_no }}" data-auto="{{ autoscan }}" data-finish="{{ autofinish }}" data-total="{{ prog.total }}">
+  <div class="card" id="gate-scan" data-slip="{{ slip.id }}" data-no="{{ slip.dispatch_no }}" data-auto="{{ autoscan }}" data-finish="{{ 1 if autofinish else '' }}" data-total="{{ prog.total }}">
     <div class="row" style="align-items:center;gap:16px;flex-wrap:wrap">
       <div style="flex:1 1 320px"><label for="case-code"><b>Scan each case</b>, then the gatepass <span class="muted small">(the barcode on each label, and last the one on the gatepass - the cursor stays here)</span></label>
         <input id="case-code" type="text" autocomplete="off" inputmode="numeric" placeholder="scan a case label - and last, the gatepass" data-enter-skip {% if not autoscan %}autofocus{% endif %}></div>
@@ -66,7 +69,7 @@
   <div class="card-head"><h3>Waiting at the gate ({{ waiting|length }})</h3></div>
   <div class="table-wrap"><table class="data compact">
     <thead><tr><th>Gatepass</th><th>Date</th><th>Carrier</th><th class="num">Cases</th><th>Printed</th><th></th></tr></thead>
-    <tbody>{% for s in waiting %}<tr><td class="mono">{{ s.dispatch_no }}</td><td>{{ s.dispatch_date|date }}</td><td>{{ s.transporter.name if s.transporter else s.mode_label }}</td><td class="num">{{ s.total_cases }}</td><td>{{ 'yes' if s.print_count else '<span class="pos">no</span>'|safe }}</td><td class="num"><a class="btn btn-sm" href="/gatepass/gate?code={{ s.dispatch_no|urlencode }}">Check</a></td></tr>
+    <tbody>{% for s in waiting %}<tr><td class="mono">{{ s.dispatch_no }}</td><td>{{ s.dispatch_date|date }}</td><td>{{ s.transporter.name if s.transporter else s.mode_label }}</td><td class="num">{{ s.total_cases }}</td><td>{{ 'yes' if s.print_count else '<span class="pos">no</span>'|safe }}</td><td class="num"><a class="btn btn-sm" href="/gatepass/gate?code={{ s.dispatch_no|urlencode }}&open=1">Check</a></td></tr>
     {% else %}<tr><td colspan="6" class="empty">Nothing waiting.</td></tr>{% endfor %}</tbody>
   </table></div>
 </div>

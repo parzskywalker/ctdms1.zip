@@ -191,11 +191,24 @@ def test_gate_screen_has_the_scan_loop_and_a_case_code_opens_it(db):
     sid, _ = _make(sizes=((2, "C-VDP01"),))
     slip = db.get(DispatchSlip, sid)
     code = _codes(db, sid)[0]
+    _print_all(db, sid)                                                           # labels, then the gatepass
     page = WebClient("gate.bilaspur").get(f"/gatepass/gate?code={code}").text
     assert slip.dispatch_no in page and 'id="case-code"' in page and f'data-auto="{code}"' in page
-    assert "STOP" in page and "0 / 2" in page                                    # not cleared until scanned
+    assert "Waiting for the gate scan" in page and "0 / 2" in page and "STOP — not cleared" not in page   # progress, not a stop
     # the confirm button is not offered while cases are unscanned
     assert 'name="back" value="gate"' not in page
+    # opening the gatepass by its own number never marks anything out: not with cases missing, and not from the list (?open=1)
+    g = WebClient("gate.bilaspur")
+    early = g.get(f"/gatepass/gate?code={slip.dispatch_no}").text
+    assert 'data-finish=""' in early and "Waiting for the gate scan" in early and "Gate-out refused" not in early
+    for c in _codes(db, sid):
+        _scan(g, c, sid)
+    assert 'data-finish="1"' in g.get(f"/gatepass/gate?code={slip.dispatch_no}").text      # every case scanned: scanning it finishes
+    listed = g.get(f"/gatepass/gate?code={slip.dispatch_no}&open=1").text                      # the Check button of the waiting list
+    assert 'data-finish=""' in listed and "All cases scanned" in listed
+    assert f"code={slip.dispatch_no.replace('/', '%2F')}&amp;open=1" in g.get("/gatepass/gate").text or "&open=1" in g.get("/gatepass/gate").text
+    db.expire_all()
+    assert db.get(DispatchSlip, sid).gate_out_at is None
 
 
 def test_migration_0014_gives_gate_exception_to_roles_that_could_void(db):

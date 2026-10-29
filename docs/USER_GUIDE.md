@@ -102,7 +102,7 @@ Delete, void, cancel and reject always ask first with **No** pre-selected.
    has a "gone out" button on any gatepass - not the operator, not the manager, not the administrator, and there is no API
    for it. A gatepass made before v1.7 that is still at the depot shows **Make the case labels for this gatepass**: press it
    (one barcode is made for every carton still to leave), print the labels, then print the gatepass. The **gate staff** (role *Dispatch / Gate Staff*, permission `gate.scan`)
-   scan every case label on *Gate check* (the cursor stays in the scan box): a green tick means counted, a red STOP says
+   scan every case label on *Gate check*. The first box takes a scanned or **typed** case label (the 10 digits under the barcode) or the gatepass number; opening a gatepass from *Waiting at the gate* (Check) only shows it and never marks anything out. Once a gatepass is open the cursor stays in its scan box: a green tick means counted, a red STOP says
    why (wrong gatepass, void label, same case twice...). **At the end they scan the gatepass itself - that marks the trip
    gone out**, and the operator sees "Gone out - confirmed at the gate" on the gatepass by itself (the page refreshes).
    If cartons are genuinely missing, a manager records an *exception* with a reason (cases marked missing, audited); the

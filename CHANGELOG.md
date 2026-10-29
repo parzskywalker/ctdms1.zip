@@ -39,6 +39,13 @@ one-invoice slip and bulk dispatch still made single-transporter slips. All of t
   gatepass) in the lessons Long distance, Local auto per trip / per box, Gate check and Garage Pawati; the Garage Pawati lesson
   teaches that scanning the gatepass before the Pawatis are printed is refused. Practice databases of older versions get the
   gate role and `demo.gate` automatically; checkpoints are rebuilt.
+- **Gate Check screen made clearer:** the first box is now "Scan a case label or the gatepass" with a hint (type the 10 digits under a
+  case barcode if a scan fails); *Check* in "Waiting at the gate" only opens the gatepass (no automatic gatepass scan, and none after
+  a gate exception is recorded - the gatepass is scanned automatically only when you scan its number and every case is already
+  scanned); while cases are still to be scanned the top line is a neutral "Waiting for the gate scan" instead of a red STOP (red
+  STOP stays for void, no labels, Pawatis not printed, e-way bill). Also fixed: Gate Check used to send a gatepass scan every time a
+  gatepass was opened (the page's `data-finish` flag was the text "False", which the script read as true), so staff were greeted
+  with "Gate-out refused" before scanning anything.
 - Docs: USER_GUIDE, RELEASE_v1.7 (create the gate staff before go-live), README (demo users), ARCHITECTURE.
 - Tests: updated to walk every trip through labels, print and the gate scan (`tests/helpers.walk_out`); new tests for
   `convert_legacy`, "no gone-out path anywhere", demo-user ensure on an existing database and the login list.
