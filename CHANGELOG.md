@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.7.2 (CI) — PostgreSQL test job
+
+`.github/workflows/tests-postgres.yml` runs the migrations (empty database to head, down to 0016, up again) and the whole test
+suite on PostgreSQL 16 on every push to `main` or the v1.7.2 branch. No application code changed.
+
 ## v1.7.2 — case control mandatory everywhere; gone out ONLY by the gate staff's scan
 
 Migration 0017 (applied automatically). **Create your gate staff (role *Dispatch / Gate Staff*) before using this version for real

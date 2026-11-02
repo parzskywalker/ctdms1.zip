@@ -1,0 +1,49 @@
+name: tests-postgres
+
+# Runs the migrations and the whole test suite against PostgreSQL 16 - the database production uses.
+# The Windows dev PC has no PostgreSQL, so this is where the PostgreSQL run happens.
+on:
+  push:
+    branches: [main, claude/determined-turing-evpptn]
+  workflow_dispatch:
+
+jobs:
+  postgres:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ctdms
+          POSTGRES_PASSWORD: ctdms
+          POSTGRES_DB: ctdms_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ctdms" --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.lock.txt
+      - name: Install (the same pinned versions as the Docker image)
+        run: |
+          pip install -r requirements.lock.txt
+          pip install -r requirements.txt
+      - name: Migrations - empty database to head, back to 0016, to head again
+        env:
+          PGPASSWORD: ctdms
+          CTDMS_DATABASE_URL: postgresql+psycopg://ctdms:ctdms@localhost:5432/ctdms_mig
+        run: |
+          psql -h localhost -U ctdms -d postgres -c "create database ctdms_mig"
+          python -m alembic upgrade head
+          python -m alembic current
+          python -m alembic downgrade 0016
+          python -m alembic upgrade head
+          python -m alembic current
+      - name: Full test suite on PostgreSQL
+        env:
+          CTDMS_TEST_DATABASE_URL: postgresql+psycopg://ctdms:ctdms@localhost:5432/ctdms_test
+        run: python -m pytest -q -p no:cacheprovider --maxfail=25
