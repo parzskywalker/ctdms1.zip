@@ -46,4 +46,12 @@ jobs:
       - name: Full test suite on PostgreSQL
         env:
           CTDMS_TEST_DATABASE_URL: postgresql+psycopg://ctdms:ctdms@localhost:5432/ctdms_test
-        run: python -m pytest -q -p no:cacheprovider --maxfail=25
+        run: python -m pytest -q -p no:cacheprovider --tb=short --maxfail=25 2>&1 | tee pytest.out
+      - name: Show failures as annotations (the raw log needs a GitHub login; annotations are public)
+        if: failure()
+        run: |
+          esc() { sed -e 's/%/%25/g' | awk '{printf "%s%%0A", $0}'; }
+          if [ -f pytest.out ]; then
+            echo "::error title=pytest summary::$(grep -E '^(FAILED|ERROR) |[0-9]+ (passed|failed)' pytest.out | head -80 | esc)"
+            echo "::error title=pytest first failures::$(sed -n '/= FAILURES =/,$p' pytest.out | head -150 | cut -c1-300 | esc)"
+          fi
