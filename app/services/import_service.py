@@ -40,6 +40,8 @@ TARGET_FIELDS: dict[str, tuple[str, bool, list[str]]] = {
     "company_code": ("Company / Principal code", False,
                      ["company", "company code", "principal", "principal code", "division", "company name",
                       "comp code", "sales org", "sales organization"]),
+    "other_companies": ("Other companies on this invoice (codes)", False,
+                        ["other companies", "other company", "additional companies", "second company", "companies on invoice"]),
     "cfa_code": ("Depot code", False, ["cfa", "cfa code", "depot", "depot code", "plant", "branch", "warehouse",
                                      "godown", "cfa name"]),
     "invoice_no": ("Invoice number", True, ["invoice no", "invoice number", "inv no", "bill no", "bill number",
@@ -577,6 +579,24 @@ def validate_row(db: Session, batch: ImportBatch, row: ImportRow, res: Resolver,
     if company and not company.is_active:
         errors.append(_err("INACTIVE", f"Company {company.code} is inactive", field="company_code"))
 
+    # v1.7.2 pilot: one invoice may carry stock of more than one company - the OTHER companies, by code, comma separated
+    extra_companies: list[Company] = []
+    if val("other_companies") is not None:
+        for code in re.split(r"[,;/+]", str(val("other_companies"))):
+            if not code.strip():
+                continue
+            other = res.company(code)
+            if not other:
+                errors.append(_err("UNKNOWN_COMPANY", f"Other company '{code.strip()}' not found / not mapped",
+                                   field="other_companies"))
+            elif not other.is_active:
+                errors.append(_err("INACTIVE", f"Company {other.code} is inactive", field="other_companies"))
+            elif (company is None or other.id != company.id) and other not in extra_companies:
+                extra_companies.append(other)
+            if other and user and not can_see(user, other.id):
+                errors.append(_err("SCOPE", f"You are not authorised to work with company {other.code}",
+                                   field="other_companies"))
+
     # depot (the table is still called cfas)
     cfa = None
     if val("cfa_code") is not None:
@@ -704,7 +724,8 @@ def validate_row(db: Session, batch: ImportBatch, row: ImportRow, res: Resolver,
         return None
     row.status = RowStatus.WARNING if warnings else RowStatus.VALID
     return {
-        "company": company, "cfa": cfa, "customer": customer, "location": location, "area": area, "invoice_no": invoice_no,
+        "company": company, "extra_companies": extra_companies, "cfa": cfa, "customer": customer, "location": location,
+        "area": area, "invoice_no": invoice_no,
         "invoice_date": inv_date, "fy": fy, "sales": sales or Decimal("0"), "boxes": boxes, "taxable": taxable,
         "mode": mode,
         "customer_code": str(val("customer_code") or customer.code), "source_invoice_id": src_id or invoice_no,
@@ -813,6 +834,12 @@ def commit_batch(db: Session, user: User, batch: ImportBatch) -> dict:
                 cas.apply_to_invoice(inv, v["area"], mismatch_holds=cas.mismatch_action(db) == "EXCEPTION")
             db.add(inv)
             db.flush()
+            if v.get("extra_companies"):
+                inv.extra_companies = list(v["extra_companies"])
+                audit.log(db, user, "INVOICE_COMPANIES_SET", MODULE, record_type="Invoice", record_id=inv.id,
+                          ref=inv.invoice_no, details={"main": v["company"].code,
+                                                       "other": [c.code for c in v["extra_companies"]],
+                                                       "batch": batch.batch_no})
             recognition.assign(db, inv)
             _add_items(inv, v["items"])
             apply_freight(db, inv)

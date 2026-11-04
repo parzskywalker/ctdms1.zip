@@ -31,7 +31,7 @@
           <td class="nowrap mono small">{% if i.recognition_code %}{{ i.recognition_code }}{% elif i.recognition_note %}<span class="pos" title="{{ i.recognition_note }}">not generated ⓘ</span>{% else %}<span class="muted">—</span>{% endif %}</td>
           <td class="nowrap">{{ i.invoice_date|date }}</td>
           <td><span class="tag">{{ i.source_erp.code if i.source_erp else '—' }}</span></td>
-          <td>{{ i.company.code }}</td>
+          <td>{{ i.company_codes }}</td>
           <td>{{ i.cfa.name }}{% if i.cfa.city %}<div class="small muted">{{ i.cfa.city }}</div>{% endif %}</td>
           <td class="wrap">{{ i.customer.name }} <span class="small muted">{{ i.customer.type_label }}</span></td>
           <td>{{ i.location.name }}</td>

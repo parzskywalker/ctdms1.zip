@@ -61,7 +61,7 @@
     <div class="top"><span>{{ org }}</span><span>{{ slip.dispatch_date.strftime('%d-%m-%Y') if slip.dispatch_date else '' }}</span></div>
     <div class="cust">{{ r.customer.name }}</div>
     <div class="area">{{ r.location.name }}</div>
-    <div class="inv">Inv {{ r.invoice.invoice_no }} <span class="meta">· {{ r.company.code }}</span></div>
+    <div class="inv">Inv {{ r.invoice.invoice_no }} <span class="meta">· {{ r.company_codes }}</span></div>
     <div class="meta">{{ carrier }} · {{ slip.dispatch_no }}</div>
     <div class="row"><div class="bc">{{ c.case_code|barcode_svg }}<div class="code">{{ c.case_code }}</div></div><div class="case">{{ c.seq_in_consignment }} / {{ c.consignment_total }}</div></div>
   </div>

@@ -394,7 +394,7 @@ def test_migration_0017_takes_the_permission_away_and_turns_case_control_on(tmp_
     con.close()
     alembic("upgrade", "head")
     con = sqlite3.connect(p)
-    assert con.execute("select version_num from alembic_version").fetchone()[0] == "0017"
+    assert con.execute("select version_num from alembic_version").fetchone()[0] == "0018"
     perms = {c: json.loads(x) for c, x in con.execute("select code, permissions from roles")}
     assert perms["T17"] == ["dispatch.view", "dispatch.operate"]
     assert all("dispatch.complete" not in v for v in perms.values())

@@ -187,7 +187,9 @@ def new_invoice_save(request: Request, form=Depends(get_form), db: Session = Dep
            "invoice_no": form.get("invoice_no"), "invoice_date": form.get("invoice_date"),
            "sales_value": form.get("sales_value"), "taxable_value": form.get("taxable_value") or None,
            "boxes": form.get("boxes") or None, "dispatch_mode": form.get("dispatch_mode") or None,
-           "transporter_code": tr.code if tr else None, "remarks": form.get("remarks") or None}
+           "transporter_code": tr.code if tr else None, "remarks": form.get("remarks") or None,
+           "other_companies": ",".join(c.code for c in db.scalars(select(Company).where(Company.is_active.is_(True)))
+                                       if form.get(f"xco_{c.id}") and c.id != co.id) or None}
     try:
         with db.begin_nested() as sp:
             batch, result = imp.ingest_records(db, user, None, [rec], source="MANUAL")

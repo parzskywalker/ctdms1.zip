@@ -77,7 +77,7 @@ def _inv_json(db: Session, inv: Invoice) -> dict:
     cu = inv.customer
     return {"id": inv.id, "invoice_no": inv.invoice_no, "date": inv.invoice_date.strftime("%d-%m-%Y"),
             "customer": cu.name, "customer_id": cu.id, "type": cu.type_label, "location": inv.location.name,
-            "location_id": inv.location_id, "company": inv.company.code, "company_id": inv.company_id,
+            "location_id": inv.location_id, "company": inv.company.code, "company_label": inv.company_codes, "company_id": inv.company_id,
             "cfa_id": inv.cfa_id, "rcode": inv.recognition_code or "",
             "amount": float(inv.sales_value or 0), "cases": inv.boxes, "status": inv.status_label,
             "company_freight": float(inv.freight_amount) if inv.freight_amount is not None else None,

@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.7.2 (pilot) — one invoice can carry stock of more than one company
+
+Migration 0018 (applied automatically): new table `invoice_extra_companies`. For the Guma pilot, where one billing-software invoice
+can contain stock of several principal companies (one total for cases and value, no split).
+
+- `Invoice.company` stays the **main** company (scope checks, uniqueness, freight and the company-wise reports); the **other**
+  companies are listed on the invoice (`Invoice.extra_companies`, `Invoice.company_codes` = "COA + COB").
+- **Add Invoice**: tick the other companies. **Import / API**: new optional column "Other companies on this invoice (codes)"
+  (`other_companies`, comma separated; unknown, inactive or out-of-scope codes reject the row; the main company named again is ignored).
+  Audited as `INVOICE_COMPANIES_SET`.
+- Shown as "COA + COB" on the invoice register and detail, Pending Dispatch, Dispatch Register, the gatepass screen and print, and
+  on every case label. Gatepass grouping across companies still follows the main company.
+- Tests: `tests/test_multi_company_invoice.py`; the migration head tests now expect 0018.
+
 ## v1.7.2 (pilot kit) — zero-install kit for the Guma pilot, clean-database check
 
 For one depot's real pilot on its own network. Migrations: none.

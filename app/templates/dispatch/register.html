@@ -15,7 +15,7 @@
     <tbody>
     {% for i in rows %}
       <tr><td class="mono nowrap"><a href="/dispatch/{{ i.id }}">{{ i.dispatch_no }}</a></td><td class="nowrap">{{ i.dispatch_date|date }} {{ i.dispatch_time|time }}</td>
-        <td><a href="/invoices/{{ i.id }}">{{ i.invoice_no }}</a></td><td>{{ i.company.code }}</td><td>{{ i.cfa.code }}</td><td class="wrap">{{ i.customer.name }}</td><td>{{ i.location.name }}</td>
+        <td><a href="/invoices/{{ i.id }}">{{ i.invoice_no }}</a></td><td>{{ i.company_codes }}</td><td>{{ i.cfa.code }}</td><td class="wrap">{{ i.customer.name }}</td><td>{{ i.location.name }}</td>
         <td class="num">{{ i.boxes }}</td><td class="num">{{ i.freight_amount|money }}</td><td>{{ i.transporter.name if i.transporter else '' }}</td><td class="mono">{{ i.vehicle_no }}</td><td class="mono">{{ i.lr_no }}</td><td class="num">{{ i.print_count }}</td><td>{{ badge(i.status) }}</td></tr>
     {% else %}<tr><td colspan="14" class="empty">No dispatches in this period.</td></tr>{% endfor %}
     </tbody>

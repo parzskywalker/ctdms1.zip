@@ -486,7 +486,7 @@ def _gatepass_snapshot(db: Session, slip: DispatchSlip, planned: list[PlannedLin
             "invoices": [], "cases": 0, "freight": ZERO, "extra": ZERO})
         g["invoices"].append({"invoice_no": inv.invoice_no, "recognition_code": inv.recognition_code,
                               "invoice_date": inv.invoice_date.strftime("%d-%m-%Y"),
-                              "company_code": inv.company.code, "company": inv.company.name,
+                              "company_code": inv.company_codes, "company": inv.company.name,
                               "sales_value": str(inv.sales_value), "cases": p.cases,
                               "rate": str(p.rate) if p.rate is not None else None, "freight": str(p.freight),
                               "extra": str(p.extra)})

@@ -203,7 +203,7 @@ def label_rows(db: Session, slip: DispatchSlip, cases: list[DispatchCase]) -> li
         inv = inv_cache.get(c.invoice_id) or db.get(Invoice, c.invoice_id)
         inv_cache[c.invoice_id] = inv
         rows.append({"case": c, "invoice": inv, "customer": inv.customer, "location": inv.location,
-                     "company": inv.company})
+                     "company": inv.company, "company_codes": inv.company_codes})
     return rows
 
 

@@ -4,7 +4,7 @@ from datetime import date, datetime, time
 from decimal import Decimal
 
 from sqlalchemy import (
-    JSON, Boolean, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, Time,
+    JSON, Boolean, Column, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Table, Text, Time,
     UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -59,6 +59,15 @@ class ExceptionCode:
         AREA_MISMATCH: "Delivery area differs from the customer's locations",
         AREA_AMBIGUOUS: "Customer has several delivery locations - choose one",
     }
+
+
+# v1.7.2 pilot: one invoice may carry stock of more than one company. Invoice.company stays the MAIN company (scope, numbering,
+# freight and the company-wise reports); these are the OTHER companies named on the same invoice.
+invoice_extra_companies = Table(
+    "invoice_extra_companies", Base.metadata,
+    Column("invoice_id", ForeignKey("invoices.id", ondelete="CASCADE"), primary_key=True),
+    Column("company_id", ForeignKey("companies.id"), primary_key=True),
+)
 
 
 class Invoice(Base, TimestampMixin):
@@ -192,6 +201,13 @@ class Invoice(Base, TimestampMixin):
                                  viewonly=True)
     items: Mapped[list["InvoiceItem"]] = relationship(back_populates="invoice", cascade="all, delete-orphan",
                                                       order_by="InvoiceItem.line_no")
+    extra_companies = relationship("Company", secondary=invoice_extra_companies, order_by="Company.code",
+                                   lazy="selectin")
+
+    @property
+    def company_codes(self) -> str:
+        """Every company on the invoice, main one first: 'COA' or 'COA + COB'."""
+        return " + ".join([self.company.code, *[c.code for c in self.extra_companies if c.id != self.company_id]])
 
     @property
     def total_charge(self) -> Decimal | None:

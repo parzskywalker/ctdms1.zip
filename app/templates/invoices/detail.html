@@ -54,7 +54,7 @@
       <div class="card">
         <div class="card-head"><h3>Invoice</h3></div>
         <dl class="dl tight">
-          <dt>Company</dt><dd>{{ inv.company.name }} <span class="muted">({{ inv.company.code }})</span></dd>
+          <dt>Company</dt><dd>{{ inv.company.name }} <span class="muted">({{ inv.company.code }})</span>{% if inv.extra_companies %}<div class="small">also stock of: {% for c in inv.extra_companies %}<b>{{ c.name }}</b> <span class="muted">({{ c.code }})</span>{% if not loop.last %}, {% endif %}{% endfor %}</div>{% endif %}</dd>
           <dt>Depot</dt><dd>{{ inv.cfa.name }}{% if inv.cfa.locality or inv.cfa.city %} <span class="muted small">{{ inv.cfa.locality or '' }}{{ ', ' if inv.cfa.locality and inv.cfa.city }}{{ inv.cfa.city or '' }}</span>{% endif %}</dd>
           {% if inv.marking %}<dt>ERP marking</dt><dd><span class="mono">{{ inv.marking.marking }}</span> <span class="muted small">recognised as {{ inv.marking.company.code }}{% if inv.marking.cfa %} / {{ inv.marking.cfa.code }}{% endif %}</span></dd>{% endif %}
           <dt>Customer</dt><dd>{% if can('master.view') %}<a href="/masters/customers/{{ inv.customer_id }}">{{ inv.customer.name }}</a>{% else %}{{ inv.customer.name }}{% endif %} <span class="tag">{{ inv.customer.type_label }}</span><br><span class="muted small">Central {{ inv.customer.code }} · ERP code {{ inv.customer_code or '—' }}</span></dd>

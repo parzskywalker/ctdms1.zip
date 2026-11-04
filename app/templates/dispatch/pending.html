@@ -44,7 +44,7 @@
           <td><input type="checkbox" name="ids" value="{{ i.id }}" aria-label="Select {{ i.invoice_no }}"></td>
           <td class="nowrap"><b>{{ i.invoice_no }}</b><div class="small muted">{{ i.invoice_date|date }}</div>{% if i.dispatch_no %}<div class="small mono muted">{{ i.dispatch_no }}</div><div class="small {{ 'muted' if i.print_count else 'pos' }}">{{ 'printed ×%d'|format(i.print_count) if i.print_count else 'not printed yet' }}</div>{% endif %}</td>
           <td class="num {% if i.age_days > 3 %}pos{% endif %}">{{ i.age_days }}d</td>
-          <td class="nowrap">{{ i.company.code }} · {{ i.cfa.code }}</td>
+          <td class="nowrap">{{ i.company_codes }} · {{ i.cfa.code }}</td>
           <td style="min-width:150px">{{ i.customer.name }}</td>
           <td>{{ i.location.name }}</td>
           <td class="num">{{ i.boxes if i.boxes is not none else '—' }}</td>

@@ -19,6 +19,8 @@
       <select name="company_id" required><option value="">— select —</option>
         {% for c in companies %}<option value="{{ c.id }}" data-code="{{ c.code }}" data-k="{{ c.marking or '' }}" {% if form.company_id|string == c.id|string or companies|length == 1 %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
       </select></div>
+    {% if companies|length > 1 %}<div class="full"><label>Also stock of these companies on this invoice <span class="muted small">(tick every other company named on the invoice; the company above stays the main one)</span></label>
+      <div class="row" style="flex-wrap:wrap;gap:6px 16px">{% for c in companies %}<label class="check"><input type="checkbox" name="xco_{{ c.id }}" value="1" {% if form.get('xco_' ~ c.id) %}checked{% endif %}>{{ c.name }}</label>{% endfor %}</div></div>{% endif %}
     <div><label>Depot <span class="req">*</span></label>
       <select name="cfa_id" required><option value="">— select —</option>
         {% for c in cfas %}<option value="{{ c.id }}" data-code="{{ c.code }}" data-k="{{ c.marking or '' }} {{ c.city or '' }}" {% if form.cfa_id|string == c.id|string or cfas|length == 1 %}selected{% endif %}>{{ c.name }}</option>{% endfor %}

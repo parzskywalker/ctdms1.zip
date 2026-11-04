@@ -74,6 +74,7 @@ class InvoiceIn(BaseModel):
     taxable_value: Decimal | str | None = None
     dispatch_mode: str | None = Field(default=None, description="Planned: Self / Transporter / Direct / Outside auto")
     company_code: str | None = None
+    other_companies: str | None = Field(default=None, description="Other company codes on the same invoice, comma separated")
     cfa_code: str | None = None
     customer_name: str | None = None
     location: str | None = None
