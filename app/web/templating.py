@@ -95,7 +95,7 @@ NAV = [
         ("Scan & Gatepass", "/gatepass/new", "dispatch.operate", "scan"),
         ("Pending Dispatch", "/dispatch/pending", "dispatch.view", "truck"),
         ("Gatepasses", "/gatepass", "dispatch.view", "clipboard"),
-        ("Gate Check", "/gatepass/gate", "dispatch.operate", "shield"),
+        ("Gate Check", "/gatepass/gate", "dispatch.operate|gate.scan", "shield"),
         ("Garage Pawati", "/pawati", "dispatch.view", "clipboard"),
         ("LR Books", "/lr-books", "lr_book.manage", "list"),
         ("LR Pending", "/gatepass/lr-pending", "dispatch.operate", "list"),
@@ -192,6 +192,7 @@ def nav_for(user: User | None) -> list:
 def home_for(user: User) -> str:
     """The first screen of this user: the Dashboard, else the first working screen their role has."""
     for perm, url in (("dashboard.view", "/"), ("dispatch.operate", "/dispatch/pending"),
+                      ("gate.scan", "/gatepass/gate"),  # the gate staff's only working screen: the scan box
                       ("override.approve", "/approvals"), ("rate.approve", "/approvals"),
                       ("recon.approve", "/approvals"), ("recon.view", "/recon"), ("dispatch.view", "/dispatch/pending"),
                       ("invoice.view", "/invoices"), ("report.view", "/reports")):

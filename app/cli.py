@@ -3,7 +3,9 @@
     python -m app.cli init-db            # run migrations (creates tables) + roles/settings
     python -m app.cli seed-demo --reset  # full demo dataset (DESTROYS existing data)
     python -m app.cli prepare-demo       # used by start_demo: demo data only if the database is EMPTY
-    python -m app.cli create-admin --username admin --password '...' [--promote]
+    python -m app.cli create-admin --username admin [--password '...'] [--promote]   # no --password: asked on screen
+    python -m app.cli pilot-ready        # used by START_CTDMS: needs an active administrator
+    python -m app.cli pilot-verify [--clean]   # clean certificate: no demo data (--clean: and an empty database)
     python -m app.cli sync --all         # run ERP adapters flagged 'auto sync' (use from cron)
     python -m app.cli backup             # database backup to data/backups
     python -m app.cli check              # configuration sanity check
@@ -149,6 +151,25 @@ def _stamp_head() -> None:
     command.stamp(cfg, "head")
 
 
+def _ask_password(username: str) -> str:
+    """Hidden prompt, asked twice: the password never appears in a command line, a shell history or a chat."""
+    import getpass
+
+    from app.security.auth import password_problems
+    for _ in range(3):
+        first = getpass.getpass("New password (typing is hidden): ")
+        probs = password_problems(first, username)
+        if probs:
+            print("The password needs " + ", ".join(probs) + ". Try again.")
+            continue
+        if getpass.getpass("Type the same password again: ") != first:
+            print("The two entries are different. Try again.")
+            continue
+        return first
+    print("Three tries used. Nothing was changed.")
+    sys.exit(1)
+
+
 def create_admin(args) -> None:
     from sqlalchemy import select
 
@@ -158,6 +179,8 @@ def create_admin(args) -> None:
     from app.seed import seed_core
     from app.services import audit
     username = args.username.strip().lower()
+    if args.password is None:
+        args.password = _ask_password(username)
     probs = password_problems(args.password, username)
     if probs:
         print("Password needs " + ", ".join(probs))
@@ -272,6 +295,125 @@ def check(args) -> None:
         print("Configuration OK")
 
 
+def _pilot_status(db) -> tuple[int, list[str]]:
+    """(active administrators, active accounts that still have the password the demo login page prints)."""
+    from sqlalchemy import select
+
+    from app import demo_users
+    from app.models import Role, User
+    from app.security.auth import verify_password
+    known = {u: pw for u, pw, _label in demo_users.login_rows()}
+    active = list(db.scalars(select(User).join(Role).where(User.is_active.is_(True))))
+    admins = [u for u in active if u.can("admin.users")]
+    demo = [u.username for u in active if u.username in known and verify_password(known[u.username], u.password_hash)]
+    return len(admins), demo
+
+
+def pilot_ready(args) -> None:
+    """Run by START_CTDMS.bat after init-db: a real depot database, so no demo data is ever loaded by it.
+    Exit 0 = ready (with a warning for accounts that still use a published demo password);
+    exit 3 = no active administrator yet (the message says how to create one)."""
+    from app.db import SessionLocal
+    with SessionLocal() as db:
+        admins, demo = _pilot_status(db)
+    if not admins:
+        print("There is no administrator account yet, so nobody could sign in.\n"
+              "Double-click SET_ADMIN_PASSWORD.bat (it runs create-admin and asks for your own password on the screen),\n"
+              "then start CTDMS again.")
+        sys.exit(3)
+    if demo:
+        print("WARNING: these accounts still use the demo password that is printed in the documentation: "
+              + ", ".join(demo) + ".\n         Change the passwords (Administration > Users) or deactivate the accounts "
+              "before the depot staff use CTDMS.")
+    print(f"Ready: {admins} administrator account(s).")
+
+
+# What a day's work leaves behind: the clean certificate (--clean) needs every one of these tables empty.
+_WORK_TABLES = (("invoices", "invoices"), ("dispatch_slips", "gatepasses"), ("dispatch_cases", "cases"),
+                ("case_scans", "case scans"), ("garage_pawatis", "Pawatis"), ("transporter_bills", "transporter bills"))
+
+
+def _pilot_check(db, clean: bool) -> tuple[list[str], list[str], list[str]]:
+    """(passed, problems, to-do) for a pilot database. `clean` is the check made before a kit is shipped: no work
+    records at all, and the placeholder organisation name / address already replaced."""
+    from sqlalchemy import inspect, select, text
+
+    from app import seed
+    from app.models import Company, Customer, ERPSystem
+    from app.services import settings_service as cfg
+    s = get_settings()
+    passed: list[str] = []
+    problems: list[str] = []
+    todo: list[str] = []
+
+    if s.is_production and not s.show_demo_logins:
+        passed.append("Production mode; the login page shows no demo usernames or passwords")
+    else:
+        problems.append("Not in production mode - the settings file (.env) needs CTDMS_ENVIRONMENT=production "
+                        "and CTDMS_SHOW_DEMO_LOGINS=false")
+
+    _admins, demo_accounts = _pilot_status(db)
+    if demo_accounts:
+        problems.append("These accounts still have a demo password that is printed in the documentation: "
+                        + ", ".join(demo_accounts) + " (Administration > Users: change the password or deactivate)")
+    else:
+        passed.append("No account has a demo password")
+
+    demo_co = {t[0]: t[1] for t in seed.COMPANIES}
+    demo_cu = {t[0]: t[1] for t in seed.CUSTOMERS}
+    found = [f"company {c.code}" for c in db.scalars(select(Company).where(Company.code.in_(demo_co)))
+             if c.name == demo_co[c.code]]
+    found += [f"customer {c.code}" for c in db.scalars(select(Customer).where(Customer.code.in_(demo_cu)))
+              if c.name == demo_cu[c.code]]
+    if db.scalar(select(ERPSystem.id).where(ERPSystem.code == "DEMO")) is not None:
+        found.append("ERP system DEMO")
+    if found:
+        problems.append("Demo masters are in the database: " + ", ".join(found[:8]) + (" ..." if len(found) > 8 else ""))
+    else:
+        passed.append("No demo companies, customers or ERP systems")
+
+    insp = inspect(db.connection())  # the session's own connection: a second one would wait for its SQLite write lock
+    counts = {label: (db.execute(text(f'SELECT COUNT(*) FROM "{table}"')).scalar() if insp.has_table(table) else 0)
+              for table, label in _WORK_TABLES}
+    summary = ", ".join(f"{n} {label}" for label, n in counts.items())
+    if clean and any(counts.values()):
+        problems.append("The database already holds work records (" + summary + "); a new pilot database must hold none")
+    else:
+        passed.append(("None of the work records: " if clean else "Work records: ") + summary)
+
+    for key, label in (("org.name", "organisation name"), ("org.address", "organisation address")):
+        value = (cfg.get(db, key) or "").strip()
+        if not value or value == cfg.DEFAULTS[key][0]:
+            (problems if clean else todo).append(
+                f"The {label} is still the placeholder text. Set it in Administration > System settings - it prints on "
+                "every gatepass, label and Pawati")
+        else:
+            passed.append(f"The {label} is set: {value}")
+    return passed, problems, todo
+
+
+def pilot_verify(args) -> None:
+    """The clean certificate. START_CTDMS.bat runs it on every start (demo data stops the start); --clean is the
+    stricter check made before a kit is shipped. Exit 0 = clean, exit 1 = something has to be removed first."""
+    from app.db import SessionLocal
+    with SessionLocal() as db:
+        passed, problems, todo = _pilot_check(db, args.clean)
+    s = get_settings()
+    where = s.database_url.replace("sqlite:///", "") if s.is_sqlite else s.database_url.split("@")[-1]
+    print("CTDMS pilot database check - " + datetime.now().strftime("%d-%b-%Y %H:%M"))
+    print("Database: " + where)
+    for line in passed:
+        print("  OK    " + line)
+    for line in todo:
+        print("  TODO  " + line)
+    for line in problems:
+        print("  STOP  " + line)
+    if problems:
+        print("RESULT: NOT CLEAN - fix the STOP lines above.")
+        sys.exit(1)
+    print("RESULT: CLEAN" + (" - ready to ship." if args.clean else "."))
+
+
 def inbox(args) -> None:
     """Import ERP exports waiting in the drop folder (data/inbox) - for cron / Task Scheduler setups."""
     from app.db import SessionLocal
@@ -354,7 +496,7 @@ def main(argv=None) -> None:
         fn=prepare_demo)
     sp = sub.add_parser("create-admin")
     sp.add_argument("--username", required=True)
-    sp.add_argument("--password", required=True)
+    sp.add_argument("--password", help="leave it out to be asked on the screen (typing is hidden)")
     sp.add_argument("--full-name", default="Administrator")
     sp.add_argument("--promote", action="store_true", help="allow turning an existing non-admin user into an admin")
     sp.set_defaults(fn=create_admin)
@@ -367,6 +509,11 @@ def main(argv=None) -> None:
     sp.add_argument("--keep", type=int, default=30)
     sp.set_defaults(fn=backup)
     sub.add_parser("check").set_defaults(fn=check)
+    sub.add_parser("pilot-ready", help="used by START_CTDMS: needs an active administrator").set_defaults(fn=pilot_ready)
+    sp = sub.add_parser("pilot-verify", help="clean certificate: no demo data (START_CTDMS runs it on every start)")
+    sp.add_argument("--clean", action="store_true",
+                    help="before shipping a kit: also no invoices, gatepasses or cases, and the organisation text replaced")
+    sp.set_defaults(fn=pilot_verify)
     sub.add_parser("inbox", help="import ERP exports waiting in data/inbox now").set_defaults(fn=inbox)
     sp = sub.add_parser("notify", help="send queued WhatsApp / SMS dispatch alerts now")
     sp.add_argument("--limit", type=int, default=200)

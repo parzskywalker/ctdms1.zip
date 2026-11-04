@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.7.2 (pilot kit) — zero-install kit for the Guma pilot, clean-database check
+
+For one depot's real pilot on its own network. Migrations: none.
+
+- **`deploy/pilot_kit/`** builds a folder (`build_kit.ps1`, about 320 MB) that carries its own Python, libraries and the app and
+  needs no install, internet or administrator rights: `START_CTDMS.bat` (database up to date, clean check, backup, server in a
+  minimised window that restarts itself), `STOP_CTDMS.bat`, `BACKUP_NOW.bat` (optional USB copy), `SET_ADMIN_PASSWORD.bat`,
+  `OPEN_FIREWALL_ONCE.bat` (run by the user as administrator: firewall rule for the office network, Private network, no sleep),
+  `CHECK_THIS_PC.bat` (read-only), `CHECK_COPY.bat` (every file present and unchanged after the USB copy, `MANIFEST.txt`).
+  The kit ships an empty database: roles, settings and customer types only.
+- **`create-admin`** asks for the password on the screen (hidden, twice) when `--password` is left out, so it never appears in a
+  command line, a history or a chat.
+- **`pilot-verify [--clean]`**: the clean certificate. Refuses accounts that still have a published demo password, the demo
+  companies / customers / DEMO ERP and a settings file that is not in production mode; `--clean` (before a kit is shipped) also
+  needs zero invoices, gatepasses, cases, scans, Pawatis and transporter bills and the placeholder organisation name / address
+  replaced. `START_CTDMS.bat` runs it on every start. `pilot-ready` (an administrator exists) stays.
+- **Gate staff** (role *Dispatch / Gate Staff*) had no *Gate Check* in their menu and landed on the pending-dispatch list: the
+  menu entry is now also shown for `gate.scan`, and it is their first screen.
+- `start_pilot.bat` (never released) is replaced by the kit. Tests: `tests/test_pilot_start.py`.
+
 ## v1.7.2 (CI) — PostgreSQL test job
 
 `.github/workflows/tests-postgres.yml` runs the migrations (empty database to head, down to 0016, up again) and the whole test

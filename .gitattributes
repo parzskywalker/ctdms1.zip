@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Windows batch files must keep CRLF line endings exactly as committed (also in the GitHub zip download)
+*.bat -text
