@@ -18,7 +18,9 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app import __version__
 from app.config import get_settings
-from app.security.auth import LoginRequired, PasswordChangeRequired, PermissionDenied, TrainingRequired, client_ip
+from app.security.auth import (
+    LoginRequired, PasswordChangeRequired, PermissionDenied, TrainingRequired, TwoFactorRequired, client_ip,
+)
 from app.services import context
 from app.services.errors import BusinessError
 from app.web.templating import back_url, flash, redirect, render
@@ -198,6 +200,13 @@ def create_app() -> FastAPI:
                                 headers={"WWW-Authenticate": "Bearer"})
         nxt = request.url.path + (f"?{request.url.query}" if request.url.query else "")
         return RedirectResponse(f"/login?next={nxt}", status_code=303)
+
+    @app.exception_handler(TwoFactorRequired)
+    async def _two_factor(request: Request, exc: TwoFactorRequired):
+        if is_api(request):
+            return JSONResponse({"detail": "Set up the phone code in the web app first"}, status_code=403)
+        flash(request, "Administrators must set up a phone sign-in code before continuing.", "warn")
+        return redirect("/account/2fa")
 
     @app.exception_handler(PasswordChangeRequired)
     async def _pw_change(request: Request, exc: PasswordChangeRequired):

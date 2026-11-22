@@ -33,6 +33,7 @@ def upgrade() -> None:
         b.add_column(sa.Column("signature_photo", sa.String(200), nullable=True))
         b.add_column(sa.Column("signature_photo_at", sa.DateTime, nullable=True))
         b.add_column(sa.Column("signature_photo_by_id", sa.Integer, nullable=True))
+    op.add_column("users", sa.Column("totp_secret", sa.String(64), nullable=True))
     op.create_table(
         "dispatch_exceptions",
         sa.Column("id", sa.Integer, primary_key=True),
@@ -55,6 +56,8 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_table("dispatch_exceptions")
+    with op.batch_alter_table("users") as b:
+        b.drop_column("totp_secret")
     with op.batch_alter_table("dispatch_slips") as b:
         for c in ("signature_photo_by_id", "signature_photo_at", "signature_photo", "urgent_reason"):
             b.drop_column(c)

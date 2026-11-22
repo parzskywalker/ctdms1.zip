@@ -20,6 +20,10 @@ from app.models import User, UserSession, utcnow
 from app.services import context
 
 
+class TwoFactorRequired(Exception):
+    pass
+
+
 class PasswordChangeRequired(Exception):
     pass
 
@@ -322,6 +326,9 @@ def current_user(request: Request, user: User | None = Depends(current_user_opti
     if real.must_change_password and not request.url.path.startswith(PASSWORD_CHANGE_PATHS):
         # First login / admin reset: nothing else is usable until the password is changed.
         raise PasswordChangeRequired()
+    if (get_settings().admin_2fa and not real.totp_secret and real.role and real.role.code == "ADMIN"
+            and not request.url.path.startswith(PASSWORD_CHANGE_PATHS + ("/account/2fa",))):
+        raise TwoFactorRequired()  # an Administrator on the internet must set up the phone code first
     if getattr(request.state, "training_gate", False):
         from app.training import progress
         if not progress.gate_allows(request.url.path, real):

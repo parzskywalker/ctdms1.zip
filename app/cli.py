@@ -437,6 +437,24 @@ PILOT_V18 = {
 }
 
 
+def reset_2fa(args) -> None:
+    """Lost phone: switch the phone sign-in code off for one user (they set it up again at the next sign-in)."""
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.models import User
+    from app.services import audit
+    with SessionLocal() as db:
+        u = db.scalar(select(User).where(User.username == args.username.strip().lower()))
+        if u is None:
+            sys.exit(f"No user {args.username}")
+        u.totp_secret = None
+        audit.log(db, None, "TWO_FACTOR_RESET", "SECURITY", record_type="User", record_id=u.id, ref=u.username,
+                  reason="reset-2fa command on the server")
+        db.commit()
+    print(f"Phone code switched off for {args.username} - they set it up again after signing in.")
+
+
 def pilot_v18(args) -> None:
     """Switch an installation to the v1.8 way of working (owner's decisions of 22 Nov 2026). Safe to repeat."""
     from sqlalchemy import select
@@ -545,6 +563,9 @@ def main(argv=None) -> None:
                     help="before shipping a kit: also no invoices, gatepasses or cases, and the organisation text replaced")
     sp.set_defaults(fn=pilot_verify)
     sub.add_parser("inbox", help="import ERP exports waiting in data/inbox now").set_defaults(fn=inbox)
+    sp = sub.add_parser("reset-2fa", help="lost phone: switch the phone sign-in code off for one user")
+    sp.add_argument("username")
+    sp.set_defaults(fn=reset_2fa)
     sub.add_parser("pilot-v18", help="switch on the v1.8 way of working (labels first, photo, Tulsyan name)").set_defaults(fn=pilot_v18)
     sp = sub.add_parser("notify", help="send queued WhatsApp / SMS dispatch alerts now")
     sp.add_argument("--limit", type=int, default=200)

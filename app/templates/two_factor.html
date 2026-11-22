@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head"><div><h1>Phone sign-in code</h1><div class="sub">{% if has %}The phone code is already on. Setting it up again replaces the old phone.{% else %}Administrators on the internet sign in with a password and a 6-digit code from a free phone app.{% endif %}</div></div></div>
+<div class="card" style="max-width:560px">
+  <ol>
+    <li>Install a free authenticator app on your phone (Google Authenticator or Microsoft Authenticator).</li>
+    <li>In the app choose "Add" and scan this picture (or type the key below).</li>
+    <li>Type the 6 digits the app shows and press <kbd>Enter</kbd>.</li>
+  </ol>
+  <div style="width:200px;height:200px;background:#fff;padding:6px">{{ qr|safe }}</div>
+  <p class="small">Key (if you cannot scan): <code>{{ secret }}</code></p>
+  <form method="post" action="/account/2fa" class="row" style="gap:8px">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <input name="code" inputmode="numeric" maxlength="6" required autofocus placeholder="6-digit code" style="width:140px">
+    <button class="btn btn-primary" type="submit">Turn on</button>
+  </form>
+  <p class="small muted">Lost the phone? Someone with access to the server runs <code>python -m app.cli reset-2fa &lt;username&gt;</code>, then you set it up again.</p>
+</div>
+{% endblock %}

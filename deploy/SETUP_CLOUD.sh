@@ -31,6 +31,7 @@ else
     .env
   # The app port is reachable only from this machine; the internet comes in through Caddy (ports 80/443).
   echo "CTDMS_BIND=127.0.0.1" >> .env
+  echo "CTDMS_ADMIN_2FA=true" >> .env   # Administrators sign in with a phone code
   chmod 600 .env
   echo "    .env written (secrets generated; keep a copy of this file somewhere safe)."
 fi

@@ -62,6 +62,7 @@ class User(Base, TimestampMixin):
     locked_until: Mapped[datetime | None] = mapped_column(DateTime)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime)
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
+    totp_secret: Mapped[str | None] = mapped_column(String(64))  # v1.8: two-factor sign-in (authenticator app)
     password_changed_at: Mapped[datetime | None] = mapped_column(DateTime, default=utcnow)
     tokens_valid_after: Mapped[datetime | None] = mapped_column(DateTime)  # API tokens issued earlier are refused
 

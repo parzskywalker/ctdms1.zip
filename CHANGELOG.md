@@ -4,6 +4,14 @@
 
 Plan: `pilot_docs\CTDMS_v1.8_plan.md` revision 10, approved 22 Nov 2026 with its defaults.
 
+**Basic internet security.**
+- After 30 failed sign-ins from one internet address in 10 minutes, sign-in from that address pauses for 10 minutes
+  (`CTDMS_LOGIN_THROTTLE_PER_IP`, 0 = off; the per-account lock-out stays).
+- **Phone sign-in code** (free authenticator app, standard 6-digit codes, works offline): Account > `/account/2fa`
+  shows a QR picture and the key; once on, sign-in asks for the code after the password. With `CTDMS_ADMIN_2FA=true`
+  (set by `SETUP_CLOUD.sh`) Administrators must set it up before anything else. Lost phone:
+  `python -m app.cli reset-2fa <username>` on the server. Column `users.totp_secret` (migration 0019).
+
 **Dispatch: labels first, vehicle planning, phone gate check (migration 0019, applied automatically).** Switched on per
 installation with `dispatch.labels_first` (off by default, so nothing changes until it is turned on).
 - **Labels to Print** (`/labels-desk`, operators): confirm the carton count and print one label per carton before any

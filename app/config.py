@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     session_cookie_secure: bool = False  # set True behind HTTPS
     jwt_expire_minutes: int = 720
     max_failed_logins: int = 5
+    login_throttle_per_ip: int = 30  # failed sign-ins per address in 10 minutes before a pause (0 = off)
     lockout_minutes: int = 15
 
     # Database. SQLite is fine for demo/single-site; use PostgreSQL in production.
@@ -38,6 +39,7 @@ class Settings(BaseSettings):
     # Paths
     data_dir: Path = BASE_DIR / "data"
     upload_dir: Path = BASE_DIR / "data" / "uploads"
+    admin_2fa: bool = False  # v1.8: Administrators must use a phone code to sign in (cloud servers set it true)
     backup_dir: Path = BASE_DIR / "data" / "backups"
     log_dir: Path = BASE_DIR / "data" / "logs"
 

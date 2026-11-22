@@ -9,6 +9,13 @@
     </div>
     {% for f in flashes %}<div class="alert alert-{{ f.k }}">{{ f.m }}</div>{% endfor %}
     {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+    {% if mfa %}
+    <form method="post" action="/login/code" class="stack" data-enter-last="submit">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <div><label for="code">6-digit code from your phone app</label><input id="code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required autofocus></div>
+      <button class="btn btn-primary btn-lg" type="submit" style="width:100%">Sign in</button>
+    </form>
+    {% else %}
     <form method="post" action="/login" class="stack" data-enter-last="submit">
       <input type="hidden" name="csrf_token" value="{{ csrf }}">
       <input type="hidden" name="next" value="{{ next }}">
@@ -16,6 +23,7 @@
       <div><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required></div>
       <button class="btn btn-primary btn-lg" type="submit" style="width:100%">Sign in</button>
     </form>
+    {% endif %}
     {% if demo_users %}
     <div class="demo-creds">
       <b>Demo logins</b> <span class="muted">(click to fill)</span>
