@@ -61,7 +61,7 @@ def _build(db: Session, user: User | None, slip: DispatchSlip, allocs: list[Disp
         tr = items[0].transporter
         p.snapshot = {
             "no": no, "date": slip.dispatch_date.strftime("%d-%m-%Y") if slip.dispatch_date else local_now().strftime("%d-%m-%Y"),
-            "firm": cfg.get(db, "org.name"), "depot": cfa.name if cfa else "", "depot_address": cfa.address if cfa else "",
+            "firm": cfg.get(db, "org.name"), "logo": cfg.get(db, "org.logo_url"), "depot": cfa.name if cfa else "", "depot_address": cfa.address if cfa else "",
             "depot_phone": cfa.contact_phone if cfa else "", "company": first.company.name, "company_code": first.company.code,
             "garage": tr.name, "garage_city": tr.city or "", "to": first.customer.name,
             "to_place": (first.location.name if first.location else ""), "gatepass": slip.dispatch_no,

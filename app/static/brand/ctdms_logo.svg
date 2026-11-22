@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 120" width="400" height="120">
+  <path d="M94 30 A42 42 0 1 0 94 90" fill="none" stroke="#D7262E" stroke-width="16" stroke-linecap="round"/>  <path d="M98 22 C86 22 80 30 80 38 C80 50 98 66 98 66 C98 66 116 50 116 38 C116 30 110 22 98 22 Z" fill="#1F2933"/>
+  <circle cx="98" cy="38" r="6" fill="#FFFFFF"/>
+  <text x="132" y="70" font-family="Segoe UI, Arial, sans-serif" font-size="50" font-weight="800" fill="#1F2933" letter-spacing="2">CTDMS</text>
+  <text x="134" y="94" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#5F6368" letter-spacing="1">DEPOT TO DESTINATION</text>
+</svg>

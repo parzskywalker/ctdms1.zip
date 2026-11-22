@@ -2,7 +2,25 @@
 
 ## v1.8 (in progress, branch `claude/v1.8-load-planning`) — S1 first slice: cloud server settings
 
-Plan: `pilot_docs\CTDMS_v1.8_plan.md` revision 10, approved 22 Nov 2026 with its defaults. No migration in this slice.
+Plan: `pilot_docs\CTDMS_v1.8_plan.md` revision 10, approved 22 Nov 2026 with its defaults.
+
+**Dispatch: labels first, vehicle planning, phone gate check (migration 0019, applied automatically).** Switched on per
+installation with `dispatch.labels_first` (off by default, so nothing changes until it is turned on).
+- **Labels to Print** (`/labels-desk`, operators): confirm the carton count and print one label per carton before any
+  vehicle is chosen; a count different from the invoice needs the Depot Manager (`exception.approve`) and a reason.
+- **Ready to Load** (`/ready-to-load`): labelled invoices by area; the Depot Manager (`load.plan`) ticks one vehicle's
+  invoices and makes its gatepass in the gatepass builder. The labelled cartons are tied to the gatepass; voiding it puts
+  them back to Ready to Load with their labels still valid. Invoices without labels: only an **urgent single trip**
+  (Depot Manager, reason) - its labels are made with the gatepass, as before.
+- **Exceptions log** (`/dispatch-exceptions`, table `dispatch_exceptions`): carton count, urgent trip, transporter not
+  normally allowed, gate exception. The gatepass prints them as a plain list (no signature boxes any more); with
+  `dispatch.signature_photo_required` the gatepass cannot leave until the guard has photographed the signed copy.
+- **Check gatepass on the phone** (`/gate/phone`): the camera reads the gatepass, every carton, each Garage Pawati (new
+  barcode `PW<id>`), takes the signature photo and the final gatepass scan dispatches. Typing or a Bluetooth scanner
+  also works. A carton on no gatepass shows "STOP - not planned on any vehicle".
+- **Branding:** `org.logo_url` logo on gatepasses, Garage Pawatis and labels (`app/static/brand/`).
+- `dispatch.cross_company_check` can switch the company tick off. Existing Depot Manager roles get `load.plan` and
+  `exception.approve`.
 
 - **Small cloud server:** `docker-compose.yml` runs 3 Gunicorn workers by default (`GUNICORN_WORKERS`), sized for the 2 GB
   AWS Lightsail plan.

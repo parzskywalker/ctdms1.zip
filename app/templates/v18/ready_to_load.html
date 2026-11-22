@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Ready to Load</h1><div class="sub">Step 3: invoices whose cartons are all labelled and on no vehicle yet. Tick the invoices for one vehicle (<kbd>Space</kbd> ticks) and press <b>Make gatepass for this vehicle</b> (<kbd>Alt</kbd>+<kbd>G</kbd>).</div></div>
+</div>
+<form method="post" action="/gatepass/prepare">
+<input type="hidden" name="csrf_token" value="{{ csrf }}">
+{% for area, invs in groups.items() %}
+<div class="card flush" style="margin-bottom:12px">
+  <div class="table-wrap">
+  <table class="data">
+    <thead><tr><th style="width:28px"></th><th colspan="2">{{ area }} · {{ invs|length }} invoice(s) · {{ totals[area] }} cartons</th><th>Companies</th><th class="num">Cartons</th><th class="num">Age</th></tr></thead>
+    <tbody>
+    {% for i in invs %}
+      <tr>
+        <td><input type="checkbox" name="ids" value="{{ i.id }}" aria-label="Load {{ i.invoice_no }}"{% if loop.first and loop.index0 == 0 and area == (groups|list)[0] %} autofocus{% endif %}></td>
+        <td class="nowrap"><b>{{ i.invoice_no }}</b></td><td>{{ i.customer.name }}</td><td class="nowrap">{{ i.company_codes }}</td>
+        <td class="num">{{ state[i.id].total }}</td><td class="num">{{ i.age_days }}d</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% else %}
+<div class="card"><p class="empty">Nothing ready yet. Labels are printed at <a href="/labels-desk">Labels to Print</a>.</p></div>
+{% endfor %}
+{% if groups and can_plan %}<button class="btn btn-primary" type="submit" accesskey="g">Make gatepass for this vehicle</button>{% endif %}
+</form>
+{% endblock %}

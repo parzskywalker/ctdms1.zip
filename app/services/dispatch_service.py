@@ -25,7 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import (
-    CFA, DispatchAllocation, DispatchMode, DispatchSlip, DispatchSlipLine, ExceptionCode, Invoice, InvoiceStatus, OutsideAuto, PaymentMode,
+    CFA, CaseStatus, DispatchAllocation, DispatchException, DispatchMode, DispatchSlip, DispatchSlipLine, ExceptionCode, Invoice, InvoiceStatus, OutsideAuto, PaymentMode,
     PickupMode, RateLevel, SlipPrintLog, Transporter, TransporterBill, User, utcnow,
 )
 from app.models.masters import ChargeBasis
@@ -168,6 +168,7 @@ class GatepassRequest:
     vehicle_no: str | None = None
     group_cross_company: bool = False    # v1.7: invoices of different companies on one gatepass, on purpose
     eligibility_override_reason: str | None = None  # v1.7: transporter that does not serve this depot (permission + reason)
+    urgent_reason: str | None = None      # v1.8: urgent single trip - gatepass before labels (Depot Manager)
     # v1.7 local-auto path: {invoice_id: [(receiving_transporter_id, cases), ...]} - one or several receivers per invoice
     receivers: dict | None = None
 
@@ -274,7 +275,14 @@ def plan_gatepass(db: Session, user: User | None, invs: list[Invoice], req: Gate
     company_mode = freight_source(db) == "COMPANY"
     # v1.7 grouping rule: different companies only by an explicit, permitted choice (the companies stay on every line)
     company_codes = sorted({i.company.code for i in invs})
-    cross_company = len(company_codes) > 1
+    # v1.8: the company check can be switched off (one customer always buys from several companies)
+    cross_company = len(company_codes) > 1 and bool(cfg.get(db, "dispatch.cross_company_check"))
+    labels_first = bool(cfg.get(db, "dispatch.labels_first"))
+    urgent = (req.urgent_reason or "").strip()
+    if urgent and user is not None and not user.can("load.plan"):
+        problems.append("Only the Depot Manager can make an urgent single trip")
+    elif urgent and len(urgent) < 5:
+        problems.append("Give the reason for the urgent single trip (at least 5 characters)")
     if cross_company and not req.group_cross_company:
         problems.append(f"These invoices belong to different companies ({', '.join(company_codes)}). Tick \"Group across "
                         "companies\" to put them on one gatepass on purpose, or make one gatepass per company")
@@ -331,6 +339,17 @@ def plan_gatepass(db: Session, user: User | None, invs: list[Invoice], req: Gate
         except ValueError:
             problems.append(f"{tag}: cases must be a whole number")
             continue
+        if labels_first:  # v1.8: the cartons labelled at the label desk are the count
+            live = cs.label_first_cartons(db, inv.id)
+            if live:
+                cases = len(live)
+                pend = sum(1 for c in live if c.status == CaseStatus.LABEL_PENDING)
+                if pend:
+                    problems.append(f"{tag}: {pend} label(s) not confirmed as printed - confirm them at Labels to Print")
+            elif not urgent:
+                problems.append(f"{tag}: labels not printed yet - print them at Labels to Print first (or the Depot "
+                                "Manager makes an urgent single trip)")
+                continue
         if not cases or cases <= 0:
             problems.append(f"{tag}: number of cases missing")
             continue
@@ -501,7 +520,7 @@ def _gatepass_snapshot(db: Session, slip: DispatchSlip, planned: list[PlannedLin
     first = planned[0].inv
     return {
         "v": 2,
-        "org_name": cfg.get(db, "org.name"),
+        "org_name": cfg.get(db, "org.name"), "logo": cfg.get(db, "org.logo_url"),
         "org_address": cfg.get(db, "org.address"),
         "footer": cfg.get(db, "slip.footer_note"),
         "dispatch_no": slip.dispatch_no,
@@ -538,6 +557,8 @@ def _gatepass_snapshot(db: Session, slip: DispatchSlip, planned: list[PlannedLin
 
 def create_gatepass(db: Session, user: User, invs: list[Invoice], req: GatepassRequest) -> DispatchSlip:
     _perm(user, "dispatch.operate")
+    if cfg.get(db, "dispatch.labels_first"):
+        _perm(user, "load.plan")  # v1.8: the Depot Manager plans the vehicle and makes its gatepass
     planned, totals, problems = plan_gatepass(db, user, invs, req)
     if problems:
         raise BusinessError("Cannot generate gatepass: " + "; ".join(problems))
@@ -642,7 +663,18 @@ def create_gatepass(db: Session, user: User, invs: list[Invoice], req: GatepassR
                        "auto_method": slip.auto_method, "trip_charge": audit._s(slip.trip_charge),
                        "paid": str(totals["paid"]), "consignments": len(consignments),
                        "cross_company": slip.cross_company})
-    cs.generate(db, user, slip)  # case control is mandatory: one barcode per carton, scanned at the gate
+    if (req.urgent_reason or "").strip():  # v1.8: gatepass before labels, Depot Manager only (checked in planning)
+        slip.urgent_reason = req.urgent_reason.strip()
+        db.add(DispatchException(kind="URGENT_TRIP", slip_id=slip.id, user_id=user.id, reason=slip.urgent_reason))
+    if slip.eligibility_override_reason:
+        db.add(DispatchException(kind="ELIGIBILITY", slip_id=slip.id, user_id=user.id,
+                                 reason=slip.eligibility_override_reason))
+    cs.bind_or_generate(db, user, slip)  # v1.8: cartons labelled first are tied to it; others get barcodes now
+    db.flush()
+    slip.snapshot = {**slip.snapshot, "exceptions": [
+        {"kind": e.label, "invoice": e.invoice.invoice_no if e.invoice else None, "reason": e.reason}
+        for e in db.scalars(select(DispatchException).where(DispatchException.slip_id == slip.id)
+                            .order_by(DispatchException.id))]}
     pws.generate(db, user, slip)                    # v1.7 Garage Pawati (local-auto path only)
     slip.lr_warnings = lrb.assign_for_slip(db, user, slip)  # v1.7 LR books (transporters that give their own book)
     if slip.cross_company:
@@ -796,6 +828,10 @@ def gate_scan_out(db: Session, user: User, slip: DispatchSlip) -> int:
     problems = sorted({p for i in invs for p in completion_blockers(db, i) if p != "Already dispatched"})
     if not problems and not any(i.status != S.DISPATCHED for i in invs):
         problems = [f"Gatepass {slip.dispatch_no} has no invoice left to send"]
+    if (not slip.signature_photo and cfg.get(db, "dispatch.signature_photo_required")
+            and db.scalar(select(DispatchException.id).where(DispatchException.slip_id == slip.id).limit(1))):
+        problems.append(f"Gatepass {slip.dispatch_no} has exceptions: photograph the gatepass signed by the Depot "
+                        "Manager first")
     if problems:
         audit.log(db, user, "GATE_OUT_BLOCKED", MODULE, record_type="DispatchSlip", record_id=slip.id,
                   ref=slip.dispatch_no, reason="; ".join(problems))
@@ -964,7 +1000,7 @@ def void_gatepass(db: Session, user: User, slip: DispatchSlip, reason: str) -> i
     slip.voided_at = utcnow()
     slip.voided_by_id = user.id
     slip.void_reason = reason.strip()
-    cs.void_for_slip(db, slip)
+    cs.release_for_slip(db, slip)  # v1.8: labels made before the gatepass stay valid
     pws.cancel_for_slip(db, user, slip, f"Gatepass voided: {reason.strip()}")
     lrb.release_for_slip(db, slip)
     n = 0

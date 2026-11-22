@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .ph { max-width: 520px; margin: 0 auto; }
+  .ph video { width: 100%; max-height: 42vh; background: #000; border-radius: 10px; object-fit: cover; }
+  .ph .msg { font-size: 1.15rem; font-weight: 700; padding: 10px; border-radius: 8px; margin: 8px 0; text-align: center; }
+  .ph .ok { background: #dcfce7; color: #14532d; } .ph .bad { background: #fee2e2; color: #7f1d1d; } .ph .info { background: #e0f2fe; color: #0c4a6e; }
+  .ph .big { font-size: 1.6rem; font-weight: 800; text-align: center; }
+  .ph .step { font-weight: 700; margin: 6px 0; }
+  .ph .row2 { display: flex; gap: 8px; } .ph .row2 > * { flex: 1; }
+  .ph ul { padding-left: 18px; margin: 4px 0; }
+</style>
+<div class="ph">
+  <h1>Check gatepass</h1>
+  <div class="step" id="step">1. Scan the GATEPASS barcode</div>
+  <video id="cam" playsinline muted></video>
+  <div class="row2" style="margin-top:6px">
+    <button class="btn" type="button" id="torch">Torch</button>
+    <button class="btn" type="button" id="restart">New gatepass</button>
+  </div>
+  <form id="manual" class="row" style="margin-top:6px;gap:6px">
+    <input id="code" placeholder="Or type / Bluetooth-scan the code" autocomplete="off" style="flex:1" autofocus>
+    <button class="btn btn-primary" type="submit">Enter</button>
+  </form>
+  <div id="msg" class="msg info">Point the camera at the gatepass barcode.</div>
+  <div id="trip" hidden>
+    <div class="big" id="count">0 / 0 cartons</div>
+    <div id="vehicle" class="small muted" style="text-align:center"></div>
+    <div id="pw"></div>
+    <div id="ex" hidden>
+      <div class="msg bad">Exceptions on this gatepass - photograph the gatepass signed by the Depot Manager</div>
+      <ul id="exlist"></ul>
+      <input type="file" id="photo" accept="image/*" capture="environment" hidden>
+      <button class="btn btn-primary" type="button" id="snap" style="width:100%">Take photo of signed gatepass</button>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  const csrf = {{ csrf|tojson }};
+  let slip = null, busy = false, last = '', lastAt = 0, track = null;
+  const $ = (id) => document.getElementById(id);
+  function esc(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+  function say(text, kind) { const m = $('msg'); m.textContent = text; m.className = 'msg ' + kind; if (navigator.vibrate && kind === 'bad') navigator.vibrate([200, 100, 200]); }
+  function beep(ok) { try { const a = new AudioContext(), o = a.createOscillator(); o.frequency.value = ok ? 880 : 220; o.connect(a.destination); o.start(); o.stop(a.currentTime + (ok ? 0.12 : 0.4)); } catch (e) {} }
+  async function post(url, data) {
+    const f = new FormData(); f.append('csrf_token', csrf);
+    for (const k in data) f.append(k, data[k]);
+    const r = await fetch(url, { method: 'POST', body: f, headers: { 'X-CSRF-Token': csrf } });
+    return r.json();
+  }
+  function show(s) {
+    $('trip').hidden = false;
+    $('count').textContent = s.scanned + ' / ' + s.total + ' cartons';
+    $('vehicle').textContent = s.dispatch_no + (s.vehicle ? ' · ' + s.vehicle : '');
+    $('pw').innerHTML = (s.pawatis || []).map(p => '<div>' + (p.done ? '&#10004; ' : '&#9744; ') + 'Pawati ' + esc(p.no) + ' · ' + esc(p.garage) + '</div>').join('');
+    const needPhoto = (s.exceptions || []).length > 0 && !s.photo;
+    $('ex').hidden = !needPhoto;
+    $('exlist').innerHTML = (s.exceptions || []).map(e => '<li>' + esc(e.kind) + ': ' + esc(e.reason) + '</li>').join('');
+    const pawLeft = (s.pawatis || []).filter(p => !p.done).length;
+    $('step').textContent = s.gone_out ? 'Dispatched' : (s.scanned < s.total ? '2. Scan each CARTON' :
+      (pawLeft ? '3. Scan each GARAGE PAWATI' : (needPhoto ? '4. Photograph the signed gatepass' : '5. Scan the GATEPASS again to dispatch')));
+  }
+  async function handle(code) {
+    code = (code || '').trim(); if (!code || busy) return;
+    const now = Date.now(); if (code === last && now - lastAt < 2500) return; last = code; lastAt = now;
+    busy = true;
+    try {
+      let r;
+      if (!slip) {
+        r = await post('/gate/phone/open', { code: code });
+        if (r.ok) { slip = r; show(r); say('Gatepass ' + r.dispatch_no + ' open', 'info'); beep(true); } else { say(r.message, 'bad'); beep(false); }
+      } else if (/^PW[0-9]+$/i.test(code)) {
+        r = await post('/gate/phone/pawati', { slip_id: slip.slip_id, code: code });
+        say(r.message, r.ok ? 'ok' : 'bad'); beep(r.ok); if (r.slip_id) show(r);
+      } else {
+        r = await post('/gatepass/scan-case', { slip_id: slip.slip_id, code: code, station: 'phone' });
+        say(r.message || r.result, r.ok ? 'ok' : 'bad'); beep(r.ok);
+        if (r.gone_out) { say('DISPATCHED - ' + slip.dispatch_no, 'ok'); slip = null; $('step').textContent = 'Dispatched. Scan the next gatepass'; }
+        else { const st = await post('/gate/phone/open', { code: slip.dispatch_no }); if (st.ok) show(st); }
+      }
+    } catch (e) { say('No connection - try again', 'bad'); }
+    busy = false;
+  }
+  $('manual').addEventListener('submit', (e) => { e.preventDefault(); handle($('code').value); $('code').value = ''; $('code').focus(); });
+  $('restart').addEventListener('click', () => { slip = null; $('trip').hidden = true; $('step').textContent = '1. Scan the GATEPASS barcode'; say('Scan the next gatepass', 'info'); });
+  $('snap').addEventListener('click', () => $('photo').click());
+  $('photo').addEventListener('change', async () => {
+    const file = $('photo').files[0]; if (!file || !slip) return;
+    const f = new FormData(); f.append('csrf_token', csrf); f.append('slip_id', slip.slip_id); f.append('photo', file);
+    try {
+      const r = await (await fetch('/gate/phone/photo', { method: 'POST', body: f, headers: { 'X-CSRF-Token': csrf } })).json();
+      say(r.message, r.ok ? 'ok' : 'bad'); if (r.ok) show(r);
+    } catch (e) { say('Photo not sent - try again', 'bad'); }
+  });
+  async function camera() {
+    if (!('BarcodeDetector' in window) || !navigator.mediaDevices) { say('Camera scanning needs Chrome on Android - type the code or use a Bluetooth scanner', 'bad'); $('cam').hidden = true; return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      $('cam').srcObject = stream; await $('cam').play(); track = stream.getVideoTracks()[0];
+      const det = new BarcodeDetector({ formats: ['code_128', 'code_39', 'qr_code', 'ean_13'] });
+      setInterval(async () => { if (busy) return; try { const b = await det.detect($('cam')); if (b.length) handle(b[0].rawValue); } catch (e) {} }, 250);
+    } catch (e) { say('Camera not allowed - allow it in Chrome, or type the code', 'bad'); }
+  }
+  $('torch').addEventListener('click', () => { if (!track) return; const on = !track._on; track.applyConstraints({ advanced: [{ torch: on }] }).then(() => { track._on = on; }).catch(() => say('No torch on this phone', 'bad')); });
+  camera();
+})();
+</script>
+{% endblock %}

@@ -140,18 +140,7 @@ def _slip_flowables(snap: dict, width: float, base: float, print_label: str, pri
     out.append(grid([("Remarks", snap.get("remarks") or "")], cols=1))
     out.append(Spacer(1, 3 * mm))
 
-    sig_h = 14 * mm if base > 8 else 10 * mm
-    sig = Table([
-        [P("Prepared by", st["lbl"]), P("Checked by", st["lbl"]), P("Dispatched by", st["lbl"]),
-         P("Transporter / Driver", st["lbl"])],
-        [P(_esc(snap.get("prepared_by")), st["reg"]), P(_esc(snap.get("checked_by")), st["reg"]), "", ""],
-        ["", "", "", ""],
-        [P("Signature", st["small"]), P("Signature", st["small"]), P("Signature", st["small"]),
-         P("Signature & mobile", st["small"])],
-    ], colWidths=[width / 4] * 4, rowHeights=[None, None, sig_h, None])
-    sig.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.6, LINE), ("INNERGRID", (0, 0), (-1, -1), 0.3, LINE),
-                             ("LINEBELOW", (0, 2), (-1, 2), 0.6, GREY), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
-    out += [sig, Spacer(1, 2 * mm)]
+    out += _exceptions(snap, P, st)
     out.append(P(_esc(snap.get("footer")), st["center"]))
     out.append(P(f"{snap.get('central_id', '')} · {printed_line}", st["center"]))
     return out
@@ -236,18 +225,7 @@ def _gatepass_flowables(snap: dict, width: float, base: float, print_label: str,
     out += [money_tbl, Spacer(1, 2 * mm)]
     if snap.get("remarks"):
         out += [P(f"Remarks: {_esc(snap['remarks'])}", st["reg"]), Spacer(1, 2 * mm)]
-    sig_h = 13 * mm if base > 8 else 9 * mm
-    sig = Table([
-        [P("Prepared by", st["lbl"]), P("Cases counted by", st["lbl"]), P("Gate / security", st["lbl"]),
-         P("Received by transporter / driver", st["lbl"])],
-        [P(_esc(snap.get("prepared_by")), st["reg"]), "", "", ""],
-        ["", "", "", ""],
-        [P("Signature", st["small"]), P("Signature", st["small"]), P("Signature &amp; time", st["small"]),
-         P("Signature &amp; mobile", st["small"])],
-    ], colWidths=[width / 4] * 4, rowHeights=[None, None, sig_h, None])
-    sig.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.6, LINE), ("INNERGRID", (0, 0), (-1, -1), 0.3, LINE),
-                             ("LINEBELOW", (0, 2), (-1, 2), 0.6, GREY), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
-    out += [sig, Spacer(1, 2 * mm), P(_esc(snap.get("footer")), st["center"]),
+    out += _exceptions(snap, P, st) + [P(_esc(snap.get("footer")), st["center"]),
             P(f"{_esc(snap.get('central_id'))} · {printed_line}", st["center"])]
     return out
 
@@ -376,3 +354,13 @@ def table_pdf(title: str, subtitle: str, columns: list[tuple[str, str]], rows: l
 
 LONG_CELL_CHARS = 400   # longer text moves to the notes after the table
 LONG_LIST_ITEMS = 10    # so does a comma-separated list with more items than this (LR / vehicle lists)
+
+
+def _exceptions(snap: dict, P, st) -> list:
+    """v1.8: the gatepass has no signature boxes; its exceptions are listed for the Depot Manager to sign beside."""
+    if not snap.get("exceptions"):
+        return []
+    rows = [P("<b>Exceptions on this gatepass</b>", st["reg"])]
+    rows += [P(f"{_esc(e.get('kind'))}{' · Inv ' + _esc(e.get('invoice')) if e.get('invoice') else ''}: {_esc(e.get('reason'))}",
+               st["reg"]) for e in snap["exceptions"]]
+    return rows + [Spacer(1, 10 * mm), P("Depot Manager signs here (photographed at the gate)", st["small"]), Spacer(1, 2 * mm)]

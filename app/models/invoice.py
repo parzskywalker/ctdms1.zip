@@ -368,6 +368,11 @@ class DispatchSlip(Base):
     gate_exception_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     gate_exception_at: Mapped[datetime | None] = mapped_column(DateTime)
     eligibility_override_reason: Mapped[str | None] = mapped_column(Text)
+    # v1.8: urgent single trip (labels after the gatepass, Depot Manager only); photo of the signed gatepass at the gate
+    urgent_reason: Mapped[str | None] = mapped_column(Text)
+    signature_photo: Mapped[str | None] = mapped_column(String(200))
+    signature_photo_at: Mapped[datetime | None] = mapped_column(DateTime)
+    signature_photo_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
 
     invoice = relationship("Invoice", foreign_keys=[invoice_id])
     cfa = relationship("CFA")
@@ -470,8 +475,9 @@ class DispatchCase(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     case_code: Mapped[str] = mapped_column(String(12))
     invoice_id: Mapped[int] = mapped_column(ForeignKey("invoices.id"), index=True)
-    slip_id: Mapped[int] = mapped_column(ForeignKey("dispatch_slips.id"))
+    slip_id: Mapped[int | None] = mapped_column(ForeignKey("dispatch_slips.id"))  # v1.8: empty until a gatepass is made
     line_id: Mapped[int | None] = mapped_column(ForeignKey("dispatch_slip_lines.id"))
+    label_first: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")  # v1.8: labelled before planning
     allocation_id: Mapped[int | None] = mapped_column(Integer)  # set when a receiving transporter is allocated (Phase 6)
     seq_in_invoice: Mapped[int] = mapped_column(Integer)
     seq_in_consignment: Mapped[int] = mapped_column(Integer)
@@ -502,7 +508,8 @@ class LabelPrintLog(Base):
     __tablename__ = "label_print_log"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    slip_id: Mapped[int] = mapped_column(ForeignKey("dispatch_slips.id"), index=True)
+    slip_id: Mapped[int | None] = mapped_column(ForeignKey("dispatch_slips.id"), index=True)
+    invoice_id: Mapped[int | None] = mapped_column(ForeignKey("invoices.id"))  # v1.8: labels printed before a gatepass
     batch_no: Mapped[int] = mapped_column(Integer)
     case_id: Mapped[int] = mapped_column(ForeignKey("dispatch_cases.id"))
     is_reprint: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -514,3 +521,35 @@ class LabelPrintLog(Base):
 
     case = relationship("DispatchCase")
     printed_by = relationship("User")
+
+
+class DispatchExceptionKind:
+    BOX_COUNT = "BOX_COUNT"          # cartons labelled differ from the invoice
+    URGENT_TRIP = "URGENT_TRIP"      # gatepass before labels (Depot Manager)
+    ELIGIBILITY = "ELIGIBILITY"      # transporter that does not serve the depot
+    GATE = "GATE"                    # gone out with cartons not scanned
+    LABELS = {BOX_COUNT: "Carton count differs from invoice", URGENT_TRIP: "Urgent single trip",
+              ELIGIBILITY: "Transporter not normally allowed", GATE: "Gate exception"}
+
+
+class DispatchException(Base):
+    """v1.8 exceptions log: decided on the spot by the Depot Manager, listed on the gatepass, signed by hand there and
+    photographed by the guard before dispatch."""
+
+    __tablename__ = "dispatch_exceptions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(20))
+    invoice_id: Mapped[int | None] = mapped_column(ForeignKey("invoices.id"), index=True)
+    slip_id: Mapped[int | None] = mapped_column(ForeignKey("dispatch_slips.id"), index=True)
+    reason: Mapped[str] = mapped_column(Text)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    invoice = relationship("Invoice")
+    slip = relationship("DispatchSlip")
+    user = relationship("User")
+
+    @property
+    def label(self) -> str:
+        return DispatchExceptionKind.LABELS.get(self.kind, self.kind)

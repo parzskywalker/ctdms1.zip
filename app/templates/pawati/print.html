@@ -36,11 +36,11 @@
   {% for p in chunk %}{% set s = p.snapshot %}
   <div class="slip">
     {% if wm %}<div class="trn">TRAINING - NOT VALID</div>{% endif %}
-    <div class="firm">{{ s.firm }}</div>
+    {% if s.logo %}<img src="{{ s.logo }}" alt="" style="height:10mm;float:left;margin-right:2mm">{% endif %}<div class="firm">{{ s.firm }}</div>
     <div class="addr">{{ s.depot }}{% if s.depot_address %} · {{ s.depot_address }}{% endif %}{% if s.depot_phone %}<br>Ph: {{ s.depot_phone }}{% endif %}</div>
     <div class="co">{{ s.company }}</div>
     <div class="title">GARAGE PAWATI</div>
-    <div class="no"><span>No. {{ p.pawati_no }}</span><span>Date: {{ s.date }}</span></div>
+    <div class="no"><span>No. {{ p.pawati_no }}</span><span>Date: {{ s.date }}</span></div><div style="height:9mm">{{ ("PW%d" % p.id)|barcode_svg }}</div>
     {% if p.print_count > 1 %}<div class="dup">DUPLICATE · reprint #{{ p.print_count - 1 }}</div>{% endif %}
     <table>
       <tr><td class="k">Garage</td><td class="big">{{ s.garage }}{% if s.garage_city %}, {{ s.garage_city }}{% endif %}</td></tr>

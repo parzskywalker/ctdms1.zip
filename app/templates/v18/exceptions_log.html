@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head"><div><h1>Dispatch Exceptions</h1><div class="sub">Every exception, decided by the Depot Manager, listed on its gatepass, signed there and photographed at the gate.</div></div></div>
+<div class="card flush"><div class="table-wrap">
+<table class="data">
+  <thead><tr><th>When</th><th>Exception</th><th>Invoice</th><th>Gatepass</th><th>Reason</th><th>By</th><th>Signed gatepass</th></tr></thead>
+  <tbody>
+  {% for e in rows %}
+    <tr>
+      <td class="nowrap">{{ e.created_at|dt }}</td><td>{{ e.label }}</td>
+      <td class="nowrap">{{ e.invoice.invoice_no if e.invoice else '—' }}</td>
+      <td class="nowrap">{% if e.slip %}<a href="/gatepass/{{ e.slip.id }}">{{ e.slip.dispatch_no }}</a>{% else %}not on a gatepass yet{% endif %}</td>
+      <td>{{ e.reason }}</td><td>{{ e.user.full_name if e.user else '' }}</td>
+      <td>{% if e.slip and e.slip.signature_photo %}<a href="/gatepass/{{ e.slip.id }}/signature-photo" target="_blank">photo</a>{% elif e.slip and e.slip.gate_out_at %}<span class="pos">gone out without photo</span>{% else %}—{% endif %}</td>
+    </tr>
+  {% else %}<tr><td colspan="7" class="empty">No exceptions.</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div></div>
+{% endblock %}

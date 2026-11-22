@@ -44,7 +44,7 @@
   {% if wm %}<div class="trn-wm">{{ wm }}</div>{% endif %}
   <div class="head">
     <div>
-      <div class="org">{{ snap.org_name }}</div>
+      {% if snap.logo %}<img src="{{ snap.logo }}" alt="" style="height:13mm;float:left;margin-right:3mm">{% endif %}<div class="org">{{ snap.org_name }}</div>
       <div class="muted">{{ snap.org_address }}</div>
       <div class="title">{{ 'GATEPASS / DISPATCH SLIP' if snap.v == 2 else 'DISPATCH SLIP' }}</div>
       <div>No: <span class="dno">{{ snap.dispatch_no }}</span></div>
@@ -91,9 +91,7 @@
           <div>Paid now ₹{{ '{:,.2f}'.format(snap.totals.paid|float) }}{% if snap.totals.balance|float > 0 %} · <b>to be billed ₹{{ '{:,.2f}'.format(snap.totals.balance|float) }}</b>{% endif %}</div></td></tr>
   </table>
   {% if snap.remarks %}<table><tr><td><span class="l">Remarks</span>{{ snap.remarks }}</td></tr></table>{% endif %}
-  <table class="sig">
-    <tr><td><span class="l">Prepared by</span>{{ snap.prepared_by or '' }}<br><br><span class="l">Signature</span></td><td><span class="l">Cases counted by</span><br><br><span class="l">Signature</span></td><td><span class="l">Gate / security</span><br><br><span class="l">Signature &amp; time</span></td><td><span class="l">Received by transporter / driver</span><br><br><span class="l">Signature &amp; mobile</span></td></tr>
-  </table>
+  {% if snap.exceptions %}<table><tr><td><span class="l">Exceptions on this gatepass</span>{% for e in snap.exceptions %}<div><b>{{ e.kind }}</b>{% if e.invoice %} · Inv {{ e.invoice }}{% endif %}: {{ e.reason }}</div>{% endfor %}<div class="muted" style="margin-top:8mm">Depot Manager signs here (photographed at the gate)</div></td></tr></table>{% endif %}
 {% else %}
   <table class="kv">
     <tr><td><span class="l">Company / Principal</span><span class="v">{{ snap.company.name }} ({{ snap.company.code }})</span></td><td><span class="l">Depot</span><span class="v">{{ snap.cfa.name }} ({{ snap.cfa.code }})</span></td></tr>
@@ -108,9 +106,7 @@
     <tr><td><span class="l">Transporter</span><span class="v">{{ snap.transporter.name if snap.transporter else '—' }}</span></td><td><span class="l">Vehicle No</span><span class="v">{{ snap.vehicle_no or '—' }}</span></td></tr>
     <tr><td><span class="l">LR / Docket No</span><span class="v">{{ snap.lr_no or '—' }}</span></td><td><span class="l">Dispatch Date &amp; Time</span><span class="v">{{ snap.dispatch_date }} {{ snap.dispatch_time }}</span></td></tr>
   </table>
-  <table class="sig">
-    <tr><td><span class="l">Prepared by</span>{{ snap.prepared_by or '' }}<br><br><span class="l">Signature</span></td><td><span class="l">Checked by</span>{{ snap.checked_by or '' }}<br><br><span class="l">Signature</span></td><td><span class="l">Dispatched by</span><br><br><span class="l">Signature</span></td><td><span class="l">Transporter / Driver</span><br><br><span class="l">Signature &amp; mobile</span></td></tr>
-  </table>
+  {% if snap.exceptions %}<table><tr><td><span class="l">Exceptions on this gatepass</span>{% for e in snap.exceptions %}<div><b>{{ e.kind }}</b>{% if e.invoice %} · Inv {{ e.invoice }}{% endif %}: {{ e.reason }}</div>{% endfor %}<div class="muted" style="margin-top:8mm">Depot Manager signs here (photographed at the gate)</div></td></tr></table>{% endif %}
 {% endif %}
   <div class="foot">{{ snap.footer }}</div>
   <div class="foot">{{ snap.central_id }} · {{ line }}</div>

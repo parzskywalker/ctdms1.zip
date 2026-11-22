@@ -276,9 +276,9 @@ def create_app() -> FastAPI:
     from app.web import (
         admin, approvals, auth_routes, dashboard_routes, dispatch_routes, gatepass_routes, imports_routes,
         invoices_routes, master_upload_routes, masters_routes, notify_routes, pawati_routes, rate_card_routes, rates_routes,
-        recon_routes, reports_routes, subscription_routes, tracking_routes, training_routes,
+        recon_routes, reports_routes, subscription_routes, tracking_routes, training_routes, v18_routes,
     )
-    for mod in (auth_routes, dashboard_routes, invoices_routes, imports_routes, dispatch_routes, gatepass_routes,
+    for mod in (auth_routes, dashboard_routes, invoices_routes, imports_routes, dispatch_routes, v18_routes, gatepass_routes,
                 notify_routes, pawati_routes, tracking_routes, approvals, master_upload_routes, masters_routes, rates_routes, rate_card_routes, recon_routes,
                 subscription_routes, reports_routes, training_routes, admin):
         app.include_router(mod.router)

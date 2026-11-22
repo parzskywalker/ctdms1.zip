@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Labels · Inv {{ inv.invoice_no }}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #000; }
+  .bar, .confirm { padding: 8px 12px; background: #f1f5f9; font-size: 13px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .bar button, .confirm button { font-size: 13px; padding: 5px 12px; cursor: pointer; }
+  .confirm { background: #fffbeb; border-top: 1px solid #f59e0b; }
+  .label { width: {{ w }}mm; height: {{ h }}mm; padding: 2mm 3mm; overflow: hidden; display: flex; flex-direction: column; gap: .6mm; page-break-after: always; }
+  .top { display: flex; align-items: center; gap: 2mm; font-size: 8pt; font-weight: 700; }
+  .top img { height: 8mm; width: auto; }
+  .top .date { margin-left: auto; font-weight: 400; }
+  .cust { font-size: 12pt; font-weight: 700; line-height: 1.05; max-height: 2.2em; overflow: hidden; }
+  .area { font-size: 11pt; font-weight: 700; }
+  .inv { font-size: 9.5pt; font-weight: 700; } .meta { font-size: 8pt; font-weight: 400; }
+  .row { display: flex; justify-content: space-between; align-items: flex-end; margin-top: auto; }
+  .bc svg { height: 9mm; width: auto; max-width: {{ (w * 0.62)|round|int }}mm; }
+  .code { font: 700 8.5pt "Courier New", monospace; letter-spacing: .5px; }
+  .case { font-size: 15pt; font-weight: 800; white-space: nowrap; }
+  @page { size: {{ w }}mm {{ h }}mm; margin: 0; }
+  @media print { .bar, .confirm { display: none !important; } }
+  @media screen { .label { border: 1px dashed #999; margin: 6px; } }
+</style>
+</head>
+<body>
+<div class="bar"><b>{{ rows|length }} label(s)</b> · Inv {{ inv.invoice_no }} · {{ inv.customer.name }} · {{ w }} × {{ h }} mm
+  <button id="print-now" autofocus>Print (Enter)</button> <a href="/labels-desk">Back (Esc)</a></div>
+<form class="confirm" method="post" action="/labels-desk/{{ inv.id }}/confirm">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <b>Did all {{ rows|length }} labels print?</b>
+  {% if reprint %}<input name="reason" placeholder="Reason for the reprint (required)" size="34" required minlength="5">{% endif %}
+  <button name="result" value="PRINTED">Yes, all printed (Y)</button>
+  <button name="result" value="FAILED" formnovalidate>No - print again (N)</button>
+</form>
+{% for r in rows %}{% set c = r.case %}
+<div class="label">
+  <div class="top">{% if logo %}<img src="{{ logo }}" alt="">{% endif %}<span>{{ org }}</span><span class="date">{{ today.strftime('%d-%m-%Y') }}</span></div>
+  <div class="cust">{{ r.customer.name }}</div>
+  <div class="area">{{ r.location.name if r.location else '' }}</div>
+  <div class="inv">Inv {{ r.invoice.invoice_no }} <span class="meta">· {{ r.company_codes }}</span></div>
+  <div class="row"><div class="bc">{{ c.case_code|barcode_svg }}<div class="code">{{ c.case_code }}</div></div><div class="case">{{ c.seq_in_invoice }} / {{ rows|length }}</div></div>
+</div>
+{% endfor %}
+<script>
+  (function () {
+    const p = document.getElementById('print-now'), f = document.querySelector('.confirm');
+    p.addEventListener('click', () => window.print());
+    document.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'INPUT') return;
+      if (e.key === 'Escape') location.href = '/labels-desk';
+      if (e.key === 'y' || e.key === 'Y') f.querySelector('button[value=PRINTED]').click();
+      if (e.key === 'n' || e.key === 'N') f.querySelector('button[value=FAILED]').click();
+    });
+  })();
+</script>
+</body>
+</html>

@@ -92,7 +92,11 @@ env.globals.update(app_version=__version__, InvoiceStatus=InvoiceStatus)
 NAV = [
     ("Dashboard", [("Dashboard", "/", "dashboard.view", "grid")]),
     ("Dispatch desk", [
-        ("Scan & Gatepass", "/gatepass/new", "dispatch.operate", "scan"),
+        ("Labels to Print", "/labels-desk", "case.print", "list"),
+        ("Ready to Load", "/ready-to-load", "load.plan", "truck"),
+        ("Make Gatepass", "/gatepass/new", "load.plan", "scan"),
+        ("Check Gatepass (phone)", "/gate/phone", "gate.scan", "shield"),
+        ("Dispatch Exceptions", "/dispatch-exceptions", "dispatch.view", "alert"),
         ("Pending Dispatch", "/dispatch/pending", "dispatch.view", "truck"),
         ("Gatepasses", "/gatepass", "dispatch.view", "clipboard"),
         ("Gate Check", "/gatepass/gate", "dispatch.operate|gate.scan", "shield"),

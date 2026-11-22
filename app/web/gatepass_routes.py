@@ -189,7 +189,8 @@ def _request_from(form) -> ds.GatepassRequest:
         amount_paid=ds.parse_money(paid_raw) if paid_raw and form.get("paid_edited") == "1" else None,
         auto_method=(form.get("auto_method") or None), vehicle_no=(form.get("vehicle_no") or "").strip() or None,
         group_cross_company=form.get("group_cross_company") == "1",
-        eligibility_override_reason=(form.get("eligibility_override_reason") or "").strip() or None)
+        eligibility_override_reason=(form.get("eligibility_override_reason") or "").strip() or None,
+        urgent_reason=(form.get("urgent_reason") or "").strip() or None)
     trip_raw = (form.get("trip_charge") or "").strip()
     if trip_raw:
         req.trip_charge = ds.parse_money(trip_raw)

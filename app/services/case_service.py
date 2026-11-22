@@ -96,6 +96,139 @@ def generate(db: Session, user: User, slip: DispatchSlip, *, lines: list | None 
     return total
 
 
+# ----------------------------------------------------------------------------- v1.8 labels before the gatepass
+def label_first_cartons(db: Session, invoice_id: int) -> list[DispatchCase]:
+    """Live cartons of an invoice labelled at the label desk and not yet on any gatepass."""
+    return list(db.scalars(select(DispatchCase).where(
+        DispatchCase.invoice_id == invoice_id, DispatchCase.label_first.is_(True), DispatchCase.slip_id.is_(None),
+        DispatchCase.status != CaseStatus.VOID).order_by(DispatchCase.seq_in_invoice)))
+
+
+def label_invoice(db: Session, user: User, inv: Invoice, count: int, reason: str | None = None) -> list[DispatchCase]:
+    """Create the cartons of one invoice at the label desk (before any vehicle is planned). A count different from the
+    invoice is an exception: only the Depot Manager (`exception.approve`) may confirm it, with a reason."""
+    from app.models import DispatchException, DispatchExceptionKind, InvoiceStatus
+    if not user.can("case.print"):
+        raise BusinessError("You are not authorised to print case labels")
+    if inv.status not in InvoiceStatus.PRE_SLIP:
+        raise BusinessError(f"Invoice {inv.invoice_no} is already on a gatepass or closed")
+    if label_first_cartons(db, inv.id):
+        raise BusinessError(f"Invoice {inv.invoice_no} already has its labels - reprint them instead")
+    if not count or count <= 0 or count > 5000:
+        raise BusinessError("Enter the number of cartons (1 to 5000)")
+    if inv.boxes and count != inv.boxes:
+        if not user.can("exception.approve"):
+            raise BusinessError(f"{count} cartons but the invoice says {inv.boxes}: the Depot Manager must confirm this")
+        if len((reason or "").strip()) < 5:
+            raise BusinessError("Give the reason for the different carton count (at least 5 characters)")
+        db.add(DispatchException(kind=DispatchExceptionKind.BOX_COUNT, invoice_id=inv.id, user_id=user.id,
+                                 reason=f"{count} cartons, invoice says {inv.boxes}: {reason.strip()}"))
+        audit.log(db, user, "OVERRIDE_APPLIED", "OVERRIDE", record_type="Invoice", record_id=inv.id, ref=inv.invoice_no,
+                  field="BOXES", old=inv.boxes, new=count, reason=reason)
+        inv.boxes_source = "OVERRIDE"
+        inv.boxes = count
+    elif not inv.boxes:
+        inv.boxes, inv.boxes_source = count, "MANUAL"
+    training = _training()
+    first = next_sequence_block(db, "CASE:TRAINING" if training else "CASE:LIVE", count)
+    cartons = [DispatchCase(case_code=make_code(first + k - 1, training=training), invoice_id=inv.id, slip_id=None,
+                            label_first=True, seq_in_invoice=k, seq_in_consignment=k, consignment_total=count)
+               for k in range(1, count + 1)]
+    db.add_all(cartons)
+    db.flush()
+    audit.log(db, user, "CASES_GENERATED", MODULE, record_type="Invoice", record_id=inv.id, ref=inv.invoice_no,
+              details={"cases": count, "first": cartons[0].case_code, "last": cartons[-1].case_code, "label_first": True})
+    return cartons
+
+
+def record_invoice_print(db: Session, user: User, inv: Invoice, *, result: str, reason: str | None = None) -> int:
+    """The label desk confirms what came out of the printer for one invoice's cartons (no gatepass yet)."""
+    if result not in ("PRINTED", "FAILED"):
+        raise BusinessError("Say whether the labels were printed or failed")
+    cases = label_first_cartons(db, inv.id)
+    if not cases:
+        raise BusinessError("No labels to confirm for this invoice")
+    reprint = all(c.status != CaseStatus.LABEL_PENDING for c in cases)
+    if reprint:
+        if not user.can("case.reprint"):
+            raise BusinessError("You are not authorised to reprint case labels")
+        if len((reason or "").strip()) < 5:
+            raise BusinessError("Give a reason (at least 5 characters) for reprinting case labels")
+    batch = (db.scalar(select(func.max(LabelPrintLog.batch_no)).where(LabelPrintLog.invoice_id == inv.id)) or 0) + 1
+    for c in cases:
+        db.add(LabelPrintLog(slip_id=None, invoice_id=inv.id, batch_no=batch, case_id=c.id, is_reprint=reprint,
+                             reason=(reason or "").strip() or None, output="THERMAL", status=result,
+                             printed_by_id=user.id))
+        if result == "PRINTED" and c.status == CaseStatus.LABEL_PENDING:
+            c.status = CaseStatus.LABELLED
+    audit.log(db, user, "LABELS_REPRINTED" if reprint else ("LABELS_PRINTED" if result == "PRINTED" else "LABELS_FAILED"),
+              MODULE, record_type="Invoice", record_id=inv.id, ref=inv.invoice_no, reason=reason,
+              details={"batch": batch, "cases": len(cases), "result": result})
+    db.flush()
+    return batch
+
+
+def bind_or_generate(db: Session, user: User, slip: DispatchSlip) -> int:
+    """Tie the labelled cartons of each invoice to the new gatepass; invoices without labels (urgent single trip, or labels
+    first switched off) get their cartons made now, as before."""
+    from app.models import DispatchAllocation, DispatchException
+    allocs: dict[int, list[int]] = {}
+    for a in db.scalars(select(DispatchAllocation).where(DispatchAllocation.slip_id == slip.id).order_by(DispatchAllocation.id)):
+        allocs.setdefault(a.line_id, []).extend([a.id] * a.cases)
+    cons_total: dict[int, int] = {}
+    for ln in slip.lines:
+        cons_total[ln.consignment_no or 0] = cons_total.get(ln.consignment_no or 0, 0) + (ln.cases or 0)
+    per_cons: dict[int, int] = {}
+    unlabelled, bound = [], 0
+    for ln in slip.lines:
+        cartons = label_first_cartons(db, ln.invoice_id)
+        if not cartons:
+            unlabelled.append(ln)
+            continue
+        if len(cartons) != (ln.cases or 0):
+            raise BusinessError(f"Invoice {ln.invoice.invoice_no}: {len(cartons)} cartons labelled, gatepass says {ln.cases}")
+        key = ln.consignment_no or 0
+        owners = allocs.get(ln.id) or []
+        for k, c in enumerate(cartons, 1):
+            per_cons[key] = per_cons.get(key, 0) + 1
+            c.slip_id, c.line_id = slip.id, ln.id
+            c.seq_in_consignment, c.consignment_total = per_cons[key], cons_total[key]
+            c.allocation_id = owners[k - 1] if k <= len(owners) else None
+            bound += 1
+        for ex in db.scalars(select(DispatchException).where(DispatchException.invoice_id == ln.invoice_id,
+                                                             DispatchException.slip_id.is_(None))):
+            ex.slip_id = slip.id
+    slip.case_control = "REQUIRED"
+    db.flush()
+    if bound:
+        audit.log(db, user, "CASES_BOUND", MODULE, record_type="DispatchSlip", record_id=slip.id, ref=slip.dispatch_no,
+                  details={"cases": bound})
+    return bound + (generate(db, user, slip, lines=unlabelled) if unlabelled else 0)
+
+
+def release_for_slip(db: Session, slip: DispatchSlip) -> int:
+    """Gatepass voided: cartons labelled before it go back to Ready to Load (their labels stay valid); cartons made with
+    the gatepass are voided as before."""
+    from app.models import DispatchException
+    freed = list(db.scalars(select(DispatchCase).where(
+        DispatchCase.slip_id == slip.id, DispatchCase.label_first.is_(True),
+        DispatchCase.status.notin_([CaseStatus.VOID, CaseStatus.DISPATCHED]))))
+    per_inv: dict[int, int] = {}
+    for c in freed:
+        per_inv[c.invoice_id] = per_inv.get(c.invoice_id, 0) + 1
+    for c in freed:
+        c.slip_id = c.line_id = c.allocation_id = None
+        c.seq_in_consignment, c.consignment_total = c.seq_in_invoice, per_inv[c.invoice_id]
+        if c.status in (CaseStatus.SCANNED, CaseStatus.MISSING):
+            c.status = CaseStatus.LABELLED
+    n = len(freed)
+    for ex in db.scalars(select(DispatchException).where(DispatchException.slip_id == slip.id,
+                                                         DispatchException.kind == "BOX_COUNT")):
+        ex.slip_id = None
+    db.flush()  # the session does not autoflush: the freed cartons must not be voided below
+    return n + void_for_slip(db, slip)
+
+
 def convert_legacy(db: Session, user: User, slip: DispatchSlip) -> int:
     """A gatepass made before case labels were mandatory (LEGACY) that is still at the depot gets its case labels now:
     one barcode per carton still to leave. Nothing else about the gatepass changes; its labels are then printed and the
@@ -215,6 +348,7 @@ SCAN_MESSAGES = {
     "UNKNOWN": "Unknown case code - do not load",
     "VOID": "VOID label - this case was cancelled",
     "WRONG_GATEPASS": "Belongs to another gatepass",
+    "NOT_PLANNED": "STOP - this carton is not planned on any vehicle yet",
     "GATE_CLOSED": "Gatepass is void - the goods must not leave",
     "ALREADY_OUT": "This gatepass has already gone out",
     "NO_CASES": "This gatepass has no case labels (count it by hand)",
@@ -283,6 +417,8 @@ def scan(db: Session, user: User, code: str, slip: DispatchSlip | None = None, *
     if result is None:
         if case.status == CaseStatus.VOID:
             result = "VOID"
+        elif case.slip_id is None:
+            result = "NOT_PLANNED"
         elif target is not None and case.slip_id != target.id:
             result = "WRONG_GATEPASS"
         else:
@@ -325,6 +461,9 @@ def record_exception(db: Session, user: User, slip: DispatchSlip, reason: str) -
         raise BusinessError("Every case is scanned - no exception needed")
     for c in p["missing"]:
         c.status = CaseStatus.MISSING
+    from app.models import DispatchException
+    db.add(DispatchException(kind="GATE", slip_id=slip.id, user_id=user.id,
+                             reason=f"{len(p['missing'])} of {p['total']} cartons not scanned: {reason.strip()}"))
     slip.gate_exception_reason = reason.strip()
     slip.gate_exception_by_id = user.id
     slip.gate_exception_at = utcnow()

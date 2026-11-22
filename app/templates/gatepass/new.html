@@ -91,6 +91,7 @@
           <input type="text" name="eligibility_override_reason" id="gp-override-reason" maxlength="200" placeholder="Reason (recorded and audited)" value="{{ form.get('eligibility_override_reason') or '' }}" hidden>
         </div>
         {% endif %}
+        {% if can('load.plan') %}<label style="margin-top:8px" for="gp-urgent">Urgent single trip (gatepass before labels) - reason</label><input type="text" name="urgent_reason" id="gp-urgent" maxlength="200" placeholder="Only for real emergencies - listed on the gatepass" value="{{ form.get('urgent_reason') or '' }}">{% endif %}
         <label style="margin-top:8px">Goods reach the transporter by</label>
         <div class="checks">
           <label class="check"><input type="radio" name="pickup_mode" value="REGULAR" {% if form.get('pickup_mode') != 'OUTSIDE_AUTO' %}checked{% endif %}> Regular</label>
