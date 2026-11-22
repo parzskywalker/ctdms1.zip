@@ -10,7 +10,12 @@ mkdir -p "$BACKUP_DIR"
 FILE="$BACKUP_DIR/ctdms-$STAMP.dump"
 pg_dump --format=custom --no-owner --file="$FILE"
 echo "backup written: $FILE ($(du -h "$FILE" | cut -f1))"
-find "$BACKUP_DIR" -name 'ctdms-*.dump' -mtime +"$KEEP_DAYS" -delete
+# Uploaded files (signature photos, bill photos) are not in the database: back them up too.
+if [ -n "${UPLOADS_DIR:-}" ] && [ -d "$UPLOADS_DIR" ]; then
+  tar -czf "$BACKUP_DIR/ctdms-uploads-$STAMP.tar.gz" -C "$UPLOADS_DIR" .
+  echo "uploads written: $BACKUP_DIR/ctdms-uploads-$STAMP.tar.gz"
+fi
+find "$BACKUP_DIR" \( -name 'ctdms-*.dump' -o -name 'ctdms-uploads-*.tar.gz' \) -mtime +"$KEEP_DAYS" -delete
 # Optional off-site copy (uncomment one):
 # rclone copy "$FILE" remote:ctdms-backups/
 # aws s3 cp "$FILE" "s3://your-bucket/ctdms/"

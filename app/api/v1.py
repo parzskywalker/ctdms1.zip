@@ -28,6 +28,7 @@ from app.services import dispatch_service as ds
 from app.services.dashboard import dashboard_data, ops_dashboard_data
 from app.services.freight_engine import calc_freight, find_rate
 from app.services.import_service import Resolver, ingest_records
+from app.services.utils import local_today
 from app.services.pdf_service import dispatch_slips_pdf
 from app.services.reports import REPORTS, Filters, filtered_invoices
 from app.services.scope import can_see, can_see_invoice, customer_visible
@@ -249,7 +250,7 @@ def quote(company_code: str, location: str, cfa_code: str | None = None, custome
     if not lo:
         raise HTTPException(400, "Unknown location")
     lk = find_rate(db, company_id=co.id, cfa_id=cf.id if cf else None, customer_id=cu.id if cu else None,
-                   location_id=lo.id, on_date=on_date or date.today())
+                   location_id=lo.id, on_date=on_date or local_today())
     return {"found": lk.found, "code": lk.code, "message": lk.message, "level": lk.level, "trace": lk.trace,
             "rate_id": lk.rate.id if lk.rate else None, "rate_per_box": str(lk.rate_per_box) if lk.found else None,
             "boxes": boxes, "transportation_expense": str(calc_freight(boxes, lk.rate_per_box)) if boxes and lk.found else None}

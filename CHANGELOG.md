@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.8 (in progress, branch `claude/v1.8-load-planning`) — S1 first slice: cloud server settings
+
+Plan: `pilot_docs\CTDMS_v1.8_plan.md` revision 10, approved 22 Nov 2026 with its defaults. No migration in this slice.
+
+- **Small cloud server:** `docker-compose.yml` runs 3 Gunicorn workers by default (`GUNICORN_WORKERS`), sized for the 2 GB
+  AWS Lightsail plan.
+- **Backups include uploaded files:** `deploy/backup.sh` also archives the uploads folder (signature and bill photos) as
+  `ctdms-uploads-<time>.tar.gz` with the same retention; the compose backup job now runs every 4 hours (`BACKUP_EVERY_SECONDS`).
+- **Server-down page:** Caddy shows `deploy/server_down.html` (English and Hindi, rechecks every 10 seconds) while the app
+  restarts or is updated, instead of a browser error.
+- **Business-zone dates:** the API rate check and the bulk rate upload default to today's date in India time
+  (`local_today()`), not the server's clock (cloud servers run on UTC).
+
 ## v1.7.2 (pilot) — one invoice can carry stock of more than one company
 
 Migration 0018 (applied automatically): new table `invoice_extra_companies`. For the Guma pilot, where one billing-software invoice

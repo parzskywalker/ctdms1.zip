@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import date
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from sqlalchemy import func, or_, select
@@ -207,7 +206,7 @@ def import_rates(request: Request, file: UploadFile = File(...), db: Session = D
                     db, user, company_id=co.id, cfa_id=cfa.id if cfa else None, customer_id=cu.id if cu else None,
                     location_id=loc.id if loc else None, is_default=is_def,
                     rate_per_box=parse_decimal(r.get("rate_per_box") or r.get("rate")),
-                    effective_from=parse_date(r.get("effective_from")) or date.today(),
+                    effective_from=parse_date(r.get("effective_from")) or local_today(),
                     effective_to=parse_date(r.get("effective_to")) if r.get("effective_to") else None,
                     remarks=f"Bulk upload {file.filename}", change_reason=r.get("reason") or "Bulk upload")
                 ok += 1
