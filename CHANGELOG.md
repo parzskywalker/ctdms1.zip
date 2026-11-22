@@ -2,6 +2,9 @@
 
 ## v1.8.0 (pilot release, branch `claude/v1.8-load-planning`) — labels first, phone gate check, cloud server
 
+**v1.8.2 — gate pass print (owner's test print, 23 Nov).** The heading reads "GATE PASS" (was "GATEPASS / DISPATCH
+SLIP"), and "Tulsyan Pharmaceuticals Private Limited" stays on one line on the print page and in the PDF (A5 and A4).
+
 **v1.8.1 — first cloud start (AWS Lightsail, Mumbai).** The app would not start on the server: one line in the signature-photo
 upload used an f-string form that only Python 3.12+ accepts, and the server image is Python 3.11 (the PC runs 3.14,
 so the tests passed there). Fixed; every file now compiles on Python 3.11 and the tests were run inside the server image.

@@ -153,13 +153,13 @@ def _gatepass_flowables(snap: dict, width: float, base: float, print_label: str,
     out = []
     bc = code128.Code128(snap["dispatch_no"], barHeight=9 * mm if base > 8 else 7 * mm, barWidth=0.9 if base > 8 else 0.7)
     head = Table([
-        [P(f"<b>{_esc(snap.get('org_name'))}</b>", st["title"]), P(print_label, st["banner"])],
-        [P(_esc(snap.get("org_address")), st["small"]), ""],
-        [P("GATEPASS / DISPATCH SLIP", st["big"]), bc],
+        [P(f"<b>{_esc(snap.get('org_name'))}</b>", st["title"]), ""],  # full width: the name stays on one line
+        [P(_esc(snap.get("org_address")), st["small"]), P(print_label, st["banner"])],
+        [P("GATE PASS", st["big"]), bc],
         [P(f"No: <b>{_esc(snap['dispatch_no'])}</b>", st["reg"]),
          P(f"Generated: {_esc(snap.get('generated_at'))}", st["small"])],
     ], colWidths=[width * 0.6, width * 0.4])
-    head.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+    head.setStyle(TableStyle([("SPAN", (0, 0), (1, 0)), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("ALIGN", (1, 0), (1, -1), "RIGHT"),
                               ("BOTTOMPADDING", (0, 0), (-1, -1), 1), ("TOPPADDING", (0, 0), (-1, -1), 1),
                               ("LINEBELOW", (0, -1), (-1, -1), 1.2, NAVY)]))
     out += [head, Spacer(1, 2 * mm)]

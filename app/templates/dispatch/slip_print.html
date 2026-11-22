@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>{% if items|length == 1 %}Gatepass {{ items[0][0].dispatch_no }}{% else %}Gatepasses ({{ items|length }}){% endif %}</title>
+<title>{% if items|length == 1 %}Gate pass {{ items[0][0].dispatch_no }}{% else %}Gate passes ({{ items|length }}){% endif %}</title>
 <style>
   @page { size: {{ size }} portrait; margin: {{ '8mm' if size == 'A5' else '12mm' }}; }
   * { box-sizing: border-box; }
@@ -10,7 +10,7 @@
   .sheet { background: #fff; width: {{ '148mm' if size == 'A5' else '210mm' }}; min-height: {{ '210mm' if size == 'A5' else '297mm' }}; margin: 12px auto; padding: {{ '8mm' if size == 'A5' else '12mm' }}; box-shadow: 0 2px 12px rgba(0,0,0,.15); page-break-after: always; }
   .sheet:last-child { page-break-after: auto; }
   .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #1f3a5f; padding-bottom: 6px; margin-bottom: 7px; gap: 10px; }
-  .org { font-weight: 700; font-size: 1.25em; }
+  .org { font-weight: 700; font-size: 1.25em; white-space: nowrap; }
   .muted { color: #5b6675; }
   .title { font-size: 1.7em; font-weight: 800; color: #1f3a5f; letter-spacing: .5px; margin-top: 3px; }
   .dno { font-family: Consolas, monospace; font-size: 1.25em; font-weight: 700; }
@@ -46,7 +46,7 @@
     <div>
       {% if snap.logo %}<img src="{{ snap.logo }}" alt="" style="height:13mm;float:left;margin-right:3mm">{% endif %}<div class="org">{{ snap.org_name }}</div>
       <div class="muted">{{ snap.org_address }}</div>
-      <div class="title">{{ 'GATEPASS / DISPATCH SLIP' if snap.v == 2 else 'DISPATCH SLIP' }}</div>
+      <div class="title">{{ 'GATE PASS' if snap.v == 2 else 'DISPATCH SLIP' }}</div>
       <div>No: <span class="dno">{{ snap.dispatch_no }}</span></div>
     </div>
     <div style="text-align:right">
