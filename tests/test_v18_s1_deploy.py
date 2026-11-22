@@ -17,6 +17,21 @@ def test_backup_script_archives_uploads_with_retention():
     assert "ctdms-uploads-*.tar.gz" in sh  # old upload archives are pruned too
 
 
+def test_cloud_setup_script_is_valid_and_locks_the_app_port():
+    import shutil
+    import subprocess
+
+    sh = (ROOT / "deploy" / "SETUP_CLOUD.sh").read_text(encoding="utf-8")
+    assert "CTDMS_BIND=127.0.0.1" in sh and "openssl rand -hex 32" in sh and "[ -f .env ]" in sh
+    assert "create-admin" in sh  # tells, never creates, the first account
+    compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    assert '"${CTDMS_BIND:-0.0.0.0}:${CTDMS_PORT:-8000}:8000"' in compose
+    if shutil.which("sh"):
+        assert subprocess.run(["sh", "-n", str(ROOT / "deploy" / "SETUP_CLOUD.sh")]).returncode == 0
+    ps = (ROOT / "deploy" / "PULL_BACKUP.ps1").read_text(encoding="utf-8")
+    assert "BatchMode=yes" in ps and "ctdms-uploads-" in ps  # never prompts for a password; copies photos too
+
+
 def test_caddy_serves_bilingual_down_page_on_proxy_errors():
     caddy = (ROOT / "deploy" / "Caddyfile").read_text(encoding="utf-8")
     assert "handle_errors" in caddy and "rewrite * /server_down.html" in caddy

@@ -10,6 +10,11 @@ Plan: `pilot_docs\CTDMS_v1.8_plan.md` revision 10, approved 22 Nov 2026 with its
   `ctdms-uploads-<time>.tar.gz` with the same retention; the compose backup job now runs every 4 hours (`BACKUP_EVERY_SECONDS`).
 - **Server-down page:** Caddy shows `deploy/server_down.html` (English and Hindi, rechecks every 10 seconds) while the app
   restarts or is updated, instead of a browser error.
+- **One-time cloud set-up:** `deploy/SETUP_CLOUD.sh <domain>` installs Docker and automatic security updates, writes `.env`
+  with fresh secrets (only if none exists), binds the app port to the server itself (`CTDMS_BIND=127.0.0.1`, Caddy is the
+  only way in) and starts everything with HTTPS. It never creates an account (first Admin with `create-admin`).
+- **Backup copy off the cloud:** `deploy/PULL_BACKUP.ps1` copies the newest database dump and uploads archive to a Windows PC
+  (Kolkata server, head-office PC or Guma master PC) over SSH, hourly via Task Scheduler, keeping 30 days.
 - **Business-zone dates:** the API rate check and the bulk rate upload default to today's date in India time
   (`local_today()`), not the server's clock (cloud servers run on UTC).
 

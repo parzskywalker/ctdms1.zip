@@ -29,7 +29,7 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "${CTDMS_PORT:-8000}:8000"
+      - "${CTDMS_BIND:-0.0.0.0}:${CTDMS_PORT:-8000}:8000"   # SETUP_CLOUD.sh sets 127.0.0.1: only Caddy reaches the app
     volumes:
       - appdata:/app/data
 
