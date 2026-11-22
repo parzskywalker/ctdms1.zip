@@ -2,6 +2,13 @@
 
 ## v1.8.0 (pilot release, branch `claude/v1.8-load-planning`) — labels first, phone gate check, cloud server
 
+**First cloud start (AWS Lightsail, Mumbai).** The app would not start on the server: one line in the signature-photo
+upload used an f-string form that only Python 3.12+ accepts, and the server image is Python 3.11 (the PC runs 3.14,
+so the tests passed there). Fixed; every file now compiles on Python 3.11 and the tests were run inside the server image.
+
+**New CTDMS logo on the screens** (option 4 of 22 Nov, the route-and-pin "C"): sign-in page, left menu, browser tab,
+error pages and the phone's home-screen icon (web app manifest). The old "CT" squares and truck icon are gone.
+
 **Release checks.** Version 1.8.0 (browsers fetch the new screens' code). Garage Pawati prints its scan code (PW…)
 under the barcode so the guard can type it. On Labels to Print, Enter in the reason box makes the labels too.
 Go-live rehearsal on the Guma master workbook passes, including the Administrator's forced phone-code set-up.

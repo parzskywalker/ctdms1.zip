@@ -2,6 +2,7 @@
 {% block title %}{{ title }}{% endblock %}
 {% block content %}
 <div class="card" style="max-width:640px;margin:40px auto;text-align:center;padding:36px">
+  <img src="/static/brand/ctdms_icon.svg?v={{ app_version }}" alt="" style="height:48px">
   <div class="muted" style="font-size:44px;font-weight:800">{{ code }}</div>
   <h1>{{ title }}</h1>
   <p class="muted">{{ message }}</p>
@@ -9,5 +10,5 @@
 </div>
 {% endblock %}
 {% block public %}
-<div class="login-wrap"><div class="login" style="text-align:center"><div class="muted" style="font-size:40px;font-weight:800">{{ code }}</div><h1>{{ title }}</h1><p class="muted">{{ message }}</p><a class="btn btn-primary" href="/login">Sign in</a></div></div>
+<div class="login-wrap"><div class="login" style="text-align:center"><img src="/static/brand/ctdms_logo.svg?v={{ app_version }}" alt="CTDMS" style="height:56px;max-width:100%"><div class="muted" style="font-size:40px;font-weight:800">{{ code }}</div><h1>{{ title }}</h1><p class="muted">{{ message }}</p><a class="btn btn-primary" href="/login">Sign in</a></div></div>
 {% endblock %}

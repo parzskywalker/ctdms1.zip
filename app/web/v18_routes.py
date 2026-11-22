@@ -184,7 +184,8 @@ async def gate_phone_photo(request: Request, photo: UploadFile = File(...), db: 
         return JSONResponse({"ok": False, "message": "Take the photo again (JPEG or PNG, under 8 MB)"})
     folder = upload_dir() / "signatures"
     folder.mkdir(parents=True, exist_ok=True)
-    name = f"{slip.id}_{utcnow():%Y%m%d%H%M%S}.{'png' if data[:4] == b'\x89PNG' else 'jpg'}"
+    ext = "png" if data[:4] == b"\x89PNG" else "jpg"  # outside the f-string: Python 3.11 (server) forbids \ inside one
+    name = f"{slip.id}_{utcnow():%Y%m%d%H%M%S}.{ext}"
     (folder / name).write_bytes(data)
     slip.signature_photo, slip.signature_photo_at, slip.signature_photo_by_id = f"signatures/{name}", utcnow(), user.id
     audit.log(db, user, "SIGNATURE_PHOTO", "CASE", record_type="DispatchSlip", record_id=slip.id, ref=slip.dispatch_no,

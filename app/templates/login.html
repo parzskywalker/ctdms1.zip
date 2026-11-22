@@ -3,9 +3,9 @@
 {% block public %}
 <div class="login-wrap">
   <div class="login">
-    <div class="row" style="margin-bottom:14px">
-      <div style="width:38px;height:38px;border-radius:9px;background:linear-gradient(135deg,#2f7dd1,#0f9f8f);display:grid;place-items:center;color:#fff;font-weight:800">CT</div>
-      <div><h1 style="margin:0">Central Transport &amp; Dispatch</h1><div class="muted small">Freight expense · Dispatch control · MIS</div></div>
+    <div style="margin-bottom:14px;text-align:center">
+      <img src="/static/brand/ctdms_logo.svg?v={{ app_version }}" alt="CTDMS - Depot to destination" style="height:72px;max-width:100%">
+      <h1 style="margin:4px 0 0;font-size:1.1rem">Central Transport &amp; Dispatch</h1><div class="muted small">Freight expense · Dispatch control · MIS</div>
     </div>
     {% for f in flashes %}<div class="alert alert-{{ f.k }}">{{ f.m }}</div>{% endfor %}
     {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}

@@ -44,7 +44,7 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
 .app { display: grid; grid-template-columns: 236px 1fr; min-height: 100vh; }
 .side { background: var(--side); color: var(--side-ink); position: sticky; top: 0; height: 100vh; overflow-y: auto; padding-bottom: 24px; }
 .side .brand { display: flex; align-items: center; gap: 10px; padding: 16px 16px 14px; border-bottom: 1px solid rgba(255,255,255,.07); }
-.side .brand .logo { width: 30px; height: 30px; border-radius: 7px; background: linear-gradient(135deg, #2f7dd1, #0f9f8f); display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 13px; letter-spacing: .5px; }
+.side .brand .logo { width: 32px; height: 32px; flex: none; }
 .side .brand b { display: block; color: #fff; font-size: 13.5px; letter-spacing: .2px; }
 .side .brand span { font-size: 11px; color: var(--side-muted); }
 .side .group { padding: 14px 10px 2px; }

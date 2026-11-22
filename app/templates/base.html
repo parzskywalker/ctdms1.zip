@@ -5,7 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{{ title or "CTDMS" }}{% endblock %} · {{ app_title }}</title>
   <link rel="stylesheet" href="/static/css/app.css?v={{ app_version }}">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f4e79'/%3E%3Cpath d='M7 20h12V11H7zm12-6h4l3 3v3h-7z' fill='%23fff'/%3E%3Ccircle cx='11' cy='22' r='2' fill='%2310b9a8'/%3E%3Ccircle cx='23' cy='22' r='2' fill='%2310b9a8'/%3E%3C/svg%3E">
+  <link rel="icon" type="image/svg+xml" href="/static/brand/ctdms_icon.svg?v={{ app_version }}">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/brand/ctdms_icon_32.png?v={{ app_version }}">
+  <link rel="apple-touch-icon" href="/static/brand/ctdms_icon_192.png?v={{ app_version }}">
+  <link rel="manifest" href="/static/manifest.webmanifest?v={{ app_version }}">
+  <meta name="theme-color" content="#10233a">
   {% block head %}{% endblock %}
 </head>
 <body{% if training %} class="trn-on"{% endif %}{% if user and home_url %} data-home="{{ home_url }}"{% endif %}>
@@ -17,7 +21,7 @@
 <div class="app">
   <aside class="side">
     <div class="brand">
-      <div class="logo">CT</div>
+      <img class="logo" src="/static/brand/ctdms_icon_on_dark.svg?v={{ app_version }}" alt="">
       <div><b>CTDMS</b><span>Transport &amp; Dispatch</span></div>
     </div>
     {% for group, items in nav %}
