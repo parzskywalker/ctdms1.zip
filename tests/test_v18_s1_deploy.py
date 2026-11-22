@@ -37,3 +37,15 @@ def test_caddy_serves_bilingual_down_page_on_proxy_errors():
     assert "handle_errors" in caddy and "rewrite * /server_down.html" in caddy
     page = (ROOT / "deploy" / "server_down.html").read_text(encoding="utf-8")
     assert 'http-equiv="refresh" content="10"' in page and 'lang="hi"' in page
+
+
+def test_pilot_v18_command_switches_the_settings_on(tmp_path):
+    import os
+    import subprocess
+    import sys
+
+    env = {**os.environ, "CTDMS_DATABASE_URL": f"sqlite:///{(tmp_path / 'p.db').as_posix()}", "PYTHONUTF8": "1"}
+    assert subprocess.run([sys.executable, "-m", "app.cli", "init-db"], cwd=ROOT, env=env).returncode == 0
+    r = subprocess.run([sys.executable, "-m", "app.cli", "pilot-v18"], cwd=ROOT, env=env, capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert "Tulsyan Pharmaceuticals Private Limited" in r.stdout and "rate.approve" in r.stdout

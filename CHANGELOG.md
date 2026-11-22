@@ -18,6 +18,8 @@ installation with `dispatch.labels_first` (off by default, so nothing changes un
 - **Check gatepass on the phone** (`/gate/phone`): the camera reads the gatepass, every carton, each Garage Pawati (new
   barcode `PW<id>`), takes the signature photo and the final gatepass scan dispatches. Typing or a Bluetooth scanner
   also works. A carton on no gatepass shows "STOP - not planned on any vehicle".
+- **One command to switch it on:** `python -m app.cli pilot-v18` sets labels first, the signature photo, company check
+  off, self-approval (no Checker for now; the Depot Manager role also gets `rate.approve`), the Tulsyan name and logo.
 - **Branding:** `org.logo_url` logo on gatepasses, Garage Pawatis and labels (`app/static/brand/`).
 - `dispatch.cross_company_check` can switch the company tick off. Existing Depot Manager roles get `load.plan` and
   `exception.approve`.

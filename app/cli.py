@@ -426,6 +426,36 @@ def inbox(args) -> None:
         print(("OK    " if r["ok"] else "FAILED ") + r["message"])
 
 
+PILOT_V18 = {
+    "dispatch.labels_first": True,                # labels before any gatepass; the Depot Manager plans each vehicle
+    "dispatch.signature_photo_required": True,    # exceptions: the signed gatepass is photographed before it leaves
+    "dispatch.cross_company_check": False,        # one customer always buys from several companies
+    "rate.allow_self_approval": True,             # no Checker for now: the Depot Manager approves alone (logged)
+    "override.allow_self_approval": True,
+    "org.name": "Tulsyan Pharmaceuticals Private Limited",
+    "org.logo_url": "/static/brand/org_logo_bw.png",
+}
+
+
+def pilot_v18(args) -> None:
+    """Switch an installation to the v1.8 way of working (owner's decisions of 22 Nov 2026). Safe to repeat."""
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.services import settings_service as cfg
+    with SessionLocal() as db:
+        for key, value in PILOT_V18.items():
+            cfg.set_value(db, key, value)
+            print(f"  {key} = {value}")
+        from app.models import Role
+        dm = db.scalar(select(Role).where(Role.code == "CFA_MANAGER"))
+        if dm is not None and "rate.approve" not in (dm.permissions or []):
+            dm.permissions = list(dm.permissions or []) + ["rate.approve"]  # the Checker's rate approvals, for now
+            print("  Depot Manager role: + rate.approve")
+        db.commit()
+    print("v1.8 settings on.")
+
+
 def notify(args) -> None:
     """Send queued WhatsApp / SMS dispatch alerts now - for cron / Task Scheduler setups."""
     from app.db import SessionLocal
@@ -515,6 +545,7 @@ def main(argv=None) -> None:
                     help="before shipping a kit: also no invoices, gatepasses or cases, and the organisation text replaced")
     sp.set_defaults(fn=pilot_verify)
     sub.add_parser("inbox", help="import ERP exports waiting in data/inbox now").set_defaults(fn=inbox)
+    sub.add_parser("pilot-v18", help="switch on the v1.8 way of working (labels first, photo, Tulsyan name)").set_defaults(fn=pilot_v18)
     sp = sub.add_parser("notify", help="send queued WhatsApp / SMS dispatch alerts now")
     sp.add_argument("--limit", type=int, default=200)
     sp.set_defaults(fn=notify)
