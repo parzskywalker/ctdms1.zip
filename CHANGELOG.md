@@ -1,6 +1,10 @@
 # Changelog
 
-## v1.8 (in progress, branch `claude/v1.8-load-planning`) — S1 first slice: cloud server settings
+## v1.8.0 (pilot release, branch `claude/v1.8-load-planning`) — labels first, phone gate check, cloud server
+
+**Release checks.** Version 1.8.0 (browsers fetch the new screens' code). Garage Pawati prints its scan code (PW…)
+under the barcode so the guard can type it. On Labels to Print, Enter in the reason box makes the labels too.
+Go-live rehearsal on the Guma master workbook passes, including the Administrator's forced phone-code set-up.
 
 Plan: `pilot_docs\CTDMS_v1.8_plan.md` revision 10, approved 22 Nov 2026 with its defaults.
 

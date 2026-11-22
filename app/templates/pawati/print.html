@@ -40,7 +40,7 @@
     <div class="addr">{{ s.depot }}{% if s.depot_address %} · {{ s.depot_address }}{% endif %}{% if s.depot_phone %}<br>Ph: {{ s.depot_phone }}{% endif %}</div>
     <div class="co">{{ s.company }}</div>
     <div class="title">GARAGE PAWATI</div>
-    <div class="no"><span>No. {{ p.pawati_no }}</span><span>Date: {{ s.date }}</span></div><div style="height:9mm">{{ ("PW%d" % p.id)|barcode_svg }}</div>
+    <div class="no"><span>No. {{ p.pawati_no }}</span><span>Date: {{ s.date }}</span></div><div style="height:9mm">{{ ("PW%d" % p.id)|barcode_svg }}</div><div style="font:8pt monospace;text-align:center">PW{{ p.id }}</div>
     {% if p.print_count > 1 %}<div class="dup">DUPLICATE · reprint #{{ p.print_count - 1 }}</div>{% endif %}
     <table>
       <tr><td class="k">Garage</td><td class="big">{{ s.garage }}{% if s.garage_city %}, {{ s.garage_city }}{% endif %}</td></tr>

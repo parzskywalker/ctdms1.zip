@@ -172,13 +172,14 @@
     const scope = el.form || el.closest('[data-enter-next]') || content();
     const list = chain(scope);
     const i = list.findIndex((f) => f === el || (el.type === 'radio' && f.type === 'radio' && f.name === el.name));
-    const nxt = list[i + dir];
+    const lastSubmit = scope.dataset && scope.dataset.enterLast === 'submit';
+    const nxt = i < 0 && lastSubmit ? null : list[i + dir];  // a skipped field (e.g. a reason box) in a one-Enter form submits it
     if (nxt) { focusField(nxt); return; }
     if (dir < 0) return;
     const btn = mainButton(scope);
     if (!btn) return;
     if (!enabled(btn)) { toast(whyNot(btn), 'warn'); return; }
-    if (scope.dataset && scope.dataset.enterLast === 'submit') { btn.click(); return; }
+    if (lastSubmit) { btn.click(); return; }
     btn.focus();
     toast('Press Enter to "' + text(btn) + '" - or Shift+Tab to go back.');
   }
