@@ -3,3 +3,6 @@
 
 # Windows batch files must keep CRLF line endings exactly as committed (also in the GitHub zip download)
 *.bat -text
+
+# Shell scripts run on the Linux server: always LF, even in a zip built on Windows
+*.sh text eol=lf
