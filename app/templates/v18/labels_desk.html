@@ -16,10 +16,10 @@
       {% if st %}
         <a class="btn btn-primary" href="/labels-desk/{{ i.id }}/print">Confirm {{ st.pending }} printed label(s)</a>
       {% else %}
-        <form method="post" action="/labels-desk/{{ i.id }}" class="row" style="margin:0;gap:6px">
+        <form method="post" action="/labels-desk/{{ i.id }}" class="row" style="margin:0;gap:6px" data-enter-last="submit">
           <input type="hidden" name="csrf_token" value="{{ csrf }}">
           <input type="number" name="count" min="1" max="5000" value="{{ i.boxes or '' }}" required style="width:80px" aria-label="Cartons for {{ i.invoice_no }}"{% if loop.first %} autofocus{% endif %}>
-          {% if can_exception %}<input name="reason" placeholder="Reason if the count differs" style="width:200px" aria-label="Reason">{% endif %}
+          {% if can_exception %}<input name="reason" data-enter-skip placeholder="Reason if the count differs" style="width:200px" aria-label="Reason">{% endif %}
           <button class="btn btn-primary" type="submit">Print labels</button>
         </form>
       {% endif %}

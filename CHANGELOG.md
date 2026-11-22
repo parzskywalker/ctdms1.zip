@@ -4,6 +4,11 @@
 
 Plan: `pilot_docs\CTDMS_v1.8_plan.md` revision 10, approved 22 Nov 2026 with its defaults.
 
+**Browser check fixes (whole trip walked on the demo data, PC and phone size).**
+- Labels to Print: one Enter on the carton count makes the labels (the reason box is reached with Tab).
+- Guard's phone page: codes typed or Bluetooth-scanned faster than the network are queued, no longer dropped.
+- Label sheets have a white background on dark-mode screens.
+
 **Basic internet security.**
 - After 30 failed sign-ins from one internet address in 10 minutes, sign-in from that address pauses for 10 minutes
   (`CTDMS_LOGIN_THROTTLE_PER_IP`, 0 = off; the per-account lock-out stays).

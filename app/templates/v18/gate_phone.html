@@ -38,7 +38,7 @@
 <script>
 (function () {
   const csrf = {{ csrf|tojson }};
-  let slip = null, busy = false, last = '', lastAt = 0, track = null;
+  let slip = null, busy = false, last = '', lastAt = 0, track = null, queue = [];  // queue: a Bluetooth scanner is faster than the network
   const $ = (id) => document.getElementById(id);
   function esc(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
   function say(text, kind) { const m = $('msg'); m.textContent = text; m.className = 'msg ' + kind; if (navigator.vibrate && kind === 'bad') navigator.vibrate([200, 100, 200]); }
@@ -61,8 +61,9 @@
     $('step').textContent = s.gone_out ? 'Dispatched' : (s.scanned < s.total ? '2. Scan each CARTON' :
       (pawLeft ? '3. Scan each GARAGE PAWATI' : (needPhoto ? '4. Photograph the signed gatepass' : '5. Scan the GATEPASS again to dispatch')));
   }
-  async function handle(code) {
-    code = (code || '').trim(); if (!code || busy) return;
+  async function handle(code, queued) {
+    code = (code || '').trim(); if (!code) return;
+    if (busy) { if (queued) queue.push(code); return; }
     const now = Date.now(); if (code === last && now - lastAt < 2500) return; last = code; lastAt = now;
     busy = true;
     try {
@@ -81,8 +82,9 @@
       }
     } catch (e) { say('No connection - try again', 'bad'); }
     busy = false;
+    if (queue.length) handle(queue.shift(), true);
   }
-  $('manual').addEventListener('submit', (e) => { e.preventDefault(); handle($('code').value); $('code').value = ''; $('code').focus(); });
+  $('manual').addEventListener('submit', (e) => { e.preventDefault(); handle($('code').value, true); $('code').value = ''; $('code').focus(); });
   $('restart').addEventListener('click', () => { slip = null; $('trip').hidden = true; $('step').textContent = '1. Scan the GATEPASS barcode'; say('Scan the next gatepass', 'info'); });
   $('snap').addEventListener('click', () => $('photo').click());
   $('photo').addEventListener('change', async () => {
