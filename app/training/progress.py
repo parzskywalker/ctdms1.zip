@@ -22,7 +22,7 @@ STATUS_LABELS = {NOT_STARTED: "Not started", IN_PROGRESS: "In training", COMPLET
 SETTING = "training.required_for_new_users"
 MODULE = "TRAINING"
 # open to someone who still has to finish compulsory training
-OPEN_PATHS = ("/training", "/logout", "/login", "/account/password", "/static", "/health")
+OPEN_PATHS = ("/training", "/logout", "/login", "/account/password", "/account/2fa", "/static", "/health")
 
 
 # ----------------------------------------------------------------------------- the gate (checked on every page)

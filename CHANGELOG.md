@@ -2,6 +2,8 @@
 
 ## v1.8.0 (pilot release, branch `claude/v1.8-load-planning`) — labels first, phone gate check, cloud server
 
+**v1.8.5 — sign-in redirect loop fixed.** An Administrator who still had to set up the phone sign-in code AND had compulsory Guided Training switched on was bounced between the phone-code page and Training ("redirected too many times"). The phone-code page is now open during training, so the code is set up first and training follows.
+
 **v1.8.4 — Planned Loads (owner's choice, 23 Nov: "plan, then operator makes").** On the vehicle screen the Depot
 Manager can now **Save as plan for an operator** (F9) instead of generating the gatepass; the plan waits under
 **Planned Loads** and a Dispatch Operator opens it and presses **Make gate pass** (F8), then prints it. The gatepass is

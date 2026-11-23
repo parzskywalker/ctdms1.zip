@@ -48,6 +48,29 @@ def test_phone_code_is_asked_after_the_password(web, db):
         db.commit()
 
 
+def test_admin_in_training_without_phone_code_sets_it_up_first_no_redirect_loop(web, db, monkeypatch):
+    from app.models import TrainingProgress
+    from tests.test_training import _switch
+    _switch(web, True)
+    admin = db.scalar(select(User).where(User.username == "admin"))
+    p = db.scalar(select(TrainingProgress).where(TrainingProgress.user_id == admin.id))
+    if p is None:
+        p = TrainingProgress(user_id=admin.id, path="MASTER")
+        db.add(p)
+    p.required, p.status = True, "NOT_STARTED"
+    db.commit()
+    monkeypatch.setattr(get_settings(), "admin_2fa", True)
+    try:
+        w = web("admin")
+        assert w.get("/training", follow_redirects=False).headers["location"] == "/account/2fa"
+        assert w.get("/account/2fa", follow_redirects=False).status_code == 200   # was a 303 back to /training
+    finally:
+        monkeypatch.setattr(get_settings(), "admin_2fa", False)
+        p.required = False
+        db.commit()
+        _switch(web, False)
+
+
 def test_setup_page_shows_a_qr_picture(web):
     page = web("admin").get("/account/2fa").text
     assert "<svg" in page and "Turn on" in page
