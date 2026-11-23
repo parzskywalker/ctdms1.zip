@@ -2,6 +2,8 @@
 
 ## v1.8.0 (pilot release, branch `claude/v1.8-load-planning`) — labels first, phone gate check, cloud server
 
+**v1.8.6 — an Admin can be excused from the phone code.** New tick box **Phone code not needed** under Administration › Users (only an Administrator can change it; the change is in the audit log). An excused Admin signs in with the password alone; other Admins still need the phone code. New column `users.no_phone_code` (migration 0021).
+
 **v1.8.5 — sign-in redirect loop fixed.** An Administrator who still had to set up the phone sign-in code AND had compulsory Guided Training switched on was bounced between the phone-code page and Training ("redirected too many times"). The phone-code page is now open during training, so the code is set up first and training follows.
 
 **v1.8.4 — Planned Loads (owner's choice, 23 Nov: "plan, then operator makes").** On the vehicle screen the Depot

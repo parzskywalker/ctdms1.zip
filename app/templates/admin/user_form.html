@@ -17,6 +17,7 @@
     <div><label>Responsibility <span class="muted small">(note)</span></label><input type="text" name="responsibility" value="{{ (u.responsibility or '') if u else '' }}" maxlength="200" placeholder="e.g. Guma depot dispatch, Company A"></div>
     {% if not u %}<div><label>Password <span class="req">*</span></label><input type="text" name="password" required autocomplete="off"><label class="check" style="margin-top:6px"><input type="checkbox" name="must_change" value="1" checked>Must change it at first login</label></div>{% endif %}
     <div><label>&nbsp;</label><label class="check"><input type="checkbox" name="is_active" value="1" {% if not u or u.is_active %}checked{% endif %}>Active</label></div>
+    <div><label>&nbsp;</label><label class="check"><input type="checkbox" name="no_phone_code" value="1" {% if u and u.no_phone_code %}checked{% endif %}>Phone code not needed</label><div class="field-hint">Administrators only: excuses this Admin from the compulsory phone sign-in code. Weaker: the password alone opens Admin.</div></div>
   </div>
 
   <h3 class="sect">2 · Operational scope <span class="muted small">whose data this person sees - every condition must match</span></h3>

@@ -326,7 +326,7 @@ def current_user(request: Request, user: User | None = Depends(current_user_opti
     if real.must_change_password and not request.url.path.startswith(PASSWORD_CHANGE_PATHS):
         # First login / admin reset: nothing else is usable until the password is changed.
         raise PasswordChangeRequired()
-    if (get_settings().admin_2fa and not real.totp_secret and real.role and real.role.code == "ADMIN"
+    if (get_settings().admin_2fa and not real.totp_secret and not real.no_phone_code and real.role and real.role.code == "ADMIN"
             and not request.url.path.startswith(PASSWORD_CHANGE_PATHS + ("/account/2fa",))):
         raise TwoFactorRequired()  # an Administrator on the internet must set up the phone code first
     if getattr(request.state, "training_gate", False):

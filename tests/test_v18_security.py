@@ -71,6 +71,34 @@ def test_admin_in_training_without_phone_code_sets_it_up_first_no_redirect_loop(
         _switch(web, False)
 
 
+def test_admin_can_excuse_one_admin_from_the_phone_code(web, db, monkeypatch):
+    from app.models import AuditLog, Role
+    from tests.test_training import PW
+    role = db.scalar(select(Role).where(Role.code == "DISPATCH_OPERATOR"))
+    form = {"username": "nocode.user", "full_name": "No Code", "role_id": str(role.id), "password": PW,
+            "is_active": "1", "all_companies": "1", "all_cfas": "1"}
+    w = web("admin")
+    assert "Phone code not needed" in w.get("/admin/users/new").text
+    w.post("/admin/users/save", data=form)
+    uid = db.scalar(select(User.id).where(User.username == "nocode.user"))
+    w.post("/admin/users/save", data={**form, "id": str(uid), "no_phone_code": "1"})
+    db.expire_all()
+    assert db.get(User, uid).no_phone_code
+    assert db.scalar(select(AuditLog).where(AuditLog.action == "USER_UPDATED", AuditLog.record_id == uid))
+
+    admin = db.scalar(select(User).where(User.username == "admin"))
+    monkeypatch.setattr(get_settings(), "admin_2fa", True)
+    try:
+        assert web("admin").get("/", follow_redirects=False).headers["location"] == "/account/2fa"
+        admin.no_phone_code = True
+        db.commit()
+        assert web("admin").get("/", follow_redirects=False).headers.get("location") != "/account/2fa"  # excused
+    finally:
+        monkeypatch.setattr(get_settings(), "admin_2fa", False)
+        admin.no_phone_code = False
+        db.commit()
+
+
 def test_setup_page_shows_a_qr_picture(web):
     page = web("admin").get("/account/2fa").text
     assert "<svg" in page and "Turn on" in page

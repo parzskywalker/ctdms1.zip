@@ -186,7 +186,10 @@ def user_save(request: Request, form=Depends(get_form), db: Session = Depends(ge
               "mobile": form.get("mobile") or None, "role_id": role.id, "is_active": form.get("is_active") == "1",
               "all_companies": form.get("all_companies") == "1", "all_cfas": form.get("all_cfas") == "1",
               "all_areas": sc["all_areas"], "all_customer_types": sc["all_customer_types"],
-              "all_customers": sc["all_customers"], "responsibility": (form.get("responsibility") or "").strip() or None}
+              "all_customers": sc["all_customers"], "responsibility": (form.get("responsibility") or "").strip() or None,
+              "no_phone_code": form.get("no_phone_code") == "1"}
+    if not (user.role and user.role.code == "ADMIN"):  # only an Administrator may excuse anyone from the phone code
+        values["no_phone_code"] = bool(existing and existing.no_phone_code)
     _within_actor(user, companies, cfas, values, sc)
     actor_eff = user.effective_permissions()
     new_eff = access.effective_for(role.permissions, {p for p, e in over.items() if e == "GRANT"},

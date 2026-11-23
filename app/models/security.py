@@ -63,6 +63,8 @@ class User(Base, TimestampMixin):
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime)
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
     totp_secret: Mapped[str | None] = mapped_column(String(64))  # v1.8: two-factor sign-in (authenticator app)
+    # v1.8.6: an Admin may excuse this Administrator from the compulsory phone code (Administration > Users, audited)
+    no_phone_code: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     password_changed_at: Mapped[datetime | None] = mapped_column(DateTime, default=utcnow)
     tokens_valid_after: Mapped[datetime | None] = mapped_column(DateTime)  # API tokens issued earlier are refused
 
