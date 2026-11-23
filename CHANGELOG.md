@@ -2,6 +2,9 @@
 
 ## v1.8.0 (pilot release, branch `claude/v1.8-load-planning`) — labels first, phone gate check, cloud server
 
+**v1.8.3 — gate pass header.** A smaller Tulsyan logo on top; the company name and address on their own full-width
+lines under it, so the name never runs into the barcode (seen on the owner's phone print).
+
 **v1.8.2 — gate pass print (owner's test print, 23 Nov).** The heading reads "GATE PASS" (was "GATEPASS / DISPATCH
 SLIP"), and "Tulsyan Pharmaceuticals Private Limited" stays on one line on the print page and in the PDF (A5 and A4).
 
