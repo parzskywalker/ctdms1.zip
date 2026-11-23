@@ -95,6 +95,7 @@ NAV = [
         ("Labels to Print", "/labels-desk", "case.print", "list"),
         ("Ready to Load", "/ready-to-load", "load.plan", "truck"),
         ("Make Gatepass", "/gatepass/new", "load.plan", "scan"),
+        ("Planned Loads", "/load-plans", "dispatch.operate|load.plan", "list"),
         ("Check Gatepass (phone)", "/gate/phone", "gate.scan", "shield"),
         ("Dispatch Exceptions", "/dispatch-exceptions", "dispatch.view", "alert"),
         ("Pending Dispatch", "/dispatch/pending", "dispatch.view", "truck"),

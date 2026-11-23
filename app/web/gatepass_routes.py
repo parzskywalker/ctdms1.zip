@@ -132,6 +132,7 @@ def _builder(request: Request, db: Session, user: User, *, ids: list[int] | None
         "tr_info": {str(t.id): {"pay": t.payment_mode, "pickup": float(t.direct_pickup_charge or 0),
                                 "pickup_basis": t.direct_pickup_basis} for t in transporters},
         "cash_default": cfg.get(db, "gatepass.cash_paid_default"),
+        "cross_check": bool(cfg.get(db, "dispatch.cross_company_check")),
         "can_override_elig": user.can("transporter.override_eligibility"),
         "can_group_cross": user.can("dispatch.group_cross_company")}, status_code=status_code)
 

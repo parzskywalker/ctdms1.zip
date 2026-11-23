@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Vehicle plan #{{ p.id }}</h1><div class="sub">Planned by <b>{{ p.planned_by.full_name }}</b> on {{ p.planned_at|dt }} · {{ p.cfa.name }}
+    · {{ {'OPEN': 'waiting to be made', 'MADE': 'gate pass made', 'CANCELLED': 'cancelled'}.get(p.status, p.status) }}</div></div>
+  <div><a class="btn" href="/load-plans">Back to Planned Loads</a></div>
+</div>
+<div class="card" style="margin-bottom:12px">
+  <dl class="dl tight">
+    <dt>How it goes</dt><dd>{{ s.mode }} · {{ s.carrier }}{% if s.vehicle %} · vehicle {{ s.vehicle }}{% endif %}</dd>
+    {% if s.urgent %}<dt>Urgent single trip</dt><dd>{{ s.urgent }}</dd>{% endif %}
+    {% if s.remarks %}<dt>Remarks</dt><dd>{{ s.remarks }}</dd>{% endif %}
+    {% if p.cancel_reason %}<dt>Cancelled</dt><dd>{{ p.cancel_reason }} ({{ p.done_by.full_name if p.done_by else '' }})</dd>{% endif %}
+    {% if p.slip %}<dt>Gate pass</dt><dd><a class="mono" href="/gatepass/{{ p.slip.id }}">{{ p.slip.dispatch_no }}</a> made by {{ p.done_by.full_name if p.done_by else '' }}</dd>{% endif %}
+  </dl>
+</div>
+<div class="card flush" style="margin-bottom:12px">
+  <div class="table-wrap">
+  <table class="data">
+    <thead><tr><th>Invoice</th><th>Customer</th><th>Area</th><th>Companies</th><th class="num">Cartons</th></tr></thead>
+    <tbody>
+    {% for i in s.invoices %}{% if i %}
+      <tr><td class="nowrap"><b>{{ i.invoice_no }}</b></td><td>{{ i.customer.name }}</td><td>{{ i.location.name if i.location else '' }}</td>
+        <td class="nowrap">{{ i.company_codes }}</td><td class="num">{{ p.fields.get('cases_' ~ i.id) or i.boxes or '' }}</td></tr>
+    {% endif %}{% endfor %}
+    </tbody>
+    <tfoot><tr><td colspan="4"><b>Total</b></td><td class="num"><b>{{ s.cases }}</b></td></tr></tfoot>
+  </table>
+  </div>
+</div>
+{% if p.status == 'OPEN' %}
+<div class="form-actions">
+  {% if can('dispatch.operate') %}
+  <form method="post" action="/load-plans/{{ p.id }}/make" style="margin:0">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <button class="btn btn-primary btn-lg" type="submit" data-key="F8" autofocus>Make gate pass</button>
+  </form>
+  {% endif %}
+</div>
+{% if can('load.plan') %}
+<form method="post" action="/load-plans/{{ p.id }}/cancel" class="card" style="margin-top:12px" data-enter-last="submit">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <label for="cancel-reason">Cancel this plan (Depot Manager) - reason</label>
+  <div class="row"><input type="text" id="cancel-reason" name="reason" maxlength="200" required style="flex:1">
+  <button class="btn btn-danger" type="submit">Cancel plan</button></div>
+  <p class="small muted" style="margin-bottom:0">The invoices go back to Ready to Load.</p>
+</form>
+{% endif %}
+{% endif %}
+{% endblock %}

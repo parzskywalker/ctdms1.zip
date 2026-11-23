@@ -136,7 +136,8 @@
       </div>
       <div class="field-hint" id="s-balance"></div>
       <div class="field-hint">Rates: {{ 'transporter rate card (per case, per area)' if freight_source == 'TRANSPORTER' else 'principal rate card (set at import)' }}. The server re-checks every rate when you generate.</div>
-      <div class="form-actions"><button class="btn btn-primary btn-lg" type="submit" id="gp-submit" disabled data-key="F8" data-why="#gp-why">Generate gatepass</button></div>
+      <div class="form-actions"><button class="btn btn-primary btn-lg" type="submit" id="gp-submit" disabled data-key="F8" data-why="#gp-why">Generate gatepass</button>
+        {% if can('load.plan') %}<button class="btn btn-lg" type="submit" id="gp-plan" formaction="/load-plans/save" disabled data-key="F9" title="Save this vehicle plan; an operator makes and prints the gatepass from Planned Loads">Save as plan for an operator</button>{% endif %}</div>
       <div class="field-hint" id="gp-why"></div>
     </div>
   </div>
@@ -167,6 +168,7 @@
   const SOURCE = {{ freight_source|jsdata|safe }};
   const CAN_OVERRIDE = {{ can_override_elig|jsdata|safe }};
   const CAN_GROUP = {{ can_group_cross|jsdata|safe }};
+  const CROSS_CHECK = {{ cross_check|jsdata|safe }};  // v1.8: the company check can be switched off in settings
   const CASH_DEFAULT = {{ cash_default|jsdata|safe }};
   const csrf = document.querySelector('input[name=csrf_token]').value;
   const $ = (s, el = document) => el.querySelector(s);
@@ -304,9 +306,9 @@
     list.innerHTML = [...groups.values()].map((g, i) => `<li><b>${i + 1}.</b> ${esc(g.inv.customer)} · ${esc(g.inv.location)} - ${g.n} invoice${g.n > 1 ? 's' : ''} (${g.nos.map(esc).join(', ')}), <b>${g.cases}</b> cases${g.cos.size > 1 ? ' · companies ' + [...g.cos].map(esc).join(', ') : ''}</li>`).join('');
     const cos = [...new Set(rows.map((r) => r.inv.company))];
     const cb = $('#gp-cross-box');
-    cb.hidden = cos.length < 2;
+    cb.hidden = !CROSS_CHECK || cos.length < 2;
     $('#gp-cross-cos').textContent = cos.join(', ');
-    return cos.length > 1;
+    return CROSS_CHECK && cos.length > 1;
   }
 
   function recalc() {
@@ -416,6 +418,7 @@
     if (rows.some(({tr}) => !tr._cases)) why.push('enter cases for every invoice');
     if (missing.length) why.push(`no rate for ${[...new Set(missing.map((i) => i.location))].join(', ')} on this transporter's rate card`);
     $('#gp-submit').disabled = why.length > 0;
+    if ($('#gp-plan')) $('#gp-plan').disabled = why.length > 0;
     $('#gp-why').textContent = why.length ? 'To generate: ' + why.join('; ') + '.' : '';
   }
 
@@ -467,7 +470,10 @@
   }
   $('#gp-form').addEventListener('submit', (e) => {
     if ($('#gp-submit').disabled) { e.preventDefault(); return; }
-    $('#gp-submit').disabled = true; $('#gp-submit').textContent = 'Generating…';
+    const b = e.submitter && e.submitter.id === 'gp-plan' ? $('#gp-plan') : $('#gp-submit');
+    // a disabled button is not posted, so the plan button's formaction must win before anything is disabled
+    setTimeout(() => { $('#gp-submit').disabled = true; if ($('#gp-plan')) $('#gp-plan').disabled = true; }, 0);
+    b.textContent = b.id === 'gp-plan' ? 'Saving plan…' : 'Generating…';
   });
   // phone / tablet camera (Chrome on Android, Safari 17+): BarcodeDetector reads the QR without any extra app
   if ('BarcodeDetector' in window && navigator.mediaDevices) {

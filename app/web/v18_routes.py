@@ -110,7 +110,9 @@ def labels_confirm(invoice_id: int, request: Request, form=Depends(get_form), db
 # ----------------------------------------------------------------------------- Ready to Load (Depot Manager)
 @router.get("/ready-to-load")
 def ready_to_load(request: Request, db: Session = Depends(get_db), user: User = Depends(require("dispatch.view"))):
-    invs = _open_invoices(db, user)
+    from app.web.load_plan_routes import open_plan_invoice_ids
+    held = open_plan_invoice_ids(db)  # already in a saved vehicle plan: made from Planned Loads
+    invs = [i for i in _open_invoices(db, user) if i.id not in held]
     state = _carton_state(db, [i.id for i in invs])
     ready = [i for i in invs if i.id in state and not state[i.id]["pending"]]
     groups: OrderedDict = OrderedDict()

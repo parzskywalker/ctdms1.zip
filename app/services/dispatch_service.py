@@ -25,7 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import (
-    CFA, CaseStatus, DispatchAllocation, DispatchException, DispatchMode, DispatchSlip, DispatchSlipLine, ExceptionCode, Invoice, InvoiceStatus, OutsideAuto, PaymentMode,
+    CFA, CaseStatus, DispatchAllocation, DispatchException, DispatchMode, DispatchSlip, DispatchSlipLine, ExceptionCode, Invoice, InvoiceStatus, LoadPlan, OutsideAuto, PaymentMode,
     PickupMode, RateLevel, SlipPrintLog, Transporter, TransporterBill, User, utcnow,
 )
 from app.models.masters import ChargeBasis
@@ -555,11 +555,21 @@ def _gatepass_snapshot(db: Session, slip: DispatchSlip, planned: list[PlannedLin
     }
 
 
-def create_gatepass(db: Session, user: User, invs: list[Invoice], req: GatepassRequest) -> DispatchSlip:
+def create_gatepass(db: Session, user: User, invs: list[Invoice], req: GatepassRequest,
+                    plan: LoadPlan | None = None) -> DispatchSlip:
+    """plan: v1.8.4 - an operator makes the gatepass from the Depot Manager's saved plan; the planner authorises it
+    (vehicle planning, urgent trip, eligibility override and cross-company are checked against the planner)."""
     _perm(user, "dispatch.operate")
+    authoriser = plan.planned_by if plan is not None else user
     if cfg.get(db, "dispatch.labels_first"):
-        _perm(user, "load.plan")  # v1.8: the Depot Manager plans the vehicle and makes its gatepass
-    planned, totals, problems = plan_gatepass(db, user, invs, req)
+        _perm(authoriser, "load.plan")  # v1.8: the Depot Manager plans the vehicle (and makes its gatepass, or saves a plan)
+    held = {i: p.id for p in db.scalars(select(LoadPlan).where(LoadPlan.status == LoadPlan.OPEN))
+            if plan is None or p.id != plan.id for i in (p.invoice_ids or [])}
+    busy = [f"{inv.invoice_no} (plan #{held[inv.id]})" for inv in invs if inv.id in held]
+    if busy:
+        raise BusinessError("Cannot generate gatepass: already in a vehicle plan - make it from Planned Loads, or the "
+                            "Depot Manager cancels the plan: " + ", ".join(busy))
+    planned, totals, problems = plan_gatepass(db, authoriser, invs, req)
     if problems:
         raise BusinessError("Cannot generate gatepass: " + "; ".join(problems))
     if not planned:
@@ -665,9 +675,9 @@ def create_gatepass(db: Session, user: User, invs: list[Invoice], req: GatepassR
                        "cross_company": slip.cross_company})
     if (req.urgent_reason or "").strip():  # v1.8: gatepass before labels, Depot Manager only (checked in planning)
         slip.urgent_reason = req.urgent_reason.strip()
-        db.add(DispatchException(kind="URGENT_TRIP", slip_id=slip.id, user_id=user.id, reason=slip.urgent_reason))
+        db.add(DispatchException(kind="URGENT_TRIP", slip_id=slip.id, user_id=authoriser.id, reason=slip.urgent_reason))
     if slip.eligibility_override_reason:
-        db.add(DispatchException(kind="ELIGIBILITY", slip_id=slip.id, user_id=user.id,
+        db.add(DispatchException(kind="ELIGIBILITY", slip_id=slip.id, user_id=authoriser.id,
                                  reason=slip.eligibility_override_reason))
     cs.bind_or_generate(db, user, slip)  # v1.8: cartons labelled first are tied to it; others get barcodes now
     db.flush()

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Planned Loads</h1><div class="sub">Vehicles planned by the Depot Manager. Open a plan (<kbd>Enter</kbd>) and press <b>Make gate pass</b>, then print it with its Garage Pawatis.</div></div>
+</div>
+<div class="card flush" style="margin-bottom:12px">
+  <div class="card-head"><h3>Waiting to be made ({{ open|length }})</h3></div>
+  <div class="table-wrap">
+  <table class="data">
+    <thead><tr><th>Plan</th><th>Planned by</th><th>Carrier</th><th>Vehicle</th><th class="num">Invoices</th><th class="num">Cartons</th><th>Planned at</th></tr></thead>
+    <tbody>
+    {% for p in open %}{% set s = summary[p.id] %}
+      <tr>
+        <td class="nowrap"><a href="/load-plans/{{ p.id }}"{% if loop.first %} autofocus{% endif %}><b>#{{ p.id }}</b></a>{% if s.urgent %} <span class="badge">urgent</span>{% endif %}</td>
+        <td>{{ p.planned_by.full_name }}</td><td>{{ s.carrier }}</td><td>{{ s.vehicle or '—' }}</td>
+        <td class="num">{{ p.invoice_ids|length }}</td><td class="num">{{ s.cases }}</td><td class="nowrap">{{ p.planned_at|dt }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="empty">No vehicle plan waiting.{% if can('load.plan') %} Plan one from <a href="/ready-to-load">Ready to Load</a>.{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% if done %}
+<div class="card flush">
+  <div class="card-head"><h3>Recently made or cancelled</h3></div>
+  <div class="table-wrap">
+  <table class="data">
+    <thead><tr><th>Plan</th><th>Status</th><th>Gate pass</th><th>Planned by</th><th>Made / cancelled by</th><th>When</th></tr></thead>
+    <tbody>
+    {% for p in done %}
+      <tr>
+        <td><a href="/load-plans/{{ p.id }}">#{{ p.id }}</a></td><td>{{ 'Made' if p.status == 'MADE' else 'Cancelled' }}</td>
+        <td>{% if p.slip %}<a class="mono" href="/gatepass/{{ p.slip.id }}">{{ p.slip.dispatch_no }}</a>{% else %}—{% endif %}</td>
+        <td>{{ p.planned_by.full_name }}</td><td>{{ p.done_by.full_name if p.done_by else '—' }}</td><td class="nowrap">{{ p.done_at|dt if p.done_at else '' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

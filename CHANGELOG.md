@@ -2,6 +2,16 @@
 
 ## v1.8.0 (pilot release, branch `claude/v1.8-load-planning`) — labels first, phone gate check, cloud server
 
+**v1.8.4 — Planned Loads (owner's choice, 23 Nov: "plan, then operator makes").** On the vehicle screen the Depot
+Manager can now **Save as plan for an operator** (F9) instead of generating the gatepass; the plan waits under
+**Planned Loads** and a Dispatch Operator opens it and presses **Make gate pass** (F8), then prints it. The gatepass is
+rebuilt from the stored plan (nothing the operator's browser sends can change it) and is authorised by the planner;
+planned invoices leave Ready to Load and cannot go on another gatepass; the Depot Manager can cancel a plan with a
+reason; every step is audited. The Depot Manager's direct "Generate gatepass" stays. New table `load_plans`
+(migration 0020). Also fixed: with the company check switched off (v1.8 setting) the vehicle screen no longer asks for the
+"Group across companies" tick. Training videos (Depot Manager, Operator) in `pilot_docsideos`, made by
+`docs/video_manual/tools/run_v184_videos.py`.
+
 **v1.8.3 — gate pass header.** A smaller Tulsyan logo on top; the company name and address on their own full-width
 lines under it, so the name never runs into the barcode (seen on the owner's phone print).
 

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="page-head">
-  <div><h1>Ready to Load</h1><div class="sub">Step 3: invoices whose cartons are all labelled and on no vehicle yet. Tick the invoices for one vehicle (<kbd>Space</kbd> ticks) and press <b>Make gatepass for this vehicle</b> (<kbd>Alt</kbd>+<kbd>G</kbd>).</div></div>
+  <div><h1>Ready to Load</h1><div class="sub">Step 3: invoices whose cartons are all labelled and on no vehicle yet. Tick the invoices for one vehicle (<kbd>Space</kbd> ticks) and press <b>Make gatepass for this vehicle</b> (<kbd>Alt</kbd>+<kbd>G</kbd>). On the next screen choose the vehicle, then make the gatepass yourself or <b>save it as a plan</b> for an operator (<a href="/load-plans">Planned Loads</a>).</div></div>
 </div>
 <form method="post" action="/gatepass/prepare">
 <input type="hidden" name="csrf_token" value="{{ csrf }}">

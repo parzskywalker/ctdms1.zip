@@ -553,3 +553,29 @@ class DispatchException(Base):
     @property
     def label(self) -> str:
         return DispatchExceptionKind.LABELS.get(self.kind, self.kind)
+
+
+class LoadPlan(Base):
+    """v1.8.4 vehicle plan: the Depot Manager picks the invoices and the vehicle; a Dispatch Operator then makes and
+    prints the gatepass from it (the gatepass is authorised by the planner). OPEN plans hold their invoices."""
+
+    __tablename__ = "load_plans"
+
+    OPEN, MADE, CANCELLED = "OPEN", "MADE", "CANCELLED"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    cfa_id: Mapped[int] = mapped_column(ForeignKey("cfas.id"), index=True)
+    status: Mapped[str] = mapped_column(String(12), default="OPEN", index=True)
+    invoice_ids: Mapped[list] = mapped_column(JSON, default=list)
+    fields: Mapped[dict] = mapped_column(JSON, default=dict)  # the planner's gatepass form (vehicle, charges, remarks)
+    planned_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    planned_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    slip_id: Mapped[int | None] = mapped_column(ForeignKey("dispatch_slips.id"))
+    done_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    done_at: Mapped[datetime | None] = mapped_column(DateTime)
+    cancel_reason: Mapped[str | None] = mapped_column(Text)
+
+    cfa = relationship("CFA")
+    planned_by = relationship("User", foreign_keys=[planned_by_id])
+    done_by = relationship("User", foreign_keys=[done_by_id])
+    slip = relationship("DispatchSlip")
