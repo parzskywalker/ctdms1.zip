@@ -93,8 +93,8 @@ L01 = Lesson("m01-intro", "Introduction and the Dashboard", "What CTDMS does, ho
     Step("back", "Back with Esc", do="Press Esc to go back.", keys="Esc", expect="You are back on the Dashboard.",
          ui={"path": r"^/$"}),
     Step("menus", "The menus",
-         what="Dispatch desk (daily gatepasses, Gate Check, Garage Pawati, LR Books), Operations (invoices, imports, bills, "
-              "approvals), Master Settings (companies, depots, customers, transporters, rates, codes), Reports, "
+         what="Operations (invoices, imports, bills, approvals), Dispatch desk (daily gatepasses, Gate Check, Garage "
+              "Pawati, LR Books), Master Settings (companies, depots, customers, transporters, rates, codes), Reports, "
               "Administration and Help. You only see the menus your role allows, and the sidebar stays where you "
               "scrolled it.",
          why="Masters come first: every invoice, dispatch and report depends on them. That is the next lesson.",

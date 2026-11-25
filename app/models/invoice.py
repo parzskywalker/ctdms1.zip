@@ -307,14 +307,15 @@ class DispatchMode:
     OUTSIDE_AUTO = "OUTSIDE_AUTO"  # local auto delivers straight to the customer (local)
     SELF = "SELF"                  # customer collects / own delivery - no freight
     ALL = [TRANSPORTER, DIRECT, OUTSIDE_AUTO, SELF]
-    LABELS = {TRANSPORTER: "Transporter (long distance)", DIRECT: "Transporter - direct pickup",
-              OUTSIDE_AUTO: "Local auto", SELF: "Self pickup"}
+    # v1.8.7: the two "Local auto" choices were confused (an outstation trip made as a local delivery got no LR)
+    LABELS = {TRANSPORTER: "Transporter / garage (LR)", DIRECT: "Transporter - direct pickup",
+              OUTSIDE_AUTO: "Local auto to the customer (no LR)", SELF: "Self pickup"}
 
 
 class PickupMode:
     REGULAR = "REGULAR"            # our regular arrangement to the transporter's booking office
     OUTSIDE_AUTO = "OUTSIDE_AUTO"  # a local auto carries the goods to the transporter (auto charge added)
-    LABELS = {REGULAR: "Regular", OUTSIDE_AUTO: "Local auto"}
+    LABELS = {REGULAR: "Regular", OUTSIDE_AUTO: "Local auto to the garage"}
 
 
 class DispatchSlip(Base):

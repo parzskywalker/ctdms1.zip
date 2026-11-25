@@ -56,6 +56,12 @@ def test_manager_plans_operator_makes_and_tampering_changes_nothing(v18, api, we
     assert "not open any more" in op.post(f"/load-plans/{plan.id}/make").text     # made once only
 
 
+def test_vehicle_screen_tells_the_two_local_autos_apart(web):
+    page = web("cfa.raipur").get("/gatepass/new").text
+    assert "Transporter / garage (LR)" in page and "Local auto to the customer (no LR)" in page
+    assert 'id="gp-local-warn"' in page and "Local auto to the garage" in page
+
+
 def test_planned_invoice_is_held_and_cancel_releases_it(v18, api, web, db):  # noqa: F811
     a = _labelled(db, api)
     dm = web("cfa.raipur")

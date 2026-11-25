@@ -2,6 +2,8 @@
 
 ## v1.8.0 (pilot release, branch `claude/v1.8-load-planning`) — labels first, phone gate check, cloud server
 
+**v1.8.7 — menu order and the two "Local auto" choices.** Operations (invoices) now comes above Dispatch desk in the menu (owner, 25 Nov: invoices are imported first). The vehicle screen offered "Local auto" twice: as the mode (the auto delivers straight to the customer - no garage, no LR) and as the way goods reach a transporter (auto to the garage - Pawati and LR). An outstation trip made as a local delivery never reached LR Pending. Now the modes read **Transporter / garage (LR)** and **Local auto to the customer (no LR)**, the garage choice reads **Local auto to the garage**, and choosing the local delivery shows a warning.
+
 **v1.8.6 — an Admin can be excused from the phone code.** New tick box **Phone code not needed** under Administration › Users (only an Administrator can change it; the change is in the audit log). An excused Admin signs in with the password alone; other Admins still need the phone code. New column `users.no_phone_code` (migration 0021).
 
 **v1.8.5 — sign-in redirect loop fixed.** An Administrator who still had to set up the phone sign-in code AND had compulsory Guided Training switched on was bounced between the phone-code page and Training ("redirected too many times"). The phone-code page is now open during training, so the code is set up first and training follows.

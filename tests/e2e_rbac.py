@@ -38,14 +38,14 @@ FINAL = ["company-freight", "cfa-freight", "customer-freight", "city-freight", "
 MASTER_PATHS = ("/masters", "/rates", "/rate-cards", "/admin")
 MIS_ROLES = ("Administrator", "Management", "Accounts")
 EXPECT_GROUPS = {
-    "Administrator": ["Dashboard", "Dispatch desk", "Operations", "Approvals", "Accounts", "Master Settings",
+    "Administrator": ["Dashboard", "Operations", "Dispatch desk", "Approvals", "Accounts", "Master Settings",
                       "Reports & MIS", "Administration", "Help"],
-    "Management": ["Dashboard", "Dispatch Monitoring", "Operations", "Reports & MIS", "Help"],
-    "Accounts": ["Dashboard", "Dispatch Monitoring", "Operations", "Approvals", "Accounts", "Reports & MIS", "Help"],
-    "Depot Manager (Guma)": ["Dashboard", "Dispatch desk", "Operations", "Approvals", "Operational Reports", "Help"],
-    "Dispatch Operator (Guma)": ["Dashboard", "Dispatch desk", "Operations", "Help"],
-    "Checker": ["Dispatch Monitoring", "Operations", "Approvals", "Accounts", "Help"],
-    "Viewer": ["Dashboard", "Dispatch Monitoring", "Operations", "Help"],
+    "Management": ["Dashboard", "Operations", "Dispatch Monitoring", "Reports & MIS", "Help"],
+    "Accounts": ["Dashboard", "Operations", "Dispatch Monitoring", "Approvals", "Accounts", "Reports & MIS", "Help"],
+    "Depot Manager (Guma)": ["Dashboard", "Operations", "Dispatch desk", "Approvals", "Operational Reports", "Help"],
+    "Dispatch Operator (Guma)": ["Dashboard", "Operations", "Dispatch desk", "Help"],
+    "Checker": ["Operations", "Dispatch Monitoring", "Approvals", "Accounts", "Help"],
+    "Viewer": ["Dashboard", "Operations", "Dispatch Monitoring", "Help"],
 }
 
 

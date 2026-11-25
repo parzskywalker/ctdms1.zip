@@ -110,14 +110,14 @@ def test_default_role_permissions_match_the_brief():
 
 # ------------------------------------------------------------------------------- menus
 EXPECTED_GROUPS = {
-    "ADMIN": ["Dashboard", "Dispatch desk", "Operations", "Approvals", "Accounts", "Master Settings", "Reports & MIS",
+    "ADMIN": ["Dashboard", "Operations", "Dispatch desk", "Approvals", "Accounts", "Master Settings", "Reports & MIS",
               "Administration", "Help"],
-    "MANAGEMENT": ["Dashboard", "Dispatch Monitoring", "Operations", "Reports & MIS", "Help"],
-    "ACCOUNTS": ["Dashboard", "Dispatch Monitoring", "Operations", "Approvals", "Accounts", "Reports & MIS", "Help"],
-    "CFA_MANAGER": ["Dashboard", "Dispatch desk", "Operations", "Approvals", "Operational Reports", "Help"],
-    "DISPATCH_OPERATOR": ["Dashboard", "Dispatch desk", "Operations", "Help"],
-    "CHECKER": ["Dispatch Monitoring", "Operations", "Approvals", "Accounts", "Help"],
-    "VIEWER": ["Dashboard", "Dispatch Monitoring", "Operations", "Help"],
+    "MANAGEMENT": ["Dashboard", "Operations", "Dispatch Monitoring", "Reports & MIS", "Help"],
+    "ACCOUNTS": ["Dashboard", "Operations", "Dispatch Monitoring", "Approvals", "Accounts", "Reports & MIS", "Help"],
+    "CFA_MANAGER": ["Dashboard", "Operations", "Dispatch desk", "Approvals", "Operational Reports", "Help"],
+    "DISPATCH_OPERATOR": ["Dashboard", "Operations", "Dispatch desk", "Help"],
+    "CHECKER": ["Operations", "Dispatch Monitoring", "Approvals", "Accounts", "Help"],
+    "VIEWER": ["Dashboard", "Operations", "Dispatch Monitoring", "Help"],
 }
 
 

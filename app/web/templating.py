@@ -91,6 +91,13 @@ env.globals.update(app_version=__version__, InvoiceStatus=InvoiceStatus)
 # The routes check the same permissions on the server; hiding is only the first layer.
 NAV = [
     ("Dashboard", [("Dashboard", "/", "dashboard.view", "grid")]),
+    ("Operations", [  # first: invoices are imported before anything is dispatched (owner, 25 Nov)
+        ("Add Invoice", "/invoices/new", "invoice.import", "plus"),
+        ("Invoice Import", "/imports", "invoice.import", "upload"),
+        ("Invoice Register", "/invoices", "invoice.view", "list"),
+        ("Dispatch Register", "/dispatch/register", "dispatch.view", "clipboard"),
+        ("Freight Exceptions", "/exceptions", "invoice.view", "alert"),
+    ]),
     ("Dispatch desk", [
         ("Labels to Print", "/labels-desk", "case.print", "list"),
         ("Ready to Load", "/ready-to-load", "load.plan", "truck"),
@@ -107,13 +114,6 @@ NAV = [
         ("Track Shipment", "/track", "dispatch.view", "pin"),
         ("Deliveries Pending", "/deliveries", "dispatch.view", "check"),
         ("Customer Alerts", "/notifications", "dispatch.operate", "bell"),
-    ]),
-    ("Operations", [
-        ("Add Invoice", "/invoices/new", "invoice.import", "plus"),
-        ("Invoice Import", "/imports", "invoice.import", "upload"),
-        ("Invoice Register", "/invoices", "invoice.view", "list"),
-        ("Dispatch Register", "/dispatch/register", "dispatch.view", "clipboard"),
-        ("Freight Exceptions", "/exceptions", "invoice.view", "alert"),
     ]),
     ("Approvals", [
         ("Approvals", "/approvals", "override.approve|rate.approve|recon.approve", "check"),

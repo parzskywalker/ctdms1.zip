@@ -95,9 +95,10 @@
         <label style="margin-top:8px">Goods reach the transporter by</label>
         <div class="checks">
           <label class="check"><input type="radio" name="pickup_mode" value="REGULAR" {% if form.get('pickup_mode') != 'OUTSIDE_AUTO' %}checked{% endif %}> Regular</label>
-          <label class="check"><input type="radio" name="pickup_mode" value="OUTSIDE_AUTO" {% if form.get('pickup_mode') == 'OUTSIDE_AUTO' %}checked{% endif %}> Local auto</label>
+          <label class="check"><input type="radio" name="pickup_mode" value="OUTSIDE_AUTO" {% if form.get('pickup_mode') == 'OUTSIDE_AUTO' %}checked{% endif %}> Local auto to the garage</label>
         </div>
       </div>
+      <div class="alert alert-warn" id="gp-local-warn" hidden>Local delivery only: the auto takes the goods straight to the customers. No garage, no Pawati and <b>no LR</b>. Outstation customers? Choose <b>Transporter / garage (LR)</b>; the local auto to the garage is chosen there.</div>
       <div id="gp-auto-box">
         <label for="gp-auto">Local auto</label>
         <select name="outside_auto_id" id="gp-auto"><option value="">— select —</option>
@@ -322,6 +323,7 @@
     }
     const m = mode(), tid = $('#gp-tr').value, aid = $('#gp-auto').value, pk = pickup();
     $('#gp-tr-box').hidden = !(m === 'TRANSPORTER' || m === 'DIRECT');
+    $('#gp-local-warn').hidden = m !== 'OUTSIDE_AUTO';
     $('#gp-auto-box').hidden = !(m === 'OUTSIDE_AUTO' || ((m === 'TRANSPORTER' || m === 'DIRECT') && pk === 'OUTSIDE_AUTO'));
     const perLine = m === 'TRANSPORTER' && pk === 'OUTSIDE_AUTO';
     $$('.th-recv, .recv-cell').forEach((c) => { c.hidden = !perLine; });
