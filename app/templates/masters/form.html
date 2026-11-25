@@ -31,6 +31,19 @@
       <div><label>{{ f.label }}{% if f.required %} <span class="req">*</span>{% endif %}</label>
         <input type="date" name="{{ f.name }}" value="{{ v.isoformat() if v else '' }}" {% if f.required %}required{% endif %} {% if ro %}readonly{% endif %}>
         {% if f.help %}<div class="field-hint">{{ f.help }}</div>{% endif %}</div>
+    {% elif f.name == 'state' %}
+      <div><label>{{ f.label }}{% if f.required %} <span class="req">*</span>{% endif %}</label>
+        <select name="state" data-geo-state data-combo {% if f.required %}required{% endif %} {% if ro %}disabled{% endif %}>
+          <option value="">— type to choose the state —</option>
+          {% if v and v not in states %}<option value="{{ v }}" selected>{{ v }}</option>{% endif %}
+          {% for s in states %}<option value="{{ s }}" {% if v == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+        </select>{% if f.help %}<div class="field-hint">{{ f.help }}</div>{% endif %}</div>
+    {% elif f.name == 'city' %}
+      <div><label>{{ f.label }}{% if f.required %} <span class="req">*</span>{% endif %}</label>
+        <select name="city" data-geo-city data-combo data-current="{{ v or '' }}" {% if f.required %}required{% endif %} {% if ro %}disabled{% endif %}>
+          <option value="">— choose the state first, then type the city / district —</option>
+          {% if v %}<option value="{{ v }}" selected>{{ v }}</option>{% endif %}
+        </select><div class="field-hint">All districts, towns and post offices of the state (India Post). The PIN code fills in by itself.</div></div>
     {% elif f.kind == 'multi' %}
       <div class="full"><label>{{ f.label }}</label>
         <div class="checks">{% set sel = (v or [])|map(attribute='id')|list %}
@@ -38,12 +51,13 @@
         </div></div>
     {% else %}
       <div><label>{{ f.label }}{% if f.required %} <span class="req">*</span>{% endif %}</label>
-        <input type="{{ 'email' if f.kind == 'email' else 'text' }}" name="{{ f.name }}" value="{{ v if v is not none else '' }}" {% if f.required %}required{% endif %} {% if f.upper %}data-upper{% endif %} {% if ro %}readonly{% endif %} {% if f.kind in ['int','decimal'] %}inputmode="decimal"{% endif %}>
+        <input type="{{ 'email' if f.kind == 'email' else 'text' }}" name="{{ f.name }}" value="{{ v if v is not none else '' }}" {% if f.name == 'pincode' %}data-geo-pin inputmode="numeric" maxlength="6"{% endif %} {% if f.required %}required{% endif %} {% if f.upper %}data-upper{% endif %} {% if ro %}readonly{% endif %} {% if f.kind in ['int','decimal'] %}inputmode="decimal"{% endif %}>
         {% if f.help %}<div class="field-hint">{{ f.help }}</div>{% endif %}</div>
     {% endif %}
   {% endfor %}
   {% if not is_new and not ro %}<div class="full"><label>Reason for change (optional, stored in audit)</label><input type="text" name="change_reason"></div>{% endif %}
   </div>
+  {% if is_new and next_code %}<div class="field-hint" style="margin-top:6px">Code filled in by itself: the next after <b>{{ last_code }}</b>, the last one entered. You can change it.</div>{% endif %}
   {% if not ro %}<div class="form-actions"><button class="btn btn-primary" type="submit" data-key="F6">Save</button><a class="btn" href="/masters/{{ md.key }}" data-key="Esc">Back</a></div>{% endif %}
 </form>
 
@@ -126,3 +140,4 @@
 </div>
 </div>
 {% endblock %}
+{% block scripts %}<script src="/static/js/geo.js?v={{ app_version }}"></script>{% endblock %}

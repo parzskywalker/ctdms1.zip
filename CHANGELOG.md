@@ -2,6 +2,8 @@
 
 ## v1.8.0 (pilot release, branch `claude/v1.8-load-planning`) — labels first, phone gate check, cloud server
 
+**v1.8.8 — easier "add new" in every master.** The code box is filled in by itself with the next code after the last one entered (GUM0457 -> GUM0458, zeros kept, used codes skipped; it can still be changed). Address boxes are now State -> City -> PIN: State and City are type-to-search lists (arrows, Enter); the City list holds every district, town and post office of the chosen state, and the PIN code fills in by itself. The places come from India Post's All India Pincode Directory (Government open data, data.gov.in), built into app/static/geo by deploy/build_geo.py - no internet or paid service needed.
+
 **v1.8.7 — menu order and the two "Local auto" choices.** Operations (invoices) now comes above Dispatch desk in the menu (owner, 25 Nov: invoices are imported first). The vehicle screen offered "Local auto" twice: as the mode (the auto delivers straight to the customer - no garage, no LR) and as the way goods reach a transporter (auto to the garage - Pawati and LR). An outstation trip made as a local delivery never reached LR Pending. Now the modes read **Transporter / garage (LR)** and **Local auto to the customer (no LR)**, the garage choice reads **Local auto to the garage**, and choosing the local delivery shows a warning.
 
 **v1.8.6 — an Admin can be excused from the phone code.** New tick box **Phone code not needed** under Administration › Users (only an Administrator can change it; the change is in the audit log). An excused Admin signs in with the password alone; other Admins still need the phone code. New column `users.no_phone_code` (migration 0021).

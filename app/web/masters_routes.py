@@ -5,6 +5,7 @@ import csv
 import difflib
 import io
 import math
+import re
 from dataclasses import dataclass, field
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -18,7 +19,7 @@ from app.models import (
     Invoice, InvoiceMarking, LocalAutoRate, Location, OutsideAuto, Transporter, User,
 )
 from app.security.auth import csrf_protect, require
-from app.services import audit, recognition
+from app.services import audit, geo, recognition
 from app.services import customer_area_service as cas
 from app.services.errors import BusinessError
 from app.services.import_service import TARGET_FIELDS, add_code_mapping, find_code_mapping
@@ -71,7 +72,7 @@ MASTERS: dict[str, MasterDef] = {
           help="Unique for every depot, also when several depots are in the same city"),
         F("name", "Depot name", required=True, list=True),
         F("locality", "Locality / area", list=True, help="e.g. Guma, Kamal Vihar"),
-        F("city", "City", required=True, list=True), F("state", "State", list=True), F("pincode", "PIN code"),
+        F("state", "State", list=True), F("city", "City", required=True, list=True), F("pincode", "PIN code"),
         F("address", "Address", "textarea"),
         F("marking", "Recognition code", list=True, upper=True,
           help="Short code used in the Invoice Recognition Code, e.g. GUMA (blank = the depot code)"),
@@ -97,7 +98,7 @@ MASTERS: dict[str, MasterDef] = {
         F("marking", "Recognition code", list=True, upper=True,
           help="Short code used in the Invoice Recognition Code, e.g. C025 (blank = the customer code)"),
         F("billing_address", "Billing address", "textarea"), F("delivery_address", "Delivery address", "textarea"),
-        F("city", "City", list=True), F("state", "State"), F("pincode", "PIN code"),
+        F("state", "State"), F("city", "City", list=True), F("pincode", "PIN code"),
         F("location_id", "Delivery area / location", "select", options="location", required=True, list=True),
         F("contact_person", "Contact person"), F("contact_phone", "Mobile number", list=True),
         F("whatsapp", "WhatsApp number"),
@@ -115,7 +116,7 @@ MASTERS: dict[str, MasterDef] = {
     "locations": MasterDef("locations", Location, "Location / Route Master", "Location", [
         F("code", "Location code", required=True, list=True, upper=True),
         F("name", "Location name", required=True, list=True),
-        F("city", "City", list=True), F("state", "State", list=True), F("pincode", "PIN code", list=True),
+        F("state", "State", list=True), F("city", "City", list=True), F("pincode", "PIN code", list=True),
         F("route", "Route", list=True), F("zone", "Zone", list=True),
         F("distance_km", "Distance (km, optional)", "decimal", list=True),
         F("is_active", "Active", "bool", list=True),
@@ -124,7 +125,7 @@ MASTERS: dict[str, MasterDef] = {
         F("code", "Transporter code", required=True, list=True, upper=True),
         F("name", "Transporter name", required=True, list=True),
         F("contact_person", "Contact person", list=True), F("mobile", "Mobile number", list=True),
-        F("email", "Email", "email"), F("address", "Address", "textarea"), F("city", "City"), F("state", "State"),
+        F("email", "Email", "email"), F("address", "Address", "textarea"), F("state", "State"), F("city", "City"),
         F("gstin", "GST number", upper=True, list=True), F("pan", "PAN", upper=True),
         F("service_area", "Areas served", list=True, help="Rates per area: Master Settings › Transporter Rate Cards"),
         F("served_depots", "Depots served", "multi", options="cfa",
@@ -350,6 +351,21 @@ def _cell(obj, f: F):
     return "" if v is None else v
 
 
+def _next_code(db: Session, md: MasterDef) -> tuple[str | None, str | None]:
+    """The code of the last record entered, and the next one after it (GUM0457 -> GUM0458; zeros kept), skipping codes
+    already used. None when the last code does not end in a number."""
+    last = db.scalar(select(md.model.code).where(md.model.code.isnot(None)).order_by(md.model.id.desc()).limit(1))
+    m = re.fullmatch(r"(.*?)(\d+)", (last or "").strip())
+    if not m:
+        return last, None
+    head, num = m.group(1), m.group(2)
+    for i in range(1, 200):
+        cand = f"{head}{int(num) + i:0{len(num)}d}"
+        if not db.scalar(select(md.model.id).where(func.upper(md.model.code) == cand.upper())):
+            return last, cand
+    return last, None
+
+
 @router.get("/masters/{key}/new")
 def master_new(key: str, request: Request, db: Session = Depends(get_db), user: User = Depends(require("master.edit"))):
     md = _get_def(key)
@@ -358,6 +374,9 @@ def master_new(key: str, request: Request, db: Session = Depends(get_db), user: 
     for f in md.fields:  # show the default of fixed lists (customer type, payment mode, charge basis)
         if f.kind == "select" and (f.options or "").startswith("choice:") and getattr(obj, f.name, None) is None:
             setattr(obj, f.name, f.options[7:].split(",")[0])
+    last, nxt = _next_code(db, md)
+    if nxt:
+        obj.code = nxt
     for k, v in request.query_params.items():  # prefill (e.g. from import correction)
         if hasattr(obj, k) and k not in ("id",):
             try:
@@ -365,7 +384,9 @@ def master_new(key: str, request: Request, db: Session = Depends(get_db), user: 
             except Exception:  # noqa: BLE001
                 pass
     return render(request, "masters/form.html", {"title": f"New {md.singular}", "md": md, "obj": obj, "is_new": True,
-                                                 "opts": _options(db, user), "back": request.query_params.get("back", "")})
+                                                 "opts": _options(db, user), "back": request.query_params.get("back", ""),
+                                                 "next_code": nxt if obj.code == nxt else None, "last_code": last,
+                                                 "states": geo.STATES})
 
 
 @router.get("/masters/{key}/{obj_id:int}")
@@ -392,7 +413,7 @@ def master_edit(key: str, obj_id: int, request: Request, db: Session = Depends(g
                               .order_by(audit.AuditLog.ts.desc()).limit(50)))
     return render(request, "masters/form.html", {"title": f"{md.singular} {obj.code}", "md": md, "obj": obj,
                                                  "is_new": False, "opts": _options(db, user), "history": history,
-                                                 "back": "", **extra})
+                                                 "back": "", "states": geo.STATES, **extra})
 
 
 CHOICE_LABELS = {"TBB": "TBB (to be billed)", "CASH": "Cash at dispatch", "PER_TRIP": "Per trip", "PER_CASE": "Per box",
@@ -412,6 +433,8 @@ def _parse(db: Session, md: MasterDef, form) -> tuple[dict, dict]:
             values[f.name] = raw in ("1", "on", "true", "yes")
             continue
         raw = (raw or "").strip()
+        if f.name == "city":
+            raw = raw.split("|")[0].strip()  # the city box sends "place|pin" (geo.js) - keep the place
         if not raw and f.kind == "select" and (f.options or "").startswith("choice:"):
             raw = f.options[7:].split(",")[0]  # fixed lists default to their first choice
         if not raw and f.kind == "select" and f.options == "ctype" and f.required:
