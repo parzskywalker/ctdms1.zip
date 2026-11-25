@@ -26,6 +26,12 @@ def test_new_customer_gets_the_next_code_and_city_keeps_only_the_place(web, db):
     assert 'data-current="Guma"' in edit and '<option value="Chhattisgarh" selected' in edit
 
 
+def test_phone_scan_box_is_never_locked_after_a_scan(web):
+    # app.js disables a form's buttons for 8 s after a submit; a disabled Enter button stops a Bluetooth scanner's Enter
+    page = web("admin").get("/gate/phone").text
+    assert re.search(r'<form id="manual"[^>]*data-allow-resubmit', page)
+
+
 def test_state_files_hold_places_districts_and_pins(web):
     data = web("admin").get("/static/geo/chhattisgarh.json").json()
     assert data["state"] == "Chhattisgarh"

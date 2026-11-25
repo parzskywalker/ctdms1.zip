@@ -1,6 +1,6 @@
 """CTDMS - Central Transportation Expense & Dispatch Management System."""
 
-__version__ = "1.8.8"
+__version__ = "1.8.9"
 
 
 def _register_safe_int_convertor() -> None:
