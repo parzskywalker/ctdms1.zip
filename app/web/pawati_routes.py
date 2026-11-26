@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import CFA, DispatchSlip, GaragePawati, LRBook, PawatiPrintLog, PawatiStatus, Transporter, User
+from app.models import CFA, DispatchAllocation, DispatchSlip, GaragePawati, LRBook, PawatiPrintLog, PawatiStatus, Transporter, User
 from app.security.auth import csrf_protect, require
 from app.services import lr_book_service as lrb
 from app.services import pawati_service as pws
@@ -65,7 +65,19 @@ def print_pawati(request: Request, form=Depends(get_form), db: Session = Depends
         raise BusinessError("No Garage Pawati selected")
     pws.print_sheet(db, user, rows, form.get("reason"))
     db.commit()
-    return templates.TemplateResponse(request, "pawati/print.html", {"request": request, "rows": rows})
+    return templates.TemplateResponse(request, "pawati/print.html", {"request": request, "rows": rows,
+                                                                     "calcs": {p.id: _freight_calc(db, p) for p in rows}})
+
+
+def _freight_calc(db: Session, p: GaragePawati) -> list[tuple]:
+    """v1.9: how the Pawati's freight was worked out - (cartons, rate per carton or None, freight) per rate."""
+    by_rate: dict = {}
+    for ln in p.lines:
+        a = db.get(DispatchAllocation, ln.allocation_id)
+        row = by_rate.setdefault(a.rate_per_case if a else None, [0, 0])
+        row[0] += ln.cases
+        row[1] += (a.freight if a else 0)
+    return [(n, rate, fr) for rate, (n, fr) in by_rate.items()]
 
 
 @router.post("/pawati/{pid:int}/receive")

@@ -125,6 +125,8 @@ def test_pawati_must_be_printed_before_the_auto_leaves_and_receipt_rules(db, wor
     page = admin.post("/pawati/print", data={"ids": [str(ps[0].id)]}).text
     assert page.count('class="slip"') == 1 and "GARAGE PAWATI" in page and "Receiver's signature" in page
     assert f"No. {ps[0].pawati_no}" in page and "P3 Transport" in page
+    # v1.9: no invoice amount on the slip; the freight shows how it was worked out; the logo sits above the name
+    assert ">Amount<" not in page and ">Freight<" in page and ("carton" in page.split(">Freight<")[1].split("</tr>")[0])
     # reprint needs a reason; no permission = refused
     assert "reason" in admin.post("/pawati/print", data={"ids": [str(ps[0].id)]}).text.lower()
     assert "DUPLICATE" in admin.post("/pawati/print", data={"ids": [str(ps[0].id)], "reason": "slip torn at the garage"}).text

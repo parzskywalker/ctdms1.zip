@@ -11,7 +11,9 @@
   @page { size: A4; margin: 6mm; }
   .sheet { display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 138mm; gap: 0; page-break-after: always; }
   .slip { border: 1px solid #333; padding: 4mm; background: #fff; display: flex; flex-direction: column; gap: 2mm; overflow: hidden; }
-  .firm { text-align: center; font-weight: 800; font-size: 12pt; }
+  .logo { text-align: center; line-height: 0; } .logo img { height: 9mm; width: auto; max-width: 60%; }  /* v1.9: above the name, never over it */
+  .firm { text-align: center; font-weight: 800; font-size: 12pt; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .calc { font-size: 8.5pt; font-weight: 400; color: #333; }
   .addr { text-align: center; font-size: 7.5pt; line-height: 1.25; }
   .co { text-align: center; font-weight: 700; font-size: 9pt; border-top: 1px solid #333; border-bottom: 1px solid #333; padding: 1mm 0; }
   .title { text-align: center; font-weight: 800; letter-spacing: 1px; font-size: 11pt; }
@@ -36,7 +38,7 @@
   {% for p in chunk %}{% set s = p.snapshot %}
   <div class="slip">
     {% if wm %}<div class="trn">TRAINING - NOT VALID</div>{% endif %}
-    {% if s.logo %}<img src="{{ s.logo }}" alt="" style="height:10mm;float:left;margin-right:2mm">{% endif %}<div class="firm">{{ s.firm }}</div>
+    {% if s.logo %}<div class="logo"><img src="{{ s.logo }}" alt=""></div>{% endif %}<div class="firm">{{ s.firm }}</div>
     <div class="addr">{{ s.depot }}{% if s.depot_address %} · {{ s.depot_address }}{% endif %}{% if s.depot_phone %}<br>Ph: {{ s.depot_phone }}{% endif %}</div>
     <div class="co">{{ s.company }}</div>
     <div class="title">GARAGE PAWATI</div>
@@ -47,8 +49,8 @@
       <tr><td class="k">To</td><td class="big">{{ s.to }}{% if s.to_place %} <span style="font-weight:400">· {{ s.to_place }}</span>{% endif %}</td></tr>
       <tr><td class="k">Cartons</td><td class="big">{{ p.cartons }}</td></tr>
       <tr><td class="k">Bill No.</td><td>{{ p.bill_nos }}</td></tr>
-      <tr><td class="k">Amount</td><td>₹ {{ '{:,.2f}'.format(p.amount) }}</td></tr>
-      <tr><td class="k">Freight</td><td>₹ {{ '{:,.2f}'.format(p.freight) }}</td></tr>
+      <tr><td class="k">Freight</td><td><span class="big">₹ {{ '{:,.2f}'.format(p.freight) }}</span>
+        {% for n, rate, fr in calcs.get(p.id, []) %}<div class="calc">{% if rate is not none %}{{ n }} carton{{ 's' if n != 1 }} × ₹ {{ '{:,.2f}'.format(rate) }} = ₹ {{ '{:,.2f}'.format(fr) }}{% else %}{{ n }} carton{{ 's' if n != 1 }}: ₹ {{ '{:,.2f}'.format(fr) }} (share of the trip){% endif %}</div>{% endfor %}</td></tr>
     </table>
     <div class="sign"><div>Receiver's signature</div><div>For {{ s.firm }}</div></div>
     <div class="foot">Gatepass {{ s.gatepass }}{% if s.auto %} · auto {{ s.auto }} {{ s.vehicle }}{% endif %}</div>
