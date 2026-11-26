@@ -18,6 +18,8 @@ def _cases(db, inv_id):
 def test_print_all_then_the_invoices_move_to_printed_with_reprint(v18, api, web, db):  # noqa: F811
     a = make_invoice(api("admin"), customer="C-HRM01", boxes=2)["id"]
     b = make_invoice(api("admin"), customer="C-HRM01", boxes=3)["id"]
+    cfg.set_value(db, "labels.height_mm", 100)  # the 100 x 100 mm stickers, whatever an earlier test left
+    db.commit()
     w = web("cfa.raipur")
     page = w.get("/labels-desk").text
     assert "1 · Labels left to print" in page and "Print all" in page and "2 · Labels already printed" in page
@@ -36,5 +38,5 @@ def test_print_all_then_the_invoices_move_to_printed_with_reprint(v18, api, web,
     assert na in printed and nb in printed and f'href="/labels-desk/{a}/print">Reprint' in printed
 
 
-def test_label_height_defaults_to_100mm(db):
-    assert cfg.get(db, "labels.height_mm") == 100
+def test_label_height_defaults_to_100mm():
+    assert cfg.DEFAULTS["labels.height_mm"][0] == "100" and cfg.DEFAULTS["labels.width_mm"][0] == "100"

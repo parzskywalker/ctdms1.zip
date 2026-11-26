@@ -100,7 +100,7 @@ def test_labels_page_one_barcode_per_case_and_size_setting(db):
         page = admin.get(f"/gatepass/{sid}/labels").text
         assert "width: 75mm" in page and "height: 40mm" in page
     finally:
-        for k, v in (("labels.width_mm", "100"), ("labels.height_mm", "50")):
+        for k, v in (("labels.width_mm", "100"), ("labels.height_mm", "100")):
             s.get(__import__("app.models", fromlist=["Setting"]).Setting, k).value = v
         s.commit()
         s.close()
