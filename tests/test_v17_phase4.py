@@ -89,7 +89,7 @@ def test_labels_page_one_barcode_per_case_and_size_setting(db):
     assert page.count('<div class="label"') == 9 and page.count("<svg") >= 9
     for c in cases:
         assert c.case_code in page
-    assert invs[0]["invoice_no"] in page and "7" in page and "width: 100mm" in page and "height: 50mm" in page
+    assert invs[0]["invoice_no"] in page and "7" in page and "width: 100mm" in page and "height: 100mm" in page
     s = _test_session()
     for k, v in (("labels.width_mm", "75"), ("labels.height_mm", "40")):
         cfg.all_settings(s)
@@ -119,15 +119,13 @@ def test_print_failed_reprint_keep_the_code_and_are_logged(db):
     admin.post(f"/gatepass/{sid}/labels/confirm", data={"case_ids": ids, "result": "PRINTED"})
     assert {c.status for c in _cases(db, sid)} == {CaseStatus.LABELLED}
     assert "Every label has been printed" in admin.get(f"/gatepass/{sid}/labels?show=pending").text
-    # printing them again is a reprint: a reason, and the permission
-    r = admin.post(f"/gatepass/{sid}/labels/confirm", data={"case_ids": ids, "result": "PRINTED"})
-    assert "reason" in r.text.lower() and db.query(LabelPrintLog).filter_by(slip_id=sid, is_reprint=True).count() == 0
+    # printing them again is a reprint: the permission is needed (v1.8.10: no reason asked)
     save_user(admin, db, "p4.noreprint", "DISPATCH_OPERATOR", cfas=["BSP"], deny=["case.reprint"], reason="test", companies=None)
     nr = WebClient("p4.noreprint", PW)
     assert "not authorised to reprint" in nr.post(f"/gatepass/{sid}/labels/confirm", data={
         "case_ids": ids, "result": "PRINTED", "reason": "label torn in the rain"}).text
     mgr = WebClient("cfa.raipur")  # a Depot Manager holds case.reprint (scope: Guma only, so use the Administrator)
-    admin.post(f"/gatepass/{sid}/labels/confirm", data={"case_ids": ids, "result": "PRINTED", "reason": "label torn in the rain"})
+    admin.post(f"/gatepass/{sid}/labels/confirm", data={"case_ids": ids, "result": "PRINTED"})
     assert [c.case_code for c in _cases(db, sid)] == codes                              # same codes
     logs = list(db.scalars(select(LabelPrintLog).where(LabelPrintLog.slip_id == sid).order_by(LabelPrintLog.id)))
     assert {(lg.batch_no, lg.status, lg.is_reprint) for lg in logs} == {(1, "FAILED", False), (2, "PRINTED", False), (3, "PRINTED", True)}

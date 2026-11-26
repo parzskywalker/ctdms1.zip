@@ -411,7 +411,7 @@ def _case_labels(request: Request, db: Session, user: User, slip: DispatchSlip):
         "request": request, "slip": slip, "rows": cs.label_rows(db, slip, chosen), "show": show, "total": len(allc),
         "pending": len(pending), "carrier": carrier, "org": cfg.get(db, "org.name"), "pos": pos,
         "sheet": qp.get("sheet") == "a4", "w": cfg.get(db, "labels.width_mm") or 100,
-        "h": cfg.get(db, "labels.height_mm") or 50, "reprint": show == "all" or any(
+        "h": cfg.get(db, "labels.height_mm") or 100, "reprint": show == "all" or any(
             c.status != "LABEL_PENDING" for c in chosen), "log": log, "csrf": request.session.get("csrf", ""),
         "can_print": user.can("case.print"), "can_reprint": user.can("case.reprint"), "lo": lo, "hi": hi,
         "ids": ",".join(str(c.id) for c in chosen)})

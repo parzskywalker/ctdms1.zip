@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Labels · Inv {{ inv.invoice_no }}</title>
+{% set one = invs[0] if invs|length == 1 else none %}
+<title>Labels · {{ ('Inv ' ~ one.invoice_no) if one else (invs|length ~ ' invoices') }}</title>
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #000; background: #fff; }
@@ -20,18 +21,29 @@
   .bc svg { height: 9mm; width: auto; max-width: {{ (w * 0.62)|round|int }}mm; }
   .code { font: 700 8.5pt "Courier New", monospace; letter-spacing: .5px; }
   .case { font-size: 15pt; font-weight: 800; white-space: nowrap; }
+  {% if h >= 80 %}/* square 100 x 100 mm stickers (v1.9): everything larger, barcode across the label */
+  .label { padding: 4mm 5mm; gap: 2mm; }
+  .top { font-size: 10pt; } .top img { height: 12mm; }
+  .cust { font-size: 20pt; line-height: 1.1; max-height: 3.4em; }
+  .area { font-size: 18pt; } .inv { font-size: 13pt; } .meta { font-size: 10pt; }
+  .row { flex-direction: column; align-items: stretch; gap: 2mm; }
+  .bc svg { height: 20mm; max-width: {{ (w - 10)|int }}mm; width: 100%; }
+  .code { font-size: 12pt; text-align: center; }
+  .case { font-size: 30pt; text-align: center; }
+  {% endif %}
   @page { size: {{ w }}mm {{ h }}mm; margin: 0; }
   @media print { .bar, .confirm { display: none !important; } }
   @media screen { .label { border: 1px dashed #999; margin: 6px; } }
 </style>
 </head>
 <body>
-<div class="bar"><b>{{ rows|length }} label(s)</b> · Inv {{ inv.invoice_no }} · {{ inv.customer.name }} · {{ w }} × {{ h }} mm
+<div class="bar"><b>{{ rows|length }} label(s)</b> · {% if one %}Inv {{ one.invoice_no }} · {{ one.customer.name }}{% else %}{{ invs|length }} invoices (Print all){% endif %} · {{ w }} × {{ h }} mm
   <button id="print-now" autofocus>Print (Enter)</button> <a href="/labels-desk">Back (Esc)</a></div>
-<form class="confirm" method="post" action="/labels-desk/{{ inv.id }}/confirm">
+<form class="confirm" method="post" action="{{ action }}">
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  {% if not one %}<input type="hidden" name="ids" value="{{ invs|map(attribute='id')|join(',') }}">{% endif %}
   <b>Did all {{ rows|length }} labels print?</b>
-  {% if reprint %}<input name="reason" placeholder="Reason for the reprint (required)" size="34" required minlength="5">{% endif %}
+  {% if reprint %}<span>Reprint - same codes as before.</span>{% endif %}
   <button name="result" value="PRINTED">Yes, all printed (Y)</button>
   <button name="result" value="FAILED" formnovalidate>No - print again (N)</button>
 </form>
@@ -41,7 +53,7 @@
   <div class="cust">{{ r.customer.name }}</div>
   <div class="area">{{ r.location.name if r.location else '' }}</div>
   <div class="inv">Inv {{ r.invoice.invoice_no }} <span class="meta">· {{ r.company_codes }}</span></div>
-  <div class="row"><div class="bc">{{ c.case_code|barcode_svg }}<div class="code">{{ c.case_code }}</div></div><div class="case">{{ c.seq_in_invoice }} / {{ rows|length }}</div></div>
+  <div class="row"><div class="bc">{{ c.case_code|barcode_svg }}<div class="code">{{ c.case_code }}</div></div><div class="case">{{ c.seq_in_invoice }} / {{ totals[r.invoice.id] }}</div></div>
 </div>
 {% endfor %}
 <script>

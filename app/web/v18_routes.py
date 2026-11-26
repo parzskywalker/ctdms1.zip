@@ -62,8 +62,75 @@ def labels_desk(request: Request, db: Session = Depends(get_db), user: User = De
     invs = _open_invoices(db, user)
     state = _carton_state(db, [i.id for i in invs])
     todo = [i for i in invs if i.id not in state or state[i.id]["pending"]]
-    return render(request, "v18/labels_desk.html", {"title": "Labels to Print", "rows": todo, "state": state,
-                                                     "can_exception": user.can("exception.approve")})
+    done = sorted((i for i in invs if i.id in state and not state[i.id]["pending"]), key=lambda i: -i.id)
+    return render(request, "v18/labels_desk.html", {
+        "title": "Labels to Print", "rows": todo, "done": done, "state": state,
+        "can_exception": user.can("exception.approve"), "can_reprint": user.can("case.reprint"),
+        "n_all": sum(1 for i in todo if i.id in state or (i.boxes or 0) > 0)})
+
+
+@router.post("/labels-desk/print-all")
+def labels_print_all(request: Request, db: Session = Depends(get_db), user: User = Depends(require("case.print"))):
+    """v1.9: labels for every invoice still to print, at the invoice's own carton count, on one print run."""
+    invs = _open_invoices(db, user)
+    state = _carton_state(db, [i.id for i in invs])
+    skipped = []
+    for inv in invs:
+        if inv.id in state:
+            continue  # already made (maybe not confirmed yet): printed again in the same run
+        if not (inv.boxes or 0) > 0:
+            skipped.append(inv.invoice_no)
+            continue
+        try:
+            with db.begin_nested():
+                cs.label_invoice(db, user, inv, inv.boxes)
+        except BusinessError:
+            skipped.append(inv.invoice_no)
+    db.commit()
+    if skipped:
+        flash(request, f"No carton count on the invoice - type it in the list: {', '.join(skipped[:10])}", "warn")
+    return redirect("/labels-desk/all/print")
+
+
+def _print_page(request: Request, db: Session, user: User, invs: list[Invoice], action: str):
+    rows, totals = [], {}
+    for inv in invs:
+        cartons = cs.label_first_cartons(db, inv.id)
+        totals[inv.id] = len(cartons)
+        rows += cs.label_rows(db, None, cartons)
+    return templates.TemplateResponse(request, "v18/labels_invoice.html", {
+        "request": request, "invs": invs, "rows": rows, "totals": totals, "action": action,
+        "reprint": len(invs) == 1 and all(r["case"].status != CaseStatus.LABEL_PENDING for r in rows),
+        "org": cfg.get(db, "org.name"), "logo": cfg.get(db, "org.logo_url"), "today": datetime.now(),
+        "w": cfg.get(db, "labels.width_mm") or 100, "h": cfg.get(db, "labels.height_mm") or 100,
+        "csrf": request.session.get("csrf", ""), "can_reprint": user.can("case.reprint")})
+
+
+@router.get("/labels-desk/all/print")
+def labels_all_print(request: Request, db: Session = Depends(get_db), user: User = Depends(require("case.print"))):
+    invs = _open_invoices(db, user)
+    state = _carton_state(db, [i.id for i in invs])
+    waiting = [i for i in invs if state.get(i.id, {}).get("pending")]
+    if not waiting:
+        flash(request, "No labels are waiting to be printed.", "info")
+        return redirect("/labels-desk")
+    return _print_page(request, db, user, waiting, "/labels-desk/all/confirm")
+
+
+@router.post("/labels-desk/all/confirm")
+def labels_all_confirm(request: Request, form=Depends(get_form), db: Session = Depends(get_db),
+                       user: User = Depends(require("case.print"))):
+    result = form.get("result") or ""
+    n = 0
+    for iid in {safe_int(x) for x in (form.get("ids") or "").split(",")} - {None, 0}:
+        inv = _inv(db, user, iid)
+        if any(c.status == CaseStatus.LABEL_PENDING for c in cs.label_first_cartons(db, inv.id)):
+            cs.record_invoice_print(db, user, inv, result=result)
+            n += 1
+    db.commit()
+    flash(request, f"{n} invoice(s): labels {'printed - stick them on the cartons' if result == 'PRINTED' else 'FAILED - print again'}.",
+          "success" if result == "PRINTED" else "warn")
+    return redirect("/labels-desk")
 
 
 @router.post("/labels-desk/{invoice_id:int}")
@@ -84,15 +151,9 @@ def labels_make(invoice_id: int, request: Request, form=Depends(get_form), db: S
 def labels_print(invoice_id: int, request: Request, db: Session = Depends(get_db),
                  user: User = Depends(require("case.print"))):
     inv = _inv(db, user, invoice_id)
-    cartons = cs.label_first_cartons(db, inv.id)
-    if not cartons:
+    if not cs.label_first_cartons(db, inv.id):
         raise BusinessError(f"Invoice {inv.invoice_no} has no labels waiting - make them at Labels to Print")
-    reprint = all(c.status != CaseStatus.LABEL_PENDING for c in cartons)
-    return templates.TemplateResponse(request, "v18/labels_invoice.html", {
-        "request": request, "inv": inv, "rows": cs.label_rows(db, None, cartons), "reprint": reprint,
-        "org": cfg.get(db, "org.name"), "logo": cfg.get(db, "org.logo_url"), "today": datetime.now(),
-        "w": cfg.get(db, "labels.width_mm") or 100, "h": cfg.get(db, "labels.height_mm") or 50,
-        "csrf": request.session.get("csrf", ""), "can_reprint": user.can("case.reprint")})
+    return _print_page(request, db, user, [inv], f"/labels-desk/{inv.id}/confirm")
 
 
 @router.post("/labels-desk/{invoice_id:int}/confirm")

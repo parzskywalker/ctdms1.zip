@@ -3,34 +3,65 @@
 <div class="page-head">
   <div><h1>Labels to Print</h1><div class="sub">Step 2 of dispatch: confirm the carton count and print one label per carton, then stick them. Type the count and press <kbd>Enter</kbd>. <kbd>Tab</kbd> moves to the next invoice.</div></div>
 </div>
-<div class="card flush"><div class="table-wrap">
-<table class="data">
-  <thead><tr><th>Invoice</th><th>Customer</th><th>Area</th><th>Companies</th><th class="num">Invoice cartons</th><th>Cartons to label</th><th>Status</th></tr></thead>
-  <tbody>
-  {% for i in rows %}{% set st = state.get(i.id) %}
-    <tr>
-      <td class="nowrap"><b>{{ i.invoice_no }}</b><div class="small muted">{{ i.invoice_date|date }}</div></td>
-      <td>{{ i.customer.name }}</td><td>{{ i.location.name if i.location else '—' }}</td><td class="nowrap">{{ i.company_codes }}</td>
-      <td class="num">{{ i.boxes if i.boxes is not none else '—' }}</td>
-      <td>
-      {% if st %}
-        <a class="btn btn-primary" href="/labels-desk/{{ i.id }}/print">Confirm {{ st.pending }} printed label(s)</a>
-      {% else %}
-        <form method="post" action="/labels-desk/{{ i.id }}" class="row" style="margin:0;gap:6px" data-enter-last="submit">
-          <input type="hidden" name="csrf_token" value="{{ csrf }}">
-          <input type="number" name="count" min="1" max="5000" value="{{ i.boxes or '' }}" required style="width:80px" aria-label="Cartons for {{ i.invoice_no }}"{% if loop.first %} autofocus{% endif %}>
-          {% if can_exception %}<input name="reason" data-enter-skip placeholder="Reason if the count differs" style="width:200px" aria-label="Reason">{% endif %}
-          <button class="btn btn-primary" type="submit">Print labels</button>
-        </form>
-      {% endif %}
-      </td>
-      <td>{{ 'labels printed, not confirmed' if st else 'no labels yet' }}</td>
-    </tr>
-  {% else %}
-    <tr><td colspan="7" class="empty">Every open invoice has its labels. They are now in <a href="/ready-to-load">Ready to Load</a>.</td></tr>
-  {% endfor %}
-  </tbody>
-</table>
-</div></div>
+
+<div class="card flush">
+  <div class="card-head"><h3>1 · Labels left to print <span class="tag">{{ rows|length }}</span></h3>
+    {% if n_all %}<form method="post" action="/labels-desk/print-all" style="margin:0">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <button class="btn btn-primary" type="submit" data-key="F8">Print all ({{ n_all }} invoices)</button>
+    </form>{% endif %}
+  </div>
+  {% if n_all %}<p class="small muted" style="margin:0 16px 8px">Print all uses each invoice's own carton count. An invoice whose count differs: type the count in its row instead.</p>{% endif %}
+  <div class="table-wrap">
+  <table class="data">
+    <thead><tr><th>Invoice</th><th>Customer</th><th>Area</th><th>Companies</th><th class="num">Invoice cartons</th><th>Cartons to label</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for i in rows %}{% set st = state.get(i.id) %}
+      <tr>
+        <td class="nowrap"><b>{{ i.invoice_no }}</b><div class="small muted">{{ i.invoice_date|date }}</div></td>
+        <td>{{ i.customer.name }}</td><td>{{ i.location.name if i.location else '—' }}</td><td class="nowrap">{{ i.company_codes }}</td>
+        <td class="num">{{ i.boxes if i.boxes is not none else '—' }}</td>
+        <td>
+        {% if st %}
+          <a class="btn btn-primary" href="/labels-desk/{{ i.id }}/print">Confirm {{ st.pending }} printed label(s)</a>
+        {% else %}
+          <form method="post" action="/labels-desk/{{ i.id }}" class="row" style="margin:0;gap:6px" data-enter-last="submit">
+            <input type="hidden" name="csrf_token" value="{{ csrf }}">
+            <input type="number" name="count" min="1" max="5000" value="{{ i.boxes or '' }}" required style="width:80px" aria-label="Cartons for {{ i.invoice_no }}"{% if loop.first %} autofocus{% endif %}>
+            {% if can_exception %}<input name="reason" data-enter-skip placeholder="Reason if the count differs" style="width:200px" aria-label="Reason">{% endif %}
+            <button class="btn btn-primary" type="submit">Print labels</button>
+          </form>
+        {% endif %}
+        </td>
+        <td>{{ 'labels printed, not confirmed' if st else 'no labels yet' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="empty">Every open invoice has its labels. They are now in <a href="/ready-to-load">Ready to Load</a>.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
 <p class="small muted">A count different from the invoice is an exception: only the Depot Manager can confirm it, with a reason. It is listed on the gatepass, signed there by the Depot Manager and photographed at the gate.</p>
+
+<div class="card flush">
+  <div class="card-head"><h3>2 · Labels already printed <span class="tag">{{ done|length }}</span></h3><span class="muted small">Not on a gate pass yet. A torn or lost label: press Reprint (same codes, a reason is asked).</span></div>
+  <div class="table-wrap">
+  <table class="data">
+    <thead><tr><th>Invoice</th><th>Customer</th><th>Area</th><th>Companies</th><th class="num">Cartons labelled</th><th></th></tr></thead>
+    <tbody>
+    {% for i in done %}
+      <tr>
+        <td class="nowrap"><b>{{ i.invoice_no }}</b><div class="small muted">{{ i.invoice_date|date }}</div></td>
+        <td>{{ i.customer.name }}</td><td>{{ i.location.name if i.location else '—' }}</td><td class="nowrap">{{ i.company_codes }}</td>
+        <td class="num">{{ state[i.id].total }}</td>
+        <td>{% if can_reprint %}<a class="btn btn-sm" href="/labels-desk/{{ i.id }}/print">Reprint</a>{% else %}<span class="muted small">reprint: ask the Depot Manager</span>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty">No printed labels waiting for a vehicle.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
 {% endblock %}

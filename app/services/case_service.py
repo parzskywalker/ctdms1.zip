@@ -152,8 +152,7 @@ def record_invoice_print(db: Session, user: User, inv: Invoice, *, result: str, 
     if reprint:
         if not user.can("case.reprint"):
             raise BusinessError("You are not authorised to reprint case labels")
-        if len((reason or "").strip()) < 5:
-            raise BusinessError("Give a reason (at least 5 characters) for reprinting case labels")
+        # v1.8.10 (owner): a reprint asks no reason - it is still logged as a reprint and audited
     batch = (db.scalar(select(func.max(LabelPrintLog.batch_no)).where(LabelPrintLog.invoice_id == inv.id)) or 0) + 1
     for c in cases:
         db.add(LabelPrintLog(slip_id=None, invoice_id=inv.id, batch_no=batch, case_id=c.id, is_reprint=reprint,
@@ -310,8 +309,7 @@ def record_print(db: Session, user: User, slip: DispatchSlip, case_ids: list[int
     if reprint:
         if not user.can("case.reprint"):
             raise BusinessError("You are not authorised to reprint case labels")
-        if len((reason or "").strip()) < 5:
-            raise BusinessError("Give a reason (at least 5 characters) for reprinting case labels")
+        # v1.8.10 (owner): a reprint asks no reason - it is still logged as a reprint and audited
     elif not user.can("case.print"):
         raise BusinessError("You are not authorised to print case labels")
     batch = (db.scalar(select(func.max(LabelPrintLog.batch_no)).where(LabelPrintLog.slip_id == slip.id)) or 0) + 1
